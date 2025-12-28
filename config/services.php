@@ -34,6 +34,42 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    // Firebase Cloud Messaging
+    'fcm' => [
+        'server_key' => env('FCM_SERVER_KEY'),
+    ],
+
+    // WhatsApp Business API
+    'whatsapp' => [
+        'api_url' => env('WHATSAPP_API_URL', 'https://graph.facebook.com/v18.0'),
+        'api_key' => env('WHATSAPP_API_KEY'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+    ],
+
+    // SMS Service (Zenvia)
+    'sms' => [
+        'api_url' => env('SMS_API_URL', 'https://api.zenvia.com/v2'),
+        'api_key' => env('SMS_API_KEY'),
+        'from_number' => env('SMS_FROM_NUMBER', '2Pets'),
+    ],
+
+    // Mercado Pago
+    'mercadopago' => [
+        'access_token' => env('MERCADOPAGO_ACCESS_TOKEN'),
+        'public_key' => env('MERCADOPAGO_PUBLIC_KEY'),
+    ],
+
+    // Daily.co Video API
+    'daily' => [
+        'api_key' => env('DAILY_API_KEY'),
+        'domain' => env('DAILY_DOMAIN', '2pets.daily.co'),
+    ],
+
+    // Billing Gateway (Stripe/Asaas)
+    'billing' => [
+        'gateway_key' => env('BILLING_GATEWAY_KEY'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

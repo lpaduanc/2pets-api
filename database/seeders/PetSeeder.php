@@ -6,6 +6,7 @@ use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\Pet;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class PetSeeder extends Seeder
 {
@@ -30,6 +31,7 @@ class PetSeeder extends Seeder
         Pet::firstOrCreate(
             ['user_id' => $tutor->id, 'name' => 'Bella'],
             [
+                'public_id' => Str::uuid()->toString(),
                 'species' => 'dog',
                 'breed' => 'Golden Retriever',
                 'birth_date' => '2022-03-15',
@@ -52,6 +54,7 @@ class PetSeeder extends Seeder
         Pet::firstOrCreate(
             ['user_id' => $tutor->id, 'name' => 'Max'],
             [
+                'public_id' => Str::uuid()->toString(),
                 'species' => 'cat',
                 'breed' => 'Siamês',
                 'birth_date' => '2023-08-10',
@@ -74,6 +77,7 @@ class PetSeeder extends Seeder
         Pet::firstOrCreate(
             ['user_id' => $tutor->id, 'name' => 'Luna'],
             [
+                'public_id' => Str::uuid()->toString(),
                 'species' => 'dog',
                 'breed' => 'Poodle',
                 'birth_date' => '2024-01-20',

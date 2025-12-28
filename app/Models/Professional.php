@@ -34,6 +34,9 @@ class Professional extends Model
         'products_sold',
         'equipment',
         'certifications',
+        'average_rating',
+        'total_reviews',
+        'is_featured',
     ];
 
     protected $casts = [
@@ -47,6 +50,9 @@ class Professional extends Model
         'graduation_year' => 'integer',
         'experience_years' => 'integer',
         'service_radius_km' => 'integer',
+        'average_rating' => 'decimal:2',
+        'total_reviews' => 'integer',
+        'is_featured' => 'boolean',
     ];
 
     public function user()
@@ -57,5 +63,10 @@ class Professional extends Model
     public function technicalResponsible()
     {
         return $this->belongsTo(User::class, 'technical_responsible_id');
+    }
+
+    public function services()
+    {
+        return $this->hasMany(\App\Models\Service::class, 'professional_id', 'user_id');
     }
 }

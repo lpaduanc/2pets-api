@@ -22,7 +22,9 @@ class ProfessionalSeeder extends Seeder
                 'address' => 'Av. Paulista, 1000',
                 'city' => 'São Paulo',
                 'state' => 'SP',
-                'zip_code' => '01310-100'
+                'zip_code' => '01310-100',
+                'latitude' => -23.561684,
+                'longitude' => -46.655981,
             ]
         );
 
@@ -31,10 +33,19 @@ class ProfessionalSeeder extends Seeder
             ['user_id' => $professional->id],
             [
                 'business_name' => 'Clínica Veterinária PetCare',
-                'type' => 'clinic',
+                'professional_type' => 'clinic',
                 'description' => 'Clínica veterinária completa com atendimento 24h, cirurgias, exames e internação.',
-                'phone' => '(11) 3333-4444',
-                'website' => 'https://petcare.com.br'
+                'crmv' => '12345-SP',
+                'crmv_state' => 'SP',
+                'specialties' => ['cirurgia', 'clínica_geral', 'emergência'],
+                'services_offered' => ['consulta', 'cirurgia', 'exames', 'internação'],
+                'opening_hours' => '08:00',
+                'closing_hours' => '20:00',
+                'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
+                'service_radius_km' => 50,
+                'average_rating' => 4.8,
+                'total_reviews' => 127,
+                'is_featured' => true,
             ]
         );
 
@@ -49,7 +60,9 @@ class ProfessionalSeeder extends Seeder
                 'address' => 'Rua Augusta, 500',
                 'city' => 'São Paulo',
                 'state' => 'SP',
-                'zip_code' => '01305-000'
+                'zip_code' => '01305-000',
+                'latitude' => -23.556856,
+                'longitude' => -46.660607,
             ]
         );
 
