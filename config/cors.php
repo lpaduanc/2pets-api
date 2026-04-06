@@ -20,10 +20,12 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://localhost:5173',  // 2pets-website
-        'http://localhost:9000',  // 2pets-app
+        'http://localhost:5173',  // 2pets-website (Vite)
+        'http://localhost:9000',  // 2pets-app (legacy)
+        'http://localhost:9200',  // 2pets-app (Docker)
         'http://127.0.0.1:5173',
-        'http://127.0.0.1:9000'
+        'http://127.0.0.1:9000',
+        'http://127.0.0.1:9200',
     ],
 
     'allowed_origins_patterns' => [],
@@ -32,7 +34,7 @@ return [
 
     'exposed_headers' => [],
 
-    'max_age' => 0,
+    'max_age' => 3600,
 
     'supports_credentials' => true,
 

@@ -2,24 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Laravel\Socialite\Facades\Socialite;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
 {
-    public function register(Request $request)
+    public function register(RegisterRequest $request)
     {
-        $validatedData = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'phone' => 'required|string|max:20',
-            'user_type' => 'required|in:tutor,vet,clinic,laboratory,petshop,pet_hotel,grooming,training,company',
-            'password' => 'required|string|min:8|confirmed',
-            'additional_data' => 'array|nullable',
-        ]);
+        $validatedData = $request->validated();
 
         // Set role based on user_type
         if ($validatedData['user_type'] === 'tutor') {
@@ -55,6 +54,24 @@ class AuthController extends Controller
 
         $user = User::create($userData);
 
+        // Assign spatie role based on user_type
+        $spatieRole = match ($validatedData['user_type']) {
+            'tutor' => 'tutor',
+            'vet' => 'vet_freelancer',
+            'clinic' => 'clinic_owner',
+            'petshop' => 'petshop_owner',
+            default => null,
+        };
+
+        if ($spatieRole) {
+            try {
+                $user->assignRole($spatieRole);
+            } catch (\Exception $e) {
+                // Role might not exist yet if seeder hasn't run — graceful fallback
+                \Illuminate\Support\Facades\Log::warning('Could not assign spatie role: ' . $e->getMessage());
+            }
+        }
+
         // Send verification email (except for pending company registrations)
         if ($role !== 'company' || $user->registration_status === 'approved') {
             try {
@@ -71,13 +88,13 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => $message,
-            'user' => $user,
+            'user' => new UserResource($user),
             'redirect_to_app' => $role !== 'company', // Don't redirect companies to app yet
             'pending_approval' => $role === 'company' && $userData['registration_status'] === 'pending',
         ], 201);
     }
 
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
         if (!Auth::attempt($request->only('email', 'password'))) {
             return response()->json([
@@ -85,7 +102,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $user = User::where('email', $request['email'])->firstOrFail();
+        $user = User::where('email', $request->email)->firstOrFail();
 
         // Check registration status for companies
         if ($user->role === 'company' && $user->registration_status === 'pending') {
@@ -110,7 +127,7 @@ class AuthController extends Controller
                 'message' => 'Please verify your email before logging in.',
                 'email_not_verified' => true,
                 'can_resend' => $canResend,
-                'user' => $user,
+                'user' => new UserResource($user),
             ], 403);
         }
 
@@ -121,7 +138,7 @@ class AuthController extends Controller
             return response()->json([
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user,
+                'user' => new UserResource($user),
                 'profile_completed' => false,
                 'requires_profile_completion' => true,
             ]);
@@ -132,7 +149,7 @@ class AuthController extends Controller
         return response()->json([
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user,
+            'user' => new UserResource($user),
             'profile_completed' => $user->profile_completed,
         ]);
     }
@@ -148,7 +165,93 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        return response()->json($request->user());
+        $user = $request->user()->load(['roles', 'professional', 'media']);
+        return new UserResource($user);
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            // Return success even if email doesn't exist (security: no email enumeration)
+            return response()->json([
+                'message' => 'Se o e-mail estiver cadastrado, enviaremos um link de recuperação.',
+            ]);
+        }
+
+        $token = Str::random(64);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $request->email],
+            [
+                'token' => Hash::make($token),
+                'created_at' => now(),
+            ]
+        );
+
+        try {
+            Mail::raw(
+                "Olá {$user->name},\n\nVocê solicitou a recuperação de senha da sua conta 2Pets.\n\nUse o código abaixo para redefinir sua senha:\n\n{$token}\n\nEste código expira em 60 minutos.\n\nSe você não solicitou esta recuperação, ignore este e-mail.\n\nEquipe 2Pets",
+                function ($message) use ($user) {
+                    $message->to($user->email)
+                        ->subject('2Pets - Recuperação de Senha');
+                }
+            );
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to send password reset email: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'message' => 'Se o e-mail estiver cadastrado, enviaremos um link de recuperação.',
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'token' => 'required|string',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $record = DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$record || !Hash::check($request->token, $record->token)) {
+            return response()->json([
+                'message' => 'Token inválido ou expirado.',
+            ], 422);
+        }
+
+        // Check if token is expired (60 minutes)
+        if (now()->diffInMinutes($record->created_at) > 60) {
+            DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+            return response()->json([
+                'message' => 'Token expirado. Solicite um novo link de recuperação.',
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'Usuário não encontrado.',
+            ], 404);
+        }
+
+        $user->update(['password' => Hash::make($request->password)]);
+
+        DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+        return response()->json([
+            'message' => 'Senha redefinida com sucesso. Faça login com sua nova senha.',
+        ]);
     }
 
     public function handleGoogleCallback(Request $request)
@@ -156,8 +259,7 @@ class AuthController extends Controller
         try {
             // In a real SPA scenario, the frontend sends the token, and we use userFromToken
             // But Socialite standard flow is redirect.
-            // For SPA (Vue), we usually send the 'code' or 'token' to the backend.
-            // Let's assume the frontend sends the 'credential' (ID token) or 'code'.
+            // For SPA (Vue), we usually send the 'credential' (ID token) or 'code'.
 
             // If using vue3-google-login 'code' flow:
             $googleUser = Socialite::driver('google')->stateless()->userFromToken($request->token);
@@ -176,7 +278,7 @@ class AuthController extends Controller
             return response()->json([
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user,
+                'user' => new UserResource($user),
             ]);
 
         } catch (\Exception $e) {

@@ -2,28 +2,47 @@
 
 namespace App\Services\Search;
 
+use Illuminate\Support\Facades\DB;
+
 final class GeoLocationService
 {
-    private const EARTH_RADIUS_KM = 6371;
-
+    /**
+     * Calcula a distancia em metros entre dois pontos usando ST_Distance do PostGIS.
+     * Usa geography(POINT, 4326) para calculo geodesico preciso (resultado em metros).
+     */
     public function calculateDistance(
         float $lat1,
         float $lng1,
         float $lat2,
         float $lng2
     ): float {
-        $latDelta = deg2rad($lat2 - $lat1);
-        $lngDelta = deg2rad($lng2 - $lng1);
+        $result = DB::selectOne(
+            "SELECT ST_Distance(
+                ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+                ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography
+            ) AS distance_meters",
+            [$lng1, $lat1, $lng2, $lat2]
+        );
 
-        $a = sin($latDelta / 2) * sin($latDelta / 2) +
-             cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
-             sin($lngDelta / 2) * sin($lngDelta / 2);
-
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-
-        return self::EARTH_RADIUS_KM * $c;
+        return (float) $result->distance_meters;
     }
 
+    /**
+     * Calcula a distancia em quilometros entre dois pontos.
+     */
+    public function calculateDistanceKm(
+        float $lat1,
+        float $lng1,
+        float $lat2,
+        float $lng2
+    ): float {
+        return $this->calculateDistance($lat1, $lng1, $lat2, $lng2) / 1000;
+    }
+
+    /**
+     * Verifica se dois pontos estao dentro de um raio usando ST_DWithin.
+     * ST_DWithin com geography usa o indice GIST automaticamente.
+     */
     public function isWithinRadius(
         float $lat1,
         float $lng1,
@@ -31,8 +50,67 @@ final class GeoLocationService
         float $lng2,
         int $radiusKm
     ): bool {
-        $distance = $this->calculateDistance($lat1, $lng1, $lat2, $lng2);
+        $radiusMeters = $radiusKm * 1000;
 
-        return $distance <= $radiusKm;
+        $result = DB::selectOne(
+            "SELECT ST_DWithin(
+                ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+                ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+                ?
+            ) AS within",
+            [$lng1, $lat1, $lng2, $lat2, $radiusMeters]
+        );
+
+        return (bool) $result->within;
+    }
+
+    /**
+     * Gera a expressao SQL para criar um ponto geography a partir de lng/lat.
+     * Retorna a expressao raw e os bindings separados para uso seguro com parameter binding.
+     *
+     * @return array{sql: string, bindings: array<int, float>}
+     */
+    public function makePointExpression(float $latitude, float $longitude): array
+    {
+        return [
+            'sql' => "ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography",
+            'bindings' => [$longitude, $latitude],
+        ];
+    }
+
+    /**
+     * Gera a expressao SQL para ST_DWithin usando a coluna location da tabela.
+     * Ideal para WHERE clauses que aproveitam o indice GIST.
+     *
+     * @return array{sql: string, bindings: array<int, float|int>}
+     */
+    public function dWithinExpression(
+        string $locationColumn,
+        float $latitude,
+        float $longitude,
+        int $radiusKm
+    ): array {
+        $radiusMeters = $radiusKm * 1000;
+
+        return [
+            'sql' => "ST_DWithin({$locationColumn}, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)",
+            'bindings' => [$longitude, $latitude, $radiusMeters],
+        ];
+    }
+
+    /**
+     * Gera a expressao SQL para ST_Distance retornando metros.
+     *
+     * @return array{sql: string, bindings: array<int, float>}
+     */
+    public function distanceExpression(
+        string $locationColumn,
+        float $latitude,
+        float $longitude
+    ): array {
+        return [
+            'sql' => "ST_Distance({$locationColumn}, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography)",
+            'bindings' => [$longitude, $latitude],
+        ];
     }
 }

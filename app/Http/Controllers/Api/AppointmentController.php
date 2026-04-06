@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Appointment\StoreAppointmentRequest;
+use App\Http\Requests\Appointment\UpdateAppointmentRequest;
+use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class AppointmentController extends Controller
 {
@@ -31,37 +33,21 @@ class AppointmentController extends Controller
             ->orderBy('appointment_time')
             ->get();
 
-        return response()->json($appointments);
+        return AppointmentResource::collection($appointments);
     }
 
-    public function store(Request $request)
+    public function store(StoreAppointmentRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'client_id' => 'required|exists:users,id',
-            'pet_id' => 'required|exists:pets,id',
-            'appointment_date' => 'required|date',
-            'appointment_time' => 'required',
-            'duration' => 'nullable|integer|min:15',
-            'type' => 'required|in:consultation,surgery,vaccination,exam,emergency,grooming,checkup',
-            'reason' => 'nullable|string',
-            'notes' => 'nullable|string',
-            'price' => 'nullable|numeric|min:0',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $data = $validator->validated();
+        $data = $request->validated();
         $data['professional_id'] = $request->user()->id;
         $data['status'] = 'scheduled';
 
         $appointment = Appointment::create($data);
 
-        return response()->json([
-            'message' => 'Consulta agendada com sucesso!',
-            'appointment' => $appointment->load(['client', 'pet'])
-        ], 201);
+        return (new AppointmentResource($appointment->load(['client', 'pet'])))
+            ->additional(['message' => 'Consulta agendada com sucesso!'])
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function show(Request $request, $id)
@@ -70,34 +56,17 @@ class AppointmentController extends Controller
             ->where('professional_id', $request->user()->id)
             ->findOrFail($id);
 
-        return response()->json($appointment);
+        return new AppointmentResource($appointment);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateAppointmentRequest $request, $id)
     {
         $appointment = Appointment::where('professional_id', $request->user()->id)->findOrFail($id);
 
-        $validator = Validator::make($request->all(), [
-            'appointment_date' => 'sometimes|date',
-            'appointment_time' => 'sometimes',
-            'duration' => 'nullable|integer|min:15',
-            'type' => 'sometimes|in:consultation,surgery,vaccination,exam,emergency,grooming,checkup',
-            'status' => 'sometimes|in:scheduled,confirmed,in_progress,completed,cancelled,no_show',
-            'reason' => 'nullable|string',
-            'notes' => 'nullable|string',
-            'price' => 'nullable|numeric|min:0',
-        ]);
+        $appointment->update($request->validated());
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $appointment->update($validator->validated());
-
-        return response()->json([
-            'message' => 'Consulta atualizada com sucesso!',
-            'appointment' => $appointment->load(['client', 'pet'])
-        ]);
+        return (new AppointmentResource($appointment->load(['client', 'pet'])))
+            ->additional(['message' => 'Consulta atualizada com sucesso!']);
     }
 
     public function destroy(Request $request, $id)
@@ -116,7 +85,7 @@ class AppointmentController extends Controller
             ->orderBy('appointment_time')
             ->get();
 
-        return response()->json($appointments);
+        return AppointmentResource::collection($appointments);
     }
 
     public function upcoming(Request $request)
@@ -129,6 +98,6 @@ class AppointmentController extends Controller
             ->limit(10)
             ->get();
 
-        return response()->json($appointments);
+        return AppointmentResource::collection($appointments);
     }
 }

@@ -101,9 +101,46 @@ final class MercadoPagoService implements PaymentGatewayInterface
 
     public function verifyWebhookSignature(string $payload, string $signature): bool
     {
-        // Mercado Pago uses x-signature header
-        // Implementation depends on webhook configuration
-        return true; // Simplified for now
+        $webhookSecret = config('services.mercadopago.webhook_secret', '');
+
+        if (empty($webhookSecret)) {
+            Log::warning('MercadoPagoService: webhook_secret not configured, skipping verification');
+            return true;
+        }
+
+        if (empty($signature)) {
+            Log::warning('MercadoPagoService: empty signature header');
+            return false;
+        }
+
+        // Mercado Pago x-signature format: "ts=TIMESTAMP,v1=HASH"
+        $parts = [];
+        foreach (explode(',', $signature) as $part) {
+            $kv = explode('=', $part, 2);
+            if (count($kv) === 2) {
+                $parts[trim($kv[0])] = trim($kv[1]);
+            }
+        }
+
+        $timestamp = $parts['ts'] ?? '';
+        $receivedHash = $parts['v1'] ?? '';
+
+        if (empty($timestamp) || empty($receivedHash)) {
+            Log::warning('MercadoPagoService: malformed signature header', ['signature' => $signature]);
+            return false;
+        }
+
+        // Build the signed template: "id:{data_id};request-id:{x-request-id};ts:{ts};"
+        $dataId = json_decode($payload, true)['data']['id'] ?? '';
+        $manifest = "id:{$dataId};request-id:;ts:{$timestamp};";
+        $expectedHash = hash_hmac('sha256', $manifest, $webhookSecret);
+
+        if (!hash_equals($expectedHash, $receivedHash)) {
+            Log::warning('MercadoPagoService: webhook signature mismatch');
+            return false;
+        }
+
+        return true;
     }
 
     public function parseWebhookPayload(array $payload): array

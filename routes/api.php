@@ -5,9 +5,13 @@ use App\Http\Controllers\Api\AiBusinessController;
 use App\Http\Controllers\Api\AiBusinessInsightsController;
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Api\BreedController;
+use App\Http\Controllers\Api\LgpdController;
 use App\Http\Controllers\Api\PetController;
+use App\Http\Controllers\Api\PetVetAccessController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\ProfessionalDashboardController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\ExamController;
@@ -23,6 +27,7 @@ use App\Http\Controllers\Api\VaccinationController;
 use App\Http\Controllers\Api\PrescriptionController;
 use App\Http\Controllers\Api\ProfessionalClientController;
 use App\Http\Controllers\Api\Public\BookingController;
+use App\Http\Controllers\Api\Public\MasterDataController;
 use App\Http\Controllers\Api\Public\ProfessionalController;
 use App\Http\Controllers\RegistrationDraftController;
 use App\Http\Controllers\Api\Public\SearchController;
@@ -38,42 +43,55 @@ use App\Http\Controllers\RegistrationCompletionController;
 use App\Http\Middleware\AdminMiddleware;
 use Illuminate\Support\Facades\Route;
 
-// Public routes - Professional Search & Discovery
-Route::prefix('public')->group(function () {
+// ---------------------------------------------------------------
+// Public routes — rate limited (60/min for auth, 30/min for search)
+// ---------------------------------------------------------------
+
+// Auth routes — throttled to prevent brute force
+Route::middleware('throttle:10,1')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+});
+
+Route::post('/verify-email/{token}', [\App\Http\Controllers\EmailVerificationController::class, 'verify']);
+Route::post('/resend-verification', [\App\Http\Controllers\EmailVerificationController::class, 'resend'])
+    ->middleware('throttle:5,1');
+
+// Public Search & Discovery — throttled (30 requests/min)
+Route::prefix('public')->middleware('throttle:30,1')->group(function () {
     Route::get('/search', [SearchController::class, 'search']);
     Route::get('/nearby', [SearchController::class, 'nearby']);
     Route::get('/categories', [SearchController::class, 'categories']);
-    Route::get('/professionals/{id}', [ProfessionalController::class, 'show']);
-
-    // Pet Digital Card (public access)
-    Route::get('/pet-card/{publicId}', [PetCardController::class, 'show']);
-
-    // Booking endpoints (require authentication)
-    Route::middleware('auth:sanctum')->group(function () {
-        Route::get('/booking/availability', [BookingController::class, 'availability']);
-        Route::post('/booking', [BookingController::class, 'book']);
-        Route::post('/booking/{id}/cancel', [BookingController::class, 'cancel']);
-        Route::post('/booking/{id}/reschedule', [BookingController::class, 'reschedule']);
-        Route::post('/waitlist', [BookingController::class, 'joinWaitlist']);
-    });
-});
-
-// Public routes
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
-Route::post('/verify-email/{token}', [\App\Http\Controllers\EmailVerificationController::class, 'verify']);
-Route::post('/resend-verification', [\App\Http\Controllers\EmailVerificationController::class, 'resend']);
-
-// Public Search & Discovery
-Route::prefix('public')->group(function () {
-    Route::get('/search', [SearchController::class, 'search']);
     Route::get('/featured', [SearchController::class, 'featured']);
     Route::get('/professionals/{id}', [ProfessionalController::class, 'show']);
+    Route::get('/pet-card/{publicId}', [PetCardController::class, 'show']);
+    Route::get('/breeds', [BreedController::class, 'index']);
+
+    // Master data endpoints
+    Route::get('/pathologies', [MasterDataController::class, 'pathologies']);
+    Route::get('/vaccine-catalog', [MasterDataController::class, 'vaccineCatalog']);
+    Route::get('/food-brands', [MasterDataController::class, 'foodBrands']);
+    Route::get('/specialties', [MasterDataController::class, 'specialties']);
+    Route::get('/food-allergies', [MasterDataController::class, 'foodAllergies']);
+    Route::get('/dietary-restrictions', [MasterDataController::class, 'dietaryRestrictions']);
 });
 
-// Protected routes
-Route::middleware('auth:sanctum')->group(function () {
+// Public booking routes (require auth)
+Route::prefix('public')->middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
+    Route::get('/booking/availability', [BookingController::class, 'availability']);
+    Route::post('/booking', [BookingController::class, 'book']);
+    Route::post('/booking/{id}/cancel', [BookingController::class, 'cancel']);
+    Route::post('/booking/{id}/reschedule', [BookingController::class, 'reschedule']);
+    Route::post('/waitlist', [BookingController::class, 'joinWaitlist']);
+});
+
+// ---------------------------------------------------------------
+// Protected routes — auth required, 60 requests/min
+// ---------------------------------------------------------------
+Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
 
@@ -108,6 +126,19 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Pet routes
     Route::apiResource('pets', PetController::class);
+
+    // Pet Vet Access — controle de acesso veterinario ao pet
+    Route::prefix('pet-vet-access')->group(function () {
+        Route::post('/grant', [PetVetAccessController::class, 'grant']);
+        Route::post('/{accessId}/revoke', [PetVetAccessController::class, 'revoke']);
+        Route::get('/my-accesses', [PetVetAccessController::class, 'myAccesses']);
+        Route::get('/pet/{petId}', [PetVetAccessController::class, 'petAccesses']);
+    });
+
+    // Favorites
+    Route::get('/favorites', [FavoriteController::class, 'index']);
+    Route::post('/favorites/{professionalId}', [FavoriteController::class, 'toggle']);
+    Route::get('/favorites/check/{professionalId}', [FavoriteController::class, 'check']);
 
     // Professional/Medical routes
     Route::prefix('professional')->group(function () {
@@ -194,7 +225,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/response', [ReviewController::class, 'addResponse']);
         Route::post('/{id}/flag', [ReviewController::class, 'flag']);
         Route::post('/{id}/helpful', [ReviewController::class, 'toggleHelpful']);
-        Route::post('/{id}/moderate', [ReviewController::class, 'moderate'])->middleware('admin');
+        Route::post('/{id}/moderate', [ReviewController::class, 'moderate'])->middleware(AdminMiddleware::class);
     });
 
     // Health Reminders
@@ -241,6 +272,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/cancel', [SubscriptionController::class, 'cancel']);
         Route::get('/check-feature/{feature}', [SubscriptionController::class, 'checkFeature']);
         Route::get('/check-usage/{feature}', [SubscriptionController::class, 'checkUsage']);
+    });
+
+    // LGPD / Privacy
+    Route::prefix('lgpd')->group(function () {
+        Route::get('/export', [LgpdController::class, 'exportData']);
+        Route::post('/delete-account', [LgpdController::class, 'deleteAccount']);
+        Route::get('/consent', [LgpdController::class, 'consentStatus']);
+        Route::put('/consent', [LgpdController::class, 'updateConsent']);
     });
 
     // Video Consultations

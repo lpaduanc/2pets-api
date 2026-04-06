@@ -4,6 +4,10 @@ namespace App\Services\Booking;
 
 use App\DataTransferObjects\BookingRequestDTO;
 use App\Enums\BookingSource;
+use App\Events\AppointmentBooked;
+use App\Events\AppointmentCancelled;
+use App\Events\AppointmentConfirmed;
+use App\Events\AppointmentRescheduled;
 use App\Models\Appointment;
 use App\Models\Service;
 use Carbon\Carbon;
@@ -33,7 +37,7 @@ final class BookingService
             'notes' => $dto->notes,
         ]);
 
-        // TODO: Dispatch AppointmentBooked event (Phase 3)
+        AppointmentBooked::dispatch($appointment);
 
         return $appointment;
     }
@@ -47,7 +51,7 @@ final class BookingService
             'confirmed_at' => Carbon::now(),
         ]);
 
-        // TODO: Dispatch AppointmentConfirmed event (Phase 3)
+        AppointmentConfirmed::dispatch($appointment);
 
         return $appointment;
     }
@@ -62,8 +66,7 @@ final class BookingService
             'cancellation_reason' => $reason,
         ]);
 
-        // TODO: Dispatch AppointmentCancelled event (Phase 3)
-        // TODO: Check waitlist and notify (Phase 3)
+        AppointmentCancelled::dispatch($appointment, $reason);
 
         return $appointment;
     }
@@ -76,13 +79,15 @@ final class BookingService
 
         $this->validateReschedule($appointment, $newDate);
 
+        $previousDate = $appointment->appointment_date->toIso8601String();
+
         $appointment->update([
             'appointment_date' => $newDate,
             'status' => 'pending',
             'confirmed_at' => null,
         ]);
 
-        // TODO: Dispatch AppointmentRescheduled event (Phase 3)
+        AppointmentRescheduled::dispatch($appointment, $previousDate);
 
         return $appointment;
     }
@@ -123,4 +128,3 @@ final class BookingService
         }
     }
 }
-

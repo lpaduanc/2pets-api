@@ -22,7 +22,12 @@ class SearchController extends Controller
 
         $filters = SearchFiltersDTO::fromRequest($validated);
 
-        $results = $this->searchService->search($filters);
+        // Use cursor pagination for infinite scroll when ?cursor= is present
+        if ($request->has('cursor')) {
+            $results = $this->searchService->searchCursor($filters);
+        } else {
+            $results = $this->searchService->search($filters);
+        }
 
         return ProfessionalSearchResource::collection($results);
     }
@@ -47,6 +52,31 @@ class SearchController extends Controller
         return ProfessionalSearchResource::collection($results);
     }
 
+    public function featured(Request $request): AnonymousResourceCollection
+    {
+        $query = \App\Models\User::query()
+            ->where('role', 'professional')
+            ->where('profile_completed', true)
+            ->where('registration_status', 'approved')
+            ->where('is_suspended', false)
+            ->whereHas('professional', fn ($q) => $q->where('is_featured', true))
+            ->with(['professional', 'professional.services']);
+
+        if ($request->has('latitude') && $request->has('longitude')) {
+            $lat = (float) $request->latitude;
+            $lng = (float) $request->longitude;
+            $query->selectRaw(
+                "users.*, ST_Distance(location, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) / 1000 AS distance_km",
+                [$lng, $lat]
+            )->orderByRaw('distance_km ASC NULLS LAST');
+        } else {
+            $query->select('users.*')
+                ->selectRaw('NULL::double precision AS distance_km');
+        }
+
+        return ProfessionalSearchResource::collection($query->limit(10)->get());
+    }
+
     public function categories(): JsonResponse
     {
         return response()->json([
@@ -67,7 +97,7 @@ class SearchController extends Controller
             'max_price' => 'nullable|numeric|min:0',
             'min_rating' => 'nullable|numeric|min:0|max:5',
             'query' => 'nullable|string|max:255',
-            'sort_by' => 'nullable|string|in:distance,rating,price_low,price_high',
+            'sort_by' => 'nullable|string|in:distance,rating,relevance,price_low,price_high',
             'per_page' => 'nullable|integer|min:1|max:50',
         ]);
     }

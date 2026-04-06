@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class Pet extends Model
@@ -41,6 +43,9 @@ class Pet extends Model
         'neutered' => 'boolean',
         'temperament' => 'array',
         'social_with' => 'array',
+        'chronic_diseases' => 'array',
+        'allergies' => 'array',
+        'current_medications' => 'array',
         'is_lost' => 'boolean',
         'lost_since' => 'datetime',
     ];
@@ -56,8 +61,37 @@ class Pet extends Model
         });
     }
 
-    public function user()
+    // ──────────────────────────────────────────────
+    // Relationships
+    // ──────────────────────────────────────────────
+
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function vaccinations(): HasMany
+    {
+        return $this->hasMany(\App\Models\Vaccination::class);
+    }
+
+    public function dewormings(): HasMany
+    {
+        return $this->hasMany(PetDeworming::class);
+    }
+
+    public function medications(): HasMany
+    {
+        return $this->hasMany(PetMedication::class);
+    }
+
+    public function weightHistory(): HasMany
+    {
+        return $this->hasMany(PetWeightHistory::class);
+    }
+
+    public function vetAccesses(): HasMany
+    {
+        return $this->hasMany(PetVetAccess::class);
     }
 }

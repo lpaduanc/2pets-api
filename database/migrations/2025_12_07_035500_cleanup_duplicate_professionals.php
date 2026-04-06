@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 return new class extends Migration
 {
@@ -17,7 +18,7 @@ return new class extends Migration
             ->whereNotNull('cnpj')
             ->where('cnpj', '!=', '')
             ->groupBy('cnpj')
-            ->having('count', '>', 1)
+            ->havingRaw('COUNT(*) > 1')
             ->get();
         
         foreach ($duplicateCnpjs as $duplicate) {
@@ -42,7 +43,7 @@ return new class extends Migration
         $duplicateUsers = DB::table('professionals')
             ->select('user_id', DB::raw('COUNT(*) as count'))
             ->groupBy('user_id')
-            ->having('count', '>', 1)
+            ->havingRaw('COUNT(*) > 1')
             ->get();
         
         foreach ($duplicateUsers as $duplicate) {

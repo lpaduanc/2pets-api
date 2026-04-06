@@ -2,16 +2,25 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\Permission\Traits\HasRoles;
 
-class User extends Authenticatable
+class User extends Authenticatable implements HasMedia
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasFactory,
+        Notifiable,
+        HasApiTokens,
+        HasRoles,
+        InteractsWithMedia,
+        LogsActivity;
 
     /**
      * The attributes that are mass assignable.
@@ -51,6 +60,13 @@ class User extends Authenticatable
         'reviewed_by',
         'reviewed_at',
         'is_suspended',
+        'stripe_customer_id',
+        'stripe_subscription_id',
+        // LGPD fields
+        'terms_accepted_at',
+        'privacy_accepted_at',
+        'marketing_consent',
+        'data_sharing_consent',
     ];
 
     /**
@@ -80,8 +96,45 @@ class User extends Authenticatable
             'profile_completed' => 'boolean',
             'is_suspended' => 'boolean',
             'reviewed_at' => 'datetime',
+            // LGPD casts
+            'terms_accepted_at' => 'datetime',
+            'privacy_accepted_at' => 'datetime',
+            'marketing_consent' => 'boolean',
+            'data_sharing_consent' => 'boolean',
         ];
     }
+
+    // ------------------------------------------------------------------
+    // Activity Log (spatie/laravel-activitylog)
+    // ------------------------------------------------------------------
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly([
+                'name', 'email', 'phone', 'role', 'user_type',
+                'registration_status', 'is_suspended', 'profile_completed',
+            ])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
+
+    // ------------------------------------------------------------------
+    // Media Library collections
+    // ------------------------------------------------------------------
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('avatar')
+            ->singleFile()
+            ->acceptsMimeTypes(['image/jpeg', 'image/png', 'image/webp']);
+
+        $this->addMediaCollection('documents');
+    }
+
+    // ------------------------------------------------------------------
+    // Relationships
+    // ------------------------------------------------------------------
 
     public function pets()
     {
@@ -121,5 +174,15 @@ class User extends Authenticatable
     public function reviewer()
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function favorites()
+    {
+        return $this->hasMany(Favorite::class);
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(Review::class);
     }
 }

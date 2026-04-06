@@ -67,6 +67,12 @@ class Professional extends Model
 
     public function services()
     {
+        return $this->hasMany(\App\Models\Service::class, 'professional_id', 'user_id')
+            ->where('active', true);
+    }
+
+    public function allServices()
+    {
         return $this->hasMany(\App\Models\Service::class, 'professional_id', 'user_id');
     }
 }

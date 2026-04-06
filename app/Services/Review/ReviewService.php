@@ -2,6 +2,7 @@
 
 namespace App\Services\Review;
 
+use App\Events\ReviewCreated;
 use App\Models\Appointment;
 use App\Models\Review;
 use App\Models\User;
@@ -50,7 +51,7 @@ final class ReviewService
 
             $this->ratingService->updateProfessionalRating($professionalId);
 
-            // TODO: Dispatch ReviewCreated event
+            ReviewCreated::dispatch($review);
 
             return $review->load(['photos', 'client']);
         });
@@ -159,4 +160,3 @@ final class ReviewService
         }
     }
 }
-

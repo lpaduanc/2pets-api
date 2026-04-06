@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -39,6 +40,91 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    /**
+     * Create a tutor user with verified email and approved status.
+     */
+    public function tutor(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'tutor',
+            'user_type' => 'tutor',
+            'email_verified' => true,
+            'profile_completed' => true,
+            'registration_status' => 'approved',
+            'is_suspended' => false,
+        ]);
+    }
+
+    /**
+     * Create a professional user (vet freelancer by default).
+     */
+    public function professional(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'professional',
+            'user_type' => 'vet',
+            'email_verified' => true,
+            'profile_completed' => true,
+            'registration_status' => 'approved',
+            'is_suspended' => false,
+        ]);
+    }
+
+    /**
+     * Create a veterinarian user with proper role for vet access tests.
+     */
+    public function veterinarian(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'vet_freelancer',
+            'user_type' => 'vet',
+            'email_verified' => true,
+            'profile_completed' => true,
+            'registration_status' => 'approved',
+            'is_suspended' => false,
+        ]);
+    }
+
+    /**
+     * Create a company user with pending registration status.
+     */
+    public function company(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'company',
+            'user_type' => 'clinic',
+            'email_verified' => true,
+            'profile_completed' => false,
+            'registration_status' => 'pending',
+            'is_suspended' => false,
+        ]);
+    }
+
+    /**
+     * Create a suspended user.
+     */
+    public function suspended(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_suspended' => true,
+        ]);
+    }
+
+    /**
+     * Create an admin user.
+     */
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'admin',
+            'user_type' => 'tutor',
+            'email_verified' => true,
+            'profile_completed' => true,
+            'registration_status' => 'approved',
+            'is_suspended' => false,
         ]);
     }
 }

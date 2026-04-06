@@ -8,7 +8,10 @@ use App\Models\Company;
 use App\Models\User;
 use App\Services\CpfValidationService;
 use App\Services\CrmvValidationService;
+use App\Services\Location\GeocodingService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class RegistrationCompletionController extends Controller
 {
@@ -37,8 +40,7 @@ class RegistrationCompletionController extends Controller
             return response()->json(['errors' => ['cpf' => ['CPF inválido']]], 422);
         }
 
-        $user = $request->user();
-        $user->update([
+        $updateData = [
             'cpf' => $cpfService->format($validated['cpf']),
             'birth_date' => $validated['birth_date'],
             'gender' => $validated['gender'] ?? null,
@@ -51,7 +53,23 @@ class RegistrationCompletionController extends Controller
             'state' => $validated['state'],
             'zip_code' => $validated['zip_code'],
             'profile_completed' => true,
-        ]);
+        ];
+
+        // Geocode the address (non-blocking)
+        $coords = $this->geocodeAddress($validated);
+
+        if ($coords) {
+            $updateData['latitude'] = $coords['latitude'];
+            $updateData['longitude'] = $coords['longitude'];
+        }
+
+        $user = $request->user();
+        $user->update($updateData);
+
+        // Set PostGIS location column if coordinates are available
+        if ($coords) {
+            $this->updatePostGISLocation($user, $coords);
+        }
 
         return response()->json([
             'message' => 'Profile completed successfully!',
@@ -92,9 +110,6 @@ class RegistrationCompletionController extends Controller
             'city' => 'required|string',
             'state' => 'required|string|size:2',
             'zip_code' => 'required|string',
-            // TODO: Re-enable when implementing geocoding
-            // 'latitude' => 'required|numeric',
-            // 'longitude' => 'required|numeric',
 
             // Academic
             'university' => 'required|string',
@@ -125,8 +140,11 @@ class RegistrationCompletionController extends Controller
             return response()->json(['errors' => ['crmv' => ['CRMV inválido']]], 422);
         }
 
+        // Geocode the address (non-blocking)
+        $coords = $this->geocodeAddress($validated);
+
         // Update user
-        $user->update([
+        $updateData = [
             'cpf' => $cpfService->format($validated['cpf']),
             'birth_date' => $validated['birth_date'],
             'address' => $validated['address'],
@@ -136,11 +154,20 @@ class RegistrationCompletionController extends Controller
             'city' => $validated['city'],
             'state' => $validated['state'],
             'zip_code' => $validated['zip_code'],
-            // TODO: Re-enable when implementing geocoding
-            // 'latitude' => $validated['latitude'],
-            // 'longitude' => $validated['longitude'],
             'profile_completed' => true,
-        ]);
+        ];
+
+        if ($coords) {
+            $updateData['latitude'] = $coords['latitude'];
+            $updateData['longitude'] = $coords['longitude'];
+        }
+
+        $user->update($updateData);
+
+        // Set PostGIS location column if coordinates are available
+        if ($coords) {
+            $this->updatePostGISLocation($user, $coords);
+        }
 
         // Create professional record
         Professional::create([
@@ -184,9 +211,6 @@ class RegistrationCompletionController extends Controller
             'city' => 'required|string',
             'state' => 'required|string|size:2',
             'zip_code' => 'required|string',
-            // TODO: Re-enable when implementing geocoding
-            // 'latitude' => 'required|numeric',
-            // 'longitude' => 'required|numeric',
 
             // Operations
             'opening_hours' => 'required|string',
@@ -212,8 +236,11 @@ class RegistrationCompletionController extends Controller
 
         \Log::info("Validation passed", ['cnpj' => $validated['cnpj']]);
 
+        // Geocode the address (non-blocking)
+        $coords = $this->geocodeAddress($validated);
+
         // Update user (business address)
-        $user->update([
+        $updateData = [
             'address' => $validated['address'],
             'number' => $validated['number'],
             'complement' => $validated['complement'] ?? null,
@@ -221,11 +248,20 @@ class RegistrationCompletionController extends Controller
             'city' => $validated['city'],
             'state' => $validated['state'],
             'zip_code' => $validated['zip_code'],
-            // TODO: Re-enable when implementing geocoding
-            // 'latitude' => $validated['latitude'],
-            // 'longitude' => $validated['longitude'],
             'profile_completed' => true,
-        ]);
+        ];
+
+        if ($coords) {
+            $updateData['latitude'] = $coords['latitude'];
+            $updateData['longitude'] = $coords['longitude'];
+        }
+
+        $user->update($updateData);
+
+        // Set PostGIS location column if coordinates are available
+        if ($coords) {
+            $this->updatePostGISLocation($user, $coords);
+        }
 
         // BULLETPROOF FIX: Use updateOrCreate to handle auto-saved records
         $professionalData = [
@@ -339,5 +375,64 @@ class RegistrationCompletionController extends Controller
             'message' => 'Company profile completed successfully!',
             'user' => $user->fresh()->load('company'),
         ]);
+    }
+
+    /**
+     * Build a full address string from validated data and geocode it.
+     * Returns coordinates array or null if geocoding fails.
+     * This is non-blocking: failures are logged but do not interrupt registration.
+     *
+     * @param array $validated Validated request data containing address fields
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private function geocodeAddress(array $validated): ?array
+    {
+        try {
+            $parts = array_filter([
+                $validated['address'] ?? null,
+                $validated['number'] ?? null,
+                $validated['neighborhood'] ?? null,
+                $validated['city'] ?? null,
+                $validated['state'] ?? null,
+                $validated['zip_code'] ?? null,
+            ]);
+
+            $fullAddress = implode(', ', $parts);
+
+            $geocodingService = app(GeocodingService::class);
+
+            return $geocodingService->geocode($fullAddress);
+        } catch (\Throwable $e) {
+            Log::warning('RegistrationCompletionController: Geocoding failed, skipping coordinates', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Update the PostGIS geography location column on the user record.
+     * Uses a raw query since Eloquent does not natively handle geography types.
+     *
+     * @param User $user
+     * @param array{latitude: float, longitude: float} $coords
+     */
+    private function updatePostGISLocation(User $user, array $coords): void
+    {
+        try {
+            DB::table('users')
+                ->where('id', $user->id)
+                ->update([
+                    'location' => DB::raw(
+                        "ST_SetSRID(ST_MakePoint({$coords['longitude']}, {$coords['latitude']}), 4326)::geography"
+                    ),
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('RegistrationCompletionController: Failed to update PostGIS location column', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
