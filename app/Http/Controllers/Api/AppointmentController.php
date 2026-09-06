@@ -2,15 +2,26 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Appointment\StoreAppointmentRequest;
 use App\Http\Requests\Appointment\UpdateAppointmentRequest;
 use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class AppointmentController extends Controller
 {
+    use PaginatesResults;
+
+    /**
+     * The agenda screen renders the full list and also feeds the invoice and
+     * medical record form selects from it, so the default page covers a
+     * professional's whole agenda.
+     */
+    private const DEFAULT_PER_PAGE = 200;
+
     public function index(Request $request)
     {
         $query = Appointment::with(['client', 'pet', 'professional'])
@@ -18,7 +29,11 @@ class AppointmentController extends Controller
 
         // Filters
         if ($request->has('date')) {
-            $query->whereDate('appointment_date', $request->date);
+            // Range instead of whereDate(): appointment_date is a datetime column,
+            // so whereDate() would cast it and block index usage.
+            $filterDate = Carbon::parse($request->date)->startOfDay();
+            $query->where('appointment_date', '>=', $filterDate)
+                ->where('appointment_date', '<', $filterDate->copy()->addDay());
         }
 
         if ($request->has('status')) {
@@ -31,7 +46,7 @@ class AppointmentController extends Controller
 
         $appointments = $query->orderBy('appointment_date')
             ->orderBy('appointment_time')
-            ->get();
+            ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
 
         return AppointmentResource::collection($appointments);
     }

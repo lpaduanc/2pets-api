@@ -2,33 +2,41 @@
 
 namespace App\Enums;
 
+/**
+ * Taxonomia canônica de tipo de profissional/negócio (7 tipos do MVP).
+ *
+ * Chave técnica na forma curta, espelhando `users.user_type` (~150 mil linhas já usam
+ * essa forma) — ver `docs/taxonomia-professional-type.md` para a decisão completa e o
+ * porquê de `pet_sitter`, `pharmacy` e `other` ficarem fora até V2/V3/nunca.
+ */
 enum ProfessionalType: string
 {
-    case VETERINARIAN = 'veterinarian';
+    case VET = 'vet';
     case CLINIC = 'clinic';
-    case PETSHOP = 'petshop';
-    case GROOMER = 'groomer';
-    case TRAINER = 'trainer';
-    case PET_SITTER = 'pet_sitter';
-    case DAYCARE = 'daycare';
     case LABORATORY = 'laboratory';
-    case PHARMACY = 'pharmacy';
-    case OTHER = 'other';
+    case PETSHOP = 'petshop';
+    case PET_HOTEL = 'pet_hotel';
+    case GROOMING = 'grooming';
+    case TRAINING = 'training';
 
     public function label(): string
     {
         return match ($this) {
-            self::VETERINARIAN => 'Veterinário',
+            self::VET => 'Veterinário Volante',
             self::CLINIC => 'Clínica Veterinária',
-            self::PETSHOP => 'Pet Shop',
-            self::GROOMER => 'Banho e Tosa',
-            self::TRAINER => 'Adestrador',
-            self::PET_SITTER => 'Pet Sitter',
-            self::DAYCARE => 'Creche/Hotel',
             self::LABORATORY => 'Laboratório',
-            self::PHARMACY => 'Farmácia Veterinária',
-            self::OTHER => 'Outro',
+            self::PETSHOP => 'Pet Shop',
+            self::PET_HOTEL => 'Creche e Hotel',
+            self::GROOMING => 'Banho e Tosa',
+            self::TRAINING => 'Adestramento',
         };
     }
-}
 
+    /**
+     * @return list<string>
+     */
+    public static function values(): array
+    {
+        return array_column(self::cases(), 'value');
+    }
+}

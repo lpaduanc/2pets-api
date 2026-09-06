@@ -2,15 +2,19 @@
 
 namespace App\Console\Commands;
 
+use App\Models\PetDeworming;
 use App\Models\Reminder;
 use App\Models\Vaccination;
+use App\Notifications\DewormingReminderNotification;
+use App\Notifications\VaccineOverdueNotification;
+use App\Notifications\VaccineReminderNotification;
 use App\Services\Reminder\HealthReminderService;
-use Carbon\Carbon;
 use Illuminate\Console\Command;
 
 class SendHealthReminders extends Command
 {
     protected $signature = 'reminders:health';
+
     protected $description = 'Send health reminders (vaccinations, medications, checkups)';
 
     public function __construct(
@@ -24,6 +28,8 @@ class SendHealthReminders extends Command
         $this->info('Processing health reminders...');
 
         $this->processVaccinationReminders();
+        $this->sendVaccineNotifications();
+        $this->sendDewormingNotifications();
         $this->processPendingReminders();
 
         $this->info('Health reminders processed.');
@@ -38,7 +44,7 @@ class SendHealthReminders extends Command
             ->where('next_dose_date', '<=', now()->addDays(30))
             ->whereDoesntHave('reminders', function ($query) {
                 $query->where('type', 'vaccination')
-                      ->whereIn('status', ['pending', 'sent']);
+                    ->whereIn('status', ['pending', 'sent']);
             })
             ->with(['pet.user'])
             ->get();
@@ -49,6 +55,63 @@ class SendHealthReminders extends Command
                 $this->info("Created reminder for vaccination: {$vaccination->vaccine_name}");
             } catch (\Exception $e) {
                 $this->error("Failed to create vaccination reminder: {$e->getMessage()}");
+            }
+        }
+    }
+
+    private function sendVaccineNotifications(): void
+    {
+        // Vaccines expiring in 7 days
+        $upcoming = Vaccination::whereNotNull('next_dose_date')
+            ->whereDate('next_dose_date', now()->addDays(7)->toDateString())
+            ->with(['pet.user'])
+            ->get();
+
+        foreach ($upcoming as $vaccination) {
+            if ($vaccination->pet?->user) {
+                $daysUntil = (int) now()->diffInDays($vaccination->next_dose_date);
+                $vaccination->pet->user->notify(new VaccineReminderNotification(
+                    $vaccination->pet->name,
+                    $vaccination->vaccine_name,
+                    $daysUntil,
+                    $vaccination->next_dose_date->format('d/m/Y')
+                ));
+                $this->info("Sent vaccine reminder for {$vaccination->pet->name}");
+            }
+        }
+
+        // Vaccines overdue (today)
+        $overdue = Vaccination::whereNotNull('next_dose_date')
+            ->whereDate('next_dose_date', now()->toDateString())
+            ->with(['pet.user'])
+            ->get();
+
+        foreach ($overdue as $vaccination) {
+            if ($vaccination->pet?->user) {
+                $vaccination->pet->user->notify(new VaccineOverdueNotification(
+                    $vaccination->pet->name,
+                    $vaccination->vaccine_name,
+                    $vaccination->next_dose_date->format('d/m/Y')
+                ));
+                $this->info("Sent vaccine overdue alert for {$vaccination->pet->name}");
+            }
+        }
+    }
+
+    private function sendDewormingNotifications(): void
+    {
+        $upcoming = PetDeworming::whereNotNull('next_date')
+            ->whereDate('next_date', now()->addDays(7)->toDateString())
+            ->with(['pet.user'])
+            ->get();
+
+        foreach ($upcoming as $deworming) {
+            if ($deworming->pet?->user) {
+                $deworming->pet->user->notify(new DewormingReminderNotification(
+                    $deworming->pet->name,
+                    $deworming->next_date->format('d/m/Y')
+                ));
+                $this->info("Sent deworming reminder for {$deworming->pet->name}");
             }
         }
     }
@@ -81,4 +144,3 @@ class SendHealthReminders extends Command
         }
     }
 }
-

@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasGeoPoint;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -15,12 +18,16 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable implements HasMedia
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory,
-        Notifiable,
-        HasApiTokens,
+    use HasApiTokens,
+        HasFactory,
+        HasGeoPoint,
         HasRoles,
+        // Mantem `location` (geography) sincronizada com latitude/longitude a cada save().
         InteractsWithMedia,
-        LogsActivity;
+        LogsActivity,
+        Notifiable,
+        // SoftDeletes coexiste com LGPD anonimização: delete() esconde o registro; anonymize() apaga dados sensíveis in-place.
+        SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -102,6 +109,22 @@ class User extends Authenticatable implements HasMedia
             'marketing_consent' => 'boolean',
             'data_sharing_consent' => 'boolean',
         ];
+    }
+
+    // ------------------------------------------------------------------
+    // Attribute mutators
+    // ------------------------------------------------------------------
+
+    /**
+     * CPF is always stored as a digits-only string. Any caller may submit it
+     * formatted (`123.456.789-00`) or clean — the mutator normalizes to `12345678900`.
+     * Callers searching by CPF should also pass digits-only to match.
+     */
+    protected function cpf(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value) => $value === null ? null : preg_replace('/\D/', '', $value),
+        );
     }
 
     // ------------------------------------------------------------------

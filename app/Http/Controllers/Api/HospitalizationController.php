@@ -2,13 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Models\Hospitalization;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Validator;
 
 class HospitalizationController extends Controller
 {
+    use PaginatesResults;
+
+    /** Covers the hospitalization board of a professional. */
+    private const DEFAULT_PER_PAGE = 100;
+
     public function index(Request $request)
     {
         $query = Hospitalization::with(['pet', 'professional'])
@@ -16,8 +23,11 @@ class HospitalizationController extends Controller
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
-        $hospitalizations = $query->orderBy('admission_date', 'desc')->get();
-        return response()->json($hospitalizations);
+
+        $hospitalizations = $query->orderBy('admission_date', 'desc')
+            ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
+
+        return JsonResource::collection($hospitalizations);
     }
 
     public function store(Request $request)
@@ -39,7 +49,7 @@ class HospitalizationController extends Controller
         $data = $validator->validated();
         $data['professional_id'] = $request->user()->id;
 
-        // JSON encoding handled by model casts or manually if needed, 
+        // JSON encoding handled by model casts or manually if needed,
         // but since we cast 'array' in model, Laravel handles it automatically if passed as array.
         // However, to be safe with API input:
         if (isset($data['daily_notes']) && is_array($data['daily_notes'])) {
@@ -47,6 +57,7 @@ class HospitalizationController extends Controller
         }
 
         $hospitalization = Hospitalization::create($data);
+
         return response()->json(['message' => 'Hospitalization created', 'hospitalization' => $hospitalization], 201);
     }
 
@@ -55,6 +66,7 @@ class HospitalizationController extends Controller
         $hospitalization = Hospitalization::with(['pet', 'professional'])
             ->where('professional_id', $request->user()->id)
             ->findOrFail($id);
+
         return response()->json($hospitalization);
     }
 
@@ -76,6 +88,7 @@ class HospitalizationController extends Controller
         }
 
         $hospitalization->update($validator->validated());
+
         return response()->json(['message' => 'Hospitalization updated', 'hospitalization' => $hospitalization]);
     }
 
@@ -83,6 +96,7 @@ class HospitalizationController extends Controller
     {
         $hospitalization = Hospitalization::where('professional_id', $request->user()->id)->findOrFail($id);
         $hospitalization->delete();
+
         return response()->json(['message' => 'Hospitalization removed']);
     }
 }

@@ -2,14 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class InvoiceController extends Controller
 {
+    use PaginatesResults;
+
+    /**
+     * The financial screen derives its summary numbers from the rows it holds,
+     * so the default page has to cover a professional's whole invoice list.
+     */
+    private const DEFAULT_PER_PAGE = 200;
+
     public function index(Request $request)
     {
         $query = Invoice::with(['client', 'professional', 'appointment'])
@@ -18,8 +28,11 @@ class InvoiceController extends Controller
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
-        $invoices = $query->orderBy('issue_date', 'desc')->get();
-        return response()->json($invoices);
+
+        $invoices = $query->orderBy('issue_date', 'desc')
+            ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
+
+        return JsonResource::collection($invoices);
     }
 
     public function store(Request $request)
@@ -45,9 +58,10 @@ class InvoiceController extends Controller
 
         $data = $validator->validated();
         $data['professional_id'] = $request->user()->id;
-        $data['invoice_number'] = 'INV-' . strtoupper(Str::random(8)); // Simple generation
+        $data['invoice_number'] = 'INV-'.strtoupper(Str::random(8)); // Simple generation
 
         $invoice = Invoice::create($data);
+
         return response()->json(['message' => 'Invoice created', 'invoice' => $invoice], 201);
     }
 
@@ -56,6 +70,7 @@ class InvoiceController extends Controller
         $invoice = Invoice::with(['client', 'professional', 'appointment'])
             ->where('professional_id', request()->user()->id)
             ->findOrFail($id);
+
         return response()->json($invoice);
     }
 
@@ -81,6 +96,7 @@ class InvoiceController extends Controller
         }
 
         $invoice->update($validator->validated());
+
         return response()->json(['message' => 'Invoice updated', 'invoice' => $invoice]);
     }
 
@@ -88,6 +104,7 @@ class InvoiceController extends Controller
     {
         $invoice = Invoice::where('professional_id', $request->user()->id)->findOrFail($id);
         $invoice->delete();
+
         return response()->json(['message' => 'Invoice removed']);
     }
 }

@@ -18,11 +18,14 @@ class SubscriptionController extends Controller
 
     public function plans(): JsonResponse
     {
-        $plans = SubscriptionPlan::where('is_active', true)
-            ->orderBy('sort_order')
-            ->get();
+        $query = SubscriptionPlan::where('is_active', true)->orderBy('sort_order');
 
-        return response()->json(['data' => $plans]);
+        // Beta MVP: only surface free plans until Stripe is wired with real keys.
+        if (! config('features.paid_plans')) {
+            $query->where('monthly_price', 0);
+        }
+
+        return response()->json(['data' => $query->get()]);
     }
 
     public function current(Request $request): JsonResponse
@@ -33,7 +36,7 @@ class SubscriptionController extends Controller
             ->with('plan')
             ->first();
 
-        if (!$subscription) {
+        if (! $subscription) {
             return response()->json(['data' => null]);
         }
 
@@ -51,6 +54,13 @@ class SubscriptionController extends Controller
         ]);
 
         $plan = SubscriptionPlan::findOrFail($validated['plan_id']);
+
+        // Paid plans are gated behind the paid_plans feature flag during beta.
+        if ($plan->monthly_price > 0 && ! config('features.paid_plans')) {
+            return response()->json([
+                'message' => 'Planos pagos estão em breve. No momento só o plano gratuito está disponível.',
+            ], 403);
+        }
 
         $subscription = $this->subscriptionService->subscribe(
             $request->user(),
@@ -75,6 +85,12 @@ class SubscriptionController extends Controller
             ->firstOrFail();
 
         $newPlan = SubscriptionPlan::findOrFail($validated['plan_id']);
+
+        if ($newPlan->monthly_price > 0 && ! config('features.paid_plans')) {
+            return response()->json([
+                'message' => 'Planos pagos estão em breve. No momento só o plano gratuito está disponível.',
+            ], 403);
+        }
 
         $updated = $this->subscriptionService->upgrade($subscription, $newPlan);
 
@@ -134,4 +150,3 @@ class SubscriptionController extends Controller
         ]);
     }
 }
-

@@ -14,7 +14,7 @@ class ProfessionalFactory extends Factory
     {
         return [
             'user_id' => User::factory()->professional(),
-            'professional_type' => 'veterinarian',
+            'professional_type' => 'vet',
             'business_name' => $this->faker->company(),
             'description' => $this->faker->sentence(),
             'specialties' => ['general'],
@@ -45,10 +45,10 @@ class ProfessionalFactory extends Factory
     public function veterinarian(): static
     {
         return $this->state(fn (array $attributes) => [
-            'professional_type' => 'veterinarian',
+            'professional_type' => 'vet',
             'crmv' => $this->faker->numerify('#####'),
             'crmv_state' => 'SP',
-            'university' => $this->faker->company() . ' University',
+            'university' => $this->faker->company().' University',
             'graduation_year' => $this->faker->numberBetween(2000, 2023),
             'experience_years' => $this->faker->numberBetween(1, 20),
         ]);

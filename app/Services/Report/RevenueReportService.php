@@ -5,8 +5,18 @@ namespace App\Services\Report;
 use App\Models\Invoice;
 use App\Models\User;
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
+/**
+ * All aggregates below query the real `invoices` schema directly instead of
+ * loading every paid invoice into PHP: the previous version filtered on
+ * `paid_at`/`total_amount` and an `items()` relation that don't exist on this
+ * table (the real columns are `payment_date`, `total`, and a `json` `items`
+ * column with one row per invoice) — every call threw a QueryException. Fixed
+ * while pushing the aggregation into SQL, per the same rule ("nunca `->get()`
+ * seguido de `->sum()`").
+ */
 final class RevenueReportService
 {
     public function generateReport(
@@ -14,74 +24,103 @@ final class RevenueReportService
         Carbon $startDate,
         Carbon $endDate
     ): array {
-        $invoices = Invoice::where('professional_id', $professional->id)
-            ->where('status', 'paid')
-            ->whereBetween('paid_at', [$startDate, $endDate])
-            ->with(['client', 'items'])
-            ->get();
+        $professionalId = $professional->id;
 
         return [
             'period' => [
                 'start' => $startDate->format('d/m/Y'),
                 'end' => $endDate->format('d/m/Y'),
             ],
-            'summary' => $this->calculateSummary($invoices),
-            'by_service' => $this->groupByService($invoices),
-            'by_month' => $this->groupByMonth($invoices),
-            'invoices' => $invoices->map(fn($invoice) => [
-                'invoice_number' => $invoice->invoice_number,
-                'client' => $invoice->client->name,
-                'date' => $invoice->paid_at->format('d/m/Y'),
-                'amount' => $invoice->total_amount,
-            ]),
+            'summary' => $this->fetchSummary($professionalId, $startDate, $endDate),
+            'by_service' => $this->fetchByService($professionalId, $startDate, $endDate),
+            'by_month' => $this->fetchByMonth($professionalId, $startDate, $endDate),
+            'invoices' => $this->fetchInvoiceList($professionalId, $startDate, $endDate),
         ];
     }
 
-    private function calculateSummary(Collection $invoices): array
+    private function fetchSummary(int $professionalId, Carbon $startDate, Carbon $endDate): array
     {
+        $row = $this->paidInvoicesQuery($professionalId, $startDate, $endDate)
+            ->selectRaw(
+                'COALESCE(SUM(total), 0) AS total_revenue,
+                 COUNT(*) AS total_invoices,
+                 COALESCE(AVG(total), 0) AS average_ticket,
+                 COUNT(DISTINCT client_id) AS unique_clients'
+            )
+            ->first();
+
         return [
-            'total_revenue' => $invoices->sum('total_amount'),
-            'total_invoices' => $invoices->count(),
-            'average_ticket' => $invoices->avg('total_amount'),
-            'unique_clients' => $invoices->pluck('client_id')->unique()->count(),
+            'total_revenue' => (float) $row->total_revenue,
+            'total_invoices' => (int) $row->total_invoices,
+            'average_ticket' => (float) $row->average_ticket,
+            'unique_clients' => (int) $row->unique_clients,
         ];
     }
 
-    private function groupByService(Collection $invoices): array
+    /**
+     * `items` is a `json` array per invoice (`[{service_id, description,
+     * quantity, price}]`), not a related table — `json_array_elements`
+     * unnests it so the grouping happens in SQL.
+     */
+    private function fetchByService(int $professionalId, Carbon $startDate, Carbon $endDate): array
     {
-        $services = [];
+        $rows = $this->paidInvoicesQuery($professionalId, $startDate, $endDate)
+            ->crossJoin(DB::raw('json_array_elements(items) AS item'))
+            ->selectRaw(
+                "item->>'description' AS name,
+                 COALESCE(SUM(NULLIF(item->>'quantity', '')::numeric), 0) AS quantity,
+                 COALESCE(SUM(NULLIF(item->>'quantity', '')::numeric * NULLIF(item->>'price', '')::numeric), 0) AS revenue"
+            )
+            ->groupBy(DB::raw("item->>'description'"))
+            ->orderByDesc('revenue')
+            ->get();
 
-        foreach ($invoices as $invoice) {
-            foreach ($invoice->items as $item) {
-                $serviceName = $item->description;
-                
-                if (!isset($services[$serviceName])) {
-                    $services[$serviceName] = [
-                        'name' => $serviceName,
-                        'quantity' => 0,
-                        'revenue' => 0,
-                    ];
-                }
-
-                $services[$serviceName]['quantity'] += $item->quantity;
-                $services[$serviceName]['revenue'] += $item->total;
-            }
-        }
-
-        return array_values($services);
+        return $rows->map(fn ($row): array => [
+            'name' => $row->name,
+            'quantity' => (float) $row->quantity,
+            'revenue' => (float) $row->revenue,
+        ])->all();
     }
 
-    private function groupByMonth(Collection $invoices): array
+    private function fetchByMonth(int $professionalId, Carbon $startDate, Carbon $endDate): array
     {
-        return $invoices->groupBy(function ($invoice) {
-            return $invoice->paid_at->format('Y-m');
-        })->map(function ($monthInvoices, $month) {
-            return [
-                'month' => Carbon::parse($month)->format('m/Y'),
-                'revenue' => $monthInvoices->sum('total_amount'),
-                'invoices' => $monthInvoices->count(),
-            ];
-        })->values()->toArray();
+        $rows = $this->paidInvoicesQuery($professionalId, $startDate, $endDate)
+            ->selectRaw(
+                "date_trunc('month', payment_date) AS month,
+                 COALESCE(SUM(total), 0) AS revenue,
+                 COUNT(*) AS invoices"
+            )
+            ->groupBy(DB::raw("date_trunc('month', payment_date)"))
+            ->orderBy('month')
+            ->get();
+
+        return $rows->map(fn ($row): array => [
+            'month' => Carbon::parse($row->month)->format('m/Y'),
+            'revenue' => (float) $row->revenue,
+            'invoices' => (int) $row->invoices,
+        ])->all();
+    }
+
+    private function fetchInvoiceList(int $professionalId, Carbon $startDate, Carbon $endDate): array
+    {
+        $invoices = $this->paidInvoicesQuery($professionalId, $startDate, $endDate)
+            ->with('client:id,name')
+            ->orderBy('payment_date')
+            ->get(['id', 'invoice_number', 'client_id', 'payment_date', 'total']);
+
+        return $invoices->map(fn (Invoice $invoice): array => [
+            'invoice_number' => $invoice->invoice_number,
+            'client' => $invoice->client->name,
+            'date' => $invoice->payment_date->format('d/m/Y'),
+            'amount' => (float) $invoice->total,
+        ])->all();
+    }
+
+    private function paidInvoicesQuery(int $professionalId, Carbon $startDate, Carbon $endDate): Builder
+    {
+        return Invoice::query()
+            ->where('professional_id', $professionalId)
+            ->where('status', 'paid')
+            ->whereBetween('payment_date', [$startDate->toDateString(), $endDate->toDateString()]);
     }
 }
-

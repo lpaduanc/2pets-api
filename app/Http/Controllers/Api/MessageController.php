@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Message\ConversationIndexRequest;
 use App\Models\Conversation;
 use App\Services\Chat\MessagingService;
 use App\Services\FileUploadService;
@@ -16,11 +17,23 @@ class MessageController extends Controller
         private readonly FileUploadService $fileUploadService
     ) {}
 
-    public function conversations(Request $request): JsonResponse
+    /**
+     * GET /messages/conversations[?include=first_conversation_messages]
+     *
+     * The opt-in `include` hydrates the thread of the conversation listed first,
+     * so a client opening the screen renders messages in one round trip instead
+     * of listing, picking the first id and fetching again.
+     */
+    public function conversations(ConversationIndexRequest $request): JsonResponse
     {
-        $conversations = $this->messagingService->getConversations($request->user()->id);
+        $userId = $request->user()->id;
+        $payload = ['data' => $this->messagingService->getConversations($userId)];
 
-        return response()->json(['data' => $conversations]);
+        if ($request->includesFirstConversationMessages()) {
+            $payload['first_conversation'] = $this->messagingService->firstConversationPayload($userId);
+        }
+
+        return response()->json($payload);
     }
 
     public function show(Request $request, int $id): JsonResponse
@@ -28,22 +41,17 @@ class MessageController extends Controller
         $conversation = Conversation::findOrFail($id);
 
         // Verify user is participant
-        if (!$conversation->hasParticipant($request->user()->id)) {
+        if (! $conversation->hasParticipant($request->user()->id)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $messages = $this->messagingService->getMessages($conversation);
+        $payload = $this->messagingService->conversationPayload($conversation, $request->user()->id);
 
-        // Mark as read
+        // Mark as read only after the payload is built, so the caller still sees
+        // which messages were unread when it opened the thread.
         $this->messagingService->markConversationAsRead($conversation, $request->user()->id);
 
-        return response()->json([
-            'conversation' => [
-                'id' => $conversation->id,
-                'other_participant' => $conversation->getOtherParticipant($request->user()->id),
-            ],
-            'messages' => $messages,
-        ]);
+        return response()->json($payload);
     }
 
     public function send(Request $request): JsonResponse
@@ -99,7 +107,7 @@ class MessageController extends Controller
     {
         $conversation = Conversation::findOrFail($conversationId);
 
-        if (!$conversation->hasParticipant($request->user()->id)) {
+        if (! $conversation->hasParticipant($request->user()->id)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -115,4 +123,3 @@ class MessageController extends Controller
         return response()->json(['unread_count' => $count]);
     }
 }
-

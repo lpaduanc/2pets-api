@@ -4,32 +4,31 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\Api\AiBusinessController;
 use App\Http\Controllers\Api\AiBusinessInsightsController;
 use App\Http\Controllers\Api\AiController;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\Api\BreedController;
-use App\Http\Controllers\Api\LgpdController;
-use App\Http\Controllers\Api\PetController;
-use App\Http\Controllers\Api\PetVetAccessController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\FavoriteController;
-use App\Http\Controllers\Api\ProfessionalDashboardController;
 use App\Http\Controllers\Api\AppointmentController;
+use App\Http\Controllers\Api\BreedController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ExamController;
+use App\Http\Controllers\Api\FavoriteController;
 use App\Http\Controllers\Api\HospitalizationController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\LgpdController;
 use App\Http\Controllers\Api\MedicalRecordController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PetCardController;
-use App\Http\Controllers\Api\VaccinationController;
+use App\Http\Controllers\Api\PetController;
+use App\Http\Controllers\Api\PetHealthRecordsController;
+use App\Http\Controllers\Api\PetHealthSummaryController;
+use App\Http\Controllers\Api\PetVetAccessController;
+use App\Http\Controllers\Api\PetWeightController;
 use App\Http\Controllers\Api\PrescriptionController;
 use App\Http\Controllers\Api\ProfessionalClientController;
+use App\Http\Controllers\Api\ProfessionalDashboardController;
 use App\Http\Controllers\Api\Public\BookingController;
 use App\Http\Controllers\Api\Public\MasterDataController;
 use App\Http\Controllers\Api\Public\ProfessionalController;
-use App\Http\Controllers\RegistrationDraftController;
 use App\Http\Controllers\Api\Public\SearchController;
 use App\Http\Controllers\Api\ReminderController;
 use App\Http\Controllers\Api\ReportController;
@@ -37,11 +36,26 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\SurgeryController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\VaccinationController;
 use App\Http\Controllers\Api\VideoConsultationController;
+use App\Http\Controllers\Api\WebhookController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\RegistrationCompletionController;
+use App\Http\Controllers\RegistrationDraftController;
 use App\Http\Middleware\AdminMiddleware;
+use App\Models\Appointment;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
+// ---------------------------------------------------------------
+// Webhooks — no auth, no CSRF
+// ---------------------------------------------------------------
+Route::prefix('webhooks')->group(function () {
+    Route::post('/stripe', [WebhookController::class, 'stripe']);
+    Route::post('/mercadopago', [WebhookController::class, 'mercadopago']);
+});
 
 // ---------------------------------------------------------------
 // Public routes — rate limited (60/min for auth, 30/min for search)
@@ -61,6 +75,11 @@ Route::post('/resend-verification', [\App\Http\Controllers\EmailVerificationCont
     ->middleware('throttle:5,1');
 
 // Public Search & Discovery — throttled (30 requests/min)
+// Feature flags — public read-only map for frontend to hide UI of disabled features
+Route::get('/features', function () {
+    return response()->json(config('features'));
+});
+
 Route::prefix('public')->middleware('throttle:30,1')->group(function () {
     Route::get('/search', [SearchController::class, 'search']);
     Route::get('/nearby', [SearchController::class, 'nearby']);
@@ -124,15 +143,93 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     // Dashboard stats for tutor
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 
-    // Pet routes
+    // Pet routes — literal segments must be declared before apiResource so
+    // `/pets/search` and `/pets/health-summary` don't get captured by the
+    // `/pets/{pet}` show route.
+    Route::get('/pets/search', [PetController::class, 'search']);
+
+    // Aggregated health roll-up of every pet of the authenticated tutor — replaces
+    // the 2xN per-pet requests the health dashboard used to fire.
+    Route::get('/pets/health-summary', PetHealthSummaryController::class);
     Route::apiResource('pets', PetController::class);
+
+    // Tutor-facing health records nested under a pet.
+    // Type segment accepts: vaccinations, dewormings, medications, surgeries, exams.
+    Route::prefix('pets/{pet}/health')->group(function () {
+        Route::get('{type}', [PetHealthRecordsController::class, 'index'])
+            ->where('type', 'vaccinations|dewormings|medications|surgeries|exams');
+        Route::post('{type}', [PetHealthRecordsController::class, 'store'])
+            ->where('type', 'vaccinations|dewormings|medications|surgeries|exams');
+        Route::put('{type}/{record}', [PetHealthRecordsController::class, 'update'])
+            ->where('type', 'vaccinations|dewormings|medications|surgeries|exams');
+        Route::delete('{type}/{record}', [PetHealthRecordsController::class, 'destroy'])
+            ->where('type', 'vaccinations|dewormings|medications|surgeries|exams');
+
+        // Semantic end-of-treatment: keeps the medication in the history but marks it inactive.
+        Route::patch('medications/{record}/deactivate', [PetHealthRecordsController::class, 'deactivateMedication']);
+    });
+
+    // Consolidated audit timeline for a pet (pet row + clinical sub-resources).
+    Route::get('/pets/{pet}/audit', [\App\Http\Controllers\Api\PetAuditController::class, 'index']);
+
+    // Pet weight history — tutor + any active vet grant can read; owner + WRITE/FULL can add.
+    Route::get('/pets/{pet}/weights', [PetWeightController::class, 'index']);
+    Route::post('/pets/{pet}/weights', [PetWeightController::class, 'store']);
 
     // Pet Vet Access — controle de acesso veterinario ao pet
     Route::prefix('pet-vet-access')->group(function () {
+        // Tutor → concede acesso diretamente (fluxo antigo, pet já existe).
         Route::post('/grant', [PetVetAccessController::class, 'grant']);
+
+        // Vet → solicita acesso por pet_id OU por CPF do tutor (cria pet em nome do tutor se necessário).
+        Route::post('/request', [PetVetAccessController::class, 'requestAccess']);
+
+        // Tutor → responde solicitações pendentes.
+        Route::get('/pending', [PetVetAccessController::class, 'pendingForTutor']);
+        Route::post('/{accessId}/accept', [PetVetAccessController::class, 'accept']);
+        Route::post('/{accessId}/reject', [PetVetAccessController::class, 'reject']);
+
+        // Tutor → revoga acesso aceito.
         Route::post('/{accessId}/revoke', [PetVetAccessController::class, 'revoke']);
+
+        // Listagens.
         Route::get('/my-accesses', [PetVetAccessController::class, 'myAccesses']);
         Route::get('/pet/{petId}', [PetVetAccessController::class, 'petAccesses']);
+    });
+
+    // Tutor Appointments
+    Route::get('/appointments', function (Request $request) {
+        $query = Appointment::with(['professional.professional', 'pet', 'service'])
+            ->where('client_id', $request->user()->id);
+
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $appointments = $query->orderBy('appointment_date', 'desc')->paginate(20);
+
+        return \App\Http\Resources\AppointmentResource::collection($appointments);
+    });
+    Route::get('/appointments/{id}', function (Request $request, $id) {
+        $appointment = Appointment::with(['professional.professional', 'pet', 'service'])
+            ->where('client_id', $request->user()->id)
+            ->findOrFail($id);
+
+        return response()->json(['data' => new \App\Http\Resources\AppointmentResource($appointment)]);
+    });
+    Route::post('/appointments/{id}/cancel', function (Request $request, $id) {
+        $request->validate(['reason' => 'nullable|string|max:500']);
+        $appointment = Appointment::where('client_id', $request->user()->id)->findOrFail($id);
+        $bookingService = app(\App\Services\Booking\BookingService::class);
+        $cancelled = $bookingService->cancelBooking(
+            $appointment->id,
+            $request->input('reason') ?? 'Cancelado pelo tutor'
+        );
+
+        return response()->json([
+            'message' => 'Appointment cancelled successfully',
+            'data' => new \App\Http\Resources\AppointmentResource($cancelled->load(['professional.professional', 'pet', 'service'])),
+        ]);
     });
 
     // Favorites
@@ -173,6 +270,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         // Inventory
         Route::apiResource('inventory', InventoryController::class);
 
+        // My patients — pets this vet has active PetVetAccess grants for (enriched list).
+        Route::get('my-patients', [PetVetAccessController::class, 'myPatients']);
+
         // Clients
         Route::apiResource('clients', ProfessionalClientController::class);
         Route::get('clients/{id}/pets', [ProfessionalClientController::class, 'pets']);
@@ -181,14 +281,14 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('dashboard/stats', [ProfessionalDashboardController::class, 'stats']);
     });
 
-    // AI Guardian Route
-    Route::post('/ai/analyze', [AiController::class, 'analyze']);
+    // AI Guardian Route (V3 — gated)
+    Route::post('/ai/analyze', [AiController::class, 'analyze'])->middleware('feature:ai_guardian');
 
-    // AI Business Insight Route
-    Route::post('/ai/business-analyze', [AiBusinessController::class, 'analyze']);
+    // AI Business Insight Route (V3 — gated)
+    Route::post('/ai/business-analyze', [AiBusinessController::class, 'analyze'])->middleware('feature:ai_business');
 
-    // AI Business Insights Dashboard
-    Route::get('/professional/ai/insights', [AiBusinessInsightsController::class, 'generateInsights']);
+    // AI Business Insights Dashboard (V3 — gated)
+    Route::get('/professional/ai/insights', [AiBusinessInsightsController::class, 'generateInsights'])->middleware('feature:ai_business');
 
     // Notifications
     Route::prefix('notifications')->group(function () {
@@ -205,6 +305,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     // Payments
     Route::prefix('payments')->group(function () {
         Route::post('/', [PaymentController::class, 'create']);
+        Route::post('/validate-coupon', [PaymentController::class, 'validateCoupon']);
         Route::get('/{id}', [PaymentController::class, 'show']);
         Route::post('/{id}/refund', [PaymentController::class, 'refund']);
     });
@@ -225,6 +326,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('/{id}/response', [ReviewController::class, 'addResponse']);
         Route::post('/{id}/flag', [ReviewController::class, 'flag']);
         Route::post('/{id}/helpful', [ReviewController::class, 'toggleHelpful']);
+
+        // Admin moderation queue — pre-moderation: reviews stay hidden until approved.
+        Route::get('/pending', [ReviewController::class, 'pending'])->middleware(AdminMiddleware::class);
         Route::post('/{id}/moderate', [ReviewController::class, 'moderate'])->middleware(AdminMiddleware::class);
     });
 
@@ -260,6 +364,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('/', [ExamController::class, 'store']);
         Route::post('/{examId}/results', [ExamController::class, 'addResults']);
         Route::post('/{examId}/images', [ExamController::class, 'addImages']);
+        // Attachments of an exam. Download returns a signed URL (S3) or streams (local).
+        // Delete is tutor-only — same rule as clinical soft-delete in PetHealthRecordsController.
+        Route::get('/images/{imageId}/download', [ExamController::class, 'downloadImage']);
+        Route::delete('/images/{imageId}', [ExamController::class, 'destroyImage']);
         Route::get('/pet/{petId}/history/{parameter}', [ExamController::class, 'getHistory']);
     });
 
@@ -282,8 +390,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::put('/consent', [LgpdController::class, 'updateConsent']);
     });
 
-    // Video Consultations
-    Route::prefix('video-consultations')->group(function () {
+    // Video Consultations (V3 — gated)
+    Route::prefix('video-consultations')->middleware('feature:video_consultations')->group(function () {
         Route::post('/', [VideoConsultationController::class, 'create']);
         Route::post('/{id}/join', [VideoConsultationController::class, 'join']);
         Route::post('/{id}/start', [VideoConsultationController::class, 'start']);

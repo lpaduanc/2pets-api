@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
@@ -44,6 +45,23 @@ class UserFactory extends Factory
     }
 
     /**
+     * Assigns the Spatie role that the application actually authorizes against.
+     *
+     * The `users.role` column is a coarse bucket (`tutor|professional|admin`); every guard in
+     * the app checks `hasAnyRole()` against Spatie (see PetController::VET_ROLES and
+     * AuthController, which calls `assignRole()` right after registration). A factory that only
+     * set the column produced users that no role-gated endpoint would ever accept.
+     *
+     * The role row is created on demand so a test does not have to run RolesAndPermissionsSeeder.
+     */
+    private function withSpatieRole(string $roleName): static
+    {
+        return $this->afterCreating(function (User $user) use ($roleName): void {
+            $user->assignRole(Role::findOrCreate($roleName, 'web'));
+        });
+    }
+
+    /**
      * Create a tutor user with verified email and approved status.
      */
     public function tutor(): static
@@ -55,7 +73,7 @@ class UserFactory extends Factory
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,
-        ]);
+        ])->withSpatieRole('tutor');
     }
 
     /**
@@ -70,7 +88,7 @@ class UserFactory extends Factory
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,
-        ]);
+        ])->withSpatieRole('vet_freelancer');
     }
 
     /**
@@ -85,7 +103,7 @@ class UserFactory extends Factory
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,
-        ]);
+        ])->withSpatieRole('vet_freelancer');
     }
 
     /**
@@ -100,7 +118,7 @@ class UserFactory extends Factory
             'profile_completed' => false,
             'registration_status' => 'pending',
             'is_suspended' => false,
-        ]);
+        ])->withSpatieRole('clinic_owner');
     }
 
     /**
@@ -125,6 +143,6 @@ class UserFactory extends Factory
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,
-        ]);
+        ])->withSpatieRole('admin');
     }
 }

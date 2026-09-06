@@ -14,6 +14,7 @@ class FavoriteTest extends TestCase
     use RefreshDatabase;
 
     private User $tutor;
+
     private User $professionalUser;
 
     protected function setUp(): void
@@ -75,7 +76,8 @@ class FavoriteTest extends TestCase
                 'favorited' => false,
             ]);
 
-        $this->assertDatabaseMissing('favorites', [
+        // Favorite usa SoftDeletes — desfavoritar marca `deleted_at`, não apaga a linha.
+        $this->assertSoftDeleted('favorites', [
             'user_id' => $this->tutor->id,
             'professional_id' => $this->professionalUser->id,
         ]);

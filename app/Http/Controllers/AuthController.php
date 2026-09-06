@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
+use App\Mail\ResetPasswordMail;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -68,7 +69,7 @@ class AuthController extends Controller
                 $user->assignRole($spatieRole);
             } catch (\Exception $e) {
                 // Role might not exist yet if seeder hasn't run — graceful fallback
-                \Illuminate\Support\Facades\Log::warning('Could not assign spatie role: ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::warning('Could not assign spatie role: '.$e->getMessage());
             }
         }
 
@@ -77,7 +78,7 @@ class AuthController extends Controller
             try {
                 app(\App\Services\EmailVerificationService::class)->sendVerificationEmail($user);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Failed to send verification email: ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::error('Failed to send verification email: '.$e->getMessage());
             }
         }
 
@@ -96,9 +97,9 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request)
     {
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        if (! Auth::attempt($request->only('email', 'password'))) {
             return response()->json([
-                'message' => 'Invalid login details'
+                'message' => 'Invalid login details',
             ], 401);
         }
 
@@ -120,7 +121,7 @@ class AuthController extends Controller
         }
 
         // Check email verification
-        if (!$user->email_verified) {
+        if (! $user->email_verified) {
             $canResend = app(\App\Services\EmailVerificationService::class)->canSendEmail($user->email);
 
             return response()->json([
@@ -132,7 +133,7 @@ class AuthController extends Controller
         }
 
         // Check profile completion
-        if (!$user->profile_completed && $user->role !== 'tutor') {
+        if (! $user->profile_completed && $user->role !== 'tutor') {
             $token = $user->createToken('auth_token')->plainTextToken;
 
             return response()->json([
@@ -159,13 +160,14 @@ class AuthController extends Controller
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([
-            'message' => 'Logged out successfully'
+            'message' => 'Logged out successfully',
         ]);
     }
 
     public function user(Request $request)
     {
         $user = $request->user()->load(['roles', 'professional', 'media']);
+
         return new UserResource($user);
     }
 
@@ -177,7 +179,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user) {
+        if (! $user) {
             // Return success even if email doesn't exist (security: no email enumeration)
             return response()->json([
                 'message' => 'Se o e-mail estiver cadastrado, enviaremos um link de recuperação.',
@@ -195,15 +197,12 @@ class AuthController extends Controller
         );
 
         try {
-            Mail::raw(
-                "Olá {$user->name},\n\nVocê solicitou a recuperação de senha da sua conta 2Pets.\n\nUse o código abaixo para redefinir sua senha:\n\n{$token}\n\nEste código expira em 60 minutos.\n\nSe você não solicitou esta recuperação, ignore este e-mail.\n\nEquipe 2Pets",
-                function ($message) use ($user) {
-                    $message->to($user->email)
-                        ->subject('2Pets - Recuperação de Senha');
-                }
-            );
+            $appUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
+            $resetUrl = $appUrl.'/reset-password?email='.urlencode($user->email).'&token='.urlencode($token);
+
+            Mail::to($user->email)->send(new ResetPasswordMail($user->name, $resetUrl));
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Failed to send password reset email: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error('Failed to send password reset email: '.$e->getMessage());
         }
 
         return response()->json([
@@ -223,7 +222,7 @@ class AuthController extends Controller
             ->where('email', $request->email)
             ->first();
 
-        if (!$record || !Hash::check($request->token, $record->token)) {
+        if (! $record || ! Hash::check($request->token, $record->token)) {
             return response()->json([
                 'message' => 'Token inválido ou expirado.',
             ], 422);
@@ -232,6 +231,7 @@ class AuthController extends Controller
         // Check if token is expired (60 minutes)
         if (now()->diffInMinutes($record->created_at) > 60) {
             DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
             return response()->json([
                 'message' => 'Token expirado. Solicite um novo link de recuperação.',
             ], 422);
@@ -239,7 +239,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'message' => 'Usuário não encontrado.',
             ], 404);
@@ -282,7 +282,7 @@ class AuthController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Authentication failed: ' . $e->getMessage()], 401);
+            return response()->json(['error' => 'Authentication failed: '.$e->getMessage()], 401);
         }
     }
 }

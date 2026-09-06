@@ -36,15 +36,25 @@ return [
     ],
 
     // Stripe Payment Gateway
+    // O fallback '' é obrigatório: StripeService tipa `private string $secretKey` e conta com
+    // `isConfigured()` para operar sem credencial (dev, teste, ambiente sem Stripe). Sem o
+    // default aqui, env() devolve null, o `config(..., '')` NÃO se aplica (a chave existe, só
+    // vale null) e o construtor morre com TypeError — derrubando qualquer rota que resolva
+    // BillingService.
     'stripe' => [
-        'secret_key' => env('STRIPE_SECRET_KEY'),
-        'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
-        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'secret_key' => env('STRIPE_SECRET_KEY', ''),
+        'publishable_key' => env('STRIPE_PUBLISHABLE_KEY', ''),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET', ''),
     ],
 
-    // Firebase Cloud Messaging
+    // Firebase Cloud Messaging (HTTP v1 API)
+    // Legacy server_key is DEPRECATED by Google as of June 2024. Kept here only
+    // so PushNotificationService can detect and warn legacy configurations.
     'fcm' => [
-        'server_key' => env('FCM_SERVER_KEY'),
+        'project_id' => env('FCM_PROJECT_ID'),
+        'service_account_json_path' => env('FCM_SERVICE_ACCOUNT_JSON_PATH'),
+        'service_account_json_base64' => env('FCM_SERVICE_ACCOUNT_JSON_BASE64'),
+        'server_key' => env('FCM_SERVER_KEY'), // @deprecated — Legacy HTTP API was shut down 2024-06-20
     ],
 
     // WhatsApp Business API

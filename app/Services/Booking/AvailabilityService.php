@@ -8,7 +8,6 @@ use App\Models\Availability;
 use App\Models\BlockedTime;
 use App\Models\User;
 use Carbon\Carbon;
-use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
 
 final class AvailabilityService
@@ -23,7 +22,7 @@ final class AvailabilityService
 
         $availability = $this->getAvailabilityForDay($professionalId, $date->dayOfWeek);
 
-        if (!$availability) {
+        if (! $availability) {
             return collect();
         }
 
@@ -48,11 +47,12 @@ final class AvailabilityService
 
     private function getServiceDuration(?int $serviceId): int
     {
-        if (!$serviceId) {
+        if (! $serviceId) {
             return 30; // default duration
         }
 
         $service = \App\Models\Service::find($serviceId);
+
         return $service ? $service->duration : 30;
     }
 
@@ -65,8 +65,8 @@ final class AvailabilityService
     ): Collection {
         $slots = collect();
 
-        $start = Carbon::parse($date->format('Y-m-d') . ' ' . $startTime);
-        $end = Carbon::parse($date->format('Y-m-d') . ' ' . $endTime);
+        $start = Carbon::parse($date->format('Y-m-d').' '.$startTime);
+        $end = Carbon::parse($date->format('Y-m-d').' '.$endTime);
 
         $totalMinutes = $slotDuration + $bufferTime;
 
@@ -106,24 +106,38 @@ final class AvailabilityService
             return new TimeSlot(
                 startTime: $slot->startTime,
                 endTime: $slot->endTime,
-                isAvailable: !$isBlocked && !$hasAppointment
+                isAvailable: ! $isBlocked && ! $hasAppointment
             );
-        })->filter(fn(TimeSlot $slot) => $slot->isAvailable);
+        })->filter(fn (TimeSlot $slot) => $slot->isAvailable);
     }
 
+    /**
+     * `whereDate()` casts `appointment_date` (a datetime column), which blocks
+     * index usage — a half-open range over the same calendar day is sargable
+     * and returns the same rows.
+     */
     private function getExistingAppointments(int $professionalId, Carbon $date): Collection
     {
+        $startOfDay = $date->copy()->startOfDay();
+
         return Appointment::where('professional_id', $professionalId)
-            ->whereDate('appointment_date', $date->format('Y-m-d'))
+            ->where('appointment_date', '>=', $startOfDay)
+            ->where('appointment_date', '<', $startOfDay->copy()->addDay())
             ->whereNotIn('status', ['cancelled', 'no_show'])
             ->get();
     }
 
+    /**
+     * Same sargability fix as above: "blocked time whose calendar-date range
+     * covers $date" becomes a half-open range against `start_datetime`/`end_datetime`.
+     */
     private function getBlockedTimes(int $professionalId, Carbon $date): Collection
     {
+        $startOfDay = $date->copy()->startOfDay();
+
         return BlockedTime::where('professional_id', $professionalId)
-            ->whereDate('start_datetime', '<=', $date)
-            ->whereDate('end_datetime', '>=', $date)
+            ->where('start_datetime', '<', $startOfDay->copy()->addDay())
+            ->where('end_datetime', '>=', $startOfDay)
             ->get();
     }
 
@@ -144,4 +158,3 @@ final class AvailabilityService
         });
     }
 }
-

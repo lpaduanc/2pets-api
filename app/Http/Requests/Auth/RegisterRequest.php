@@ -2,10 +2,21 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Enums\ProfessionalType;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class RegisterRequest extends FormRequest
 {
+    /**
+     * `user_type` na etapa 1 do cadastro não é só um dos 7 tipos profissionais: também
+     * aceita `tutor` (não é profissional) e `company` (lead B2B pendente de qualificação,
+     * não é tipo de negócio — ver `docs/taxonomia-professional-type.md` §6).
+     *
+     * @return list<string>
+     */
+    private const NON_PROFESSIONAL_USER_TYPES = ['tutor', 'company'];
+
     public function authorize(): bool
     {
         return true; // Public endpoint
@@ -17,7 +28,10 @@ class RegisterRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'phone' => ['required', 'string', 'max:20'],
-            'user_type' => ['required', 'in:tutor,vet,clinic,laboratory,petshop,pet_hotel,grooming,training,company'],
+            'user_type' => ['required', Rule::in([
+                ...self::NON_PROFESSIONAL_USER_TYPES,
+                ...ProfessionalType::values(),
+            ])],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'additional_data' => ['array', 'nullable'],
             'additional_data.cnpj' => ['nullable', 'string', 'max:20'],

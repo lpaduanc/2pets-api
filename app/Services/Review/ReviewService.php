@@ -43,13 +43,16 @@ final class ReviewService
                 'rating' => $rating,
                 'comment' => $comment,
                 'is_verified' => $isVerified,
+                // Pre-moderation: stays hidden until admin approves.
+                'is_visible' => false,
+                'moderation_status' => Review::MODERATION_PENDING,
             ]);
 
             if ($photos) {
                 $this->attachPhotos($review, $photos, $client->id);
             }
 
-            $this->ratingService->updateProfessionalRating($professionalId);
+            // Rating aggregation runs only for approved reviews — don't recompute here.
 
             ReviewCreated::dispatch($review);
 
@@ -85,12 +88,27 @@ final class ReviewService
         // TODO: Notify admin about flagged review
     }
 
-    public function moderateReview(Review $review, bool $approve): void
+    public function moderateReview(Review $review, bool $approve, ?string $note = null, ?User $moderator = null): void
     {
         $review->update([
             'is_visible' => $approve,
             'is_flagged' => false,
+            'moderation_status' => $approve ? Review::MODERATION_APPROVED : Review::MODERATION_REJECTED,
+            'moderation_note' => $note,
+            'moderated_by' => $moderator?->id,
+            'moderated_at' => now(),
         ]);
+
+        // Approval affects the aggregated rating; rejection removes a previously-approved review.
+        $this->ratingService->updateProfessionalRating($review->professional_id);
+    }
+
+    public function listPending(int $perPage = 20)
+    {
+        return Review::where('moderation_status', Review::MODERATION_PENDING)
+            ->with(['client:id,name,email', 'professional:id,name', 'photos'])
+            ->orderBy('created_at', 'asc')
+            ->paginate($perPage);
     }
 
     public function toggleHelpful(Review $review, User $user): bool
@@ -102,11 +120,13 @@ final class ReviewService
         if ($existing) {
             $existing->delete();
             $review->decrement('helpful_count');
+
             return false;
         }
 
         $review->helpfulVotes()->create(['user_id' => $user->id]);
         $review->increment('helpful_count');
+
         return true;
     }
 
@@ -135,11 +155,12 @@ final class ReviewService
 
     private function isAppointmentCompleted(?int $appointmentId): bool
     {
-        if (!$appointmentId) {
+        if (! $appointmentId) {
             return false;
         }
 
         $appointment = Appointment::find($appointmentId);
+
         return $appointment && $appointment->status === 'completed';
     }
 

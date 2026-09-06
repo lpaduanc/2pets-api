@@ -2,22 +2,35 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\AuthorizesPetAccess;
+use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Models\Prescription;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Validator;
 
 class PrescriptionController extends Controller
 {
+    use AuthorizesPetAccess, PaginatesResults;
+
+    /** Covers the prescription history screen and the selects fed from it. */
+    private const DEFAULT_PER_PAGE = 100;
+
     public function index(Request $request)
     {
         $query = Prescription::with(['pet', 'professional'])
             ->where('professional_id', $request->user()->id);
+
         if ($request->has('pet_id')) {
+            $this->resolvePetForRead($request, (int) $request->pet_id);
             $query->where('pet_id', $request->pet_id);
         }
-        $prescriptions = $query->orderBy('prescription_date', 'desc')->get();
-        return response()->json($prescriptions);
+
+        $prescriptions = $query->orderBy('prescription_date', 'desc')
+            ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
+
+        return JsonResource::collection($prescriptions);
     }
 
     public function store(Request $request)
@@ -33,9 +46,14 @@ class PrescriptionController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
         $data = $validator->validated();
+
+        // Vet must have write access to the pet they're prescribing for.
+        $this->resolvePetForWrite($request, (int) $data['pet_id']);
+
         $data['professional_id'] = $request->user()->id;
         $data['medications'] = json_encode($data['medications']);
         $prescription = Prescription::create($data);
+
         return response()->json(['message' => 'Prescrição criada com sucesso!', 'prescription' => $prescription], 201);
     }
 
@@ -44,6 +62,7 @@ class PrescriptionController extends Controller
         $prescription = Prescription::with(['pet', 'professional'])
             ->where('professional_id', $request->user()->id)
             ->findOrFail($id);
+
         return response()->json($prescription);
     }
 
@@ -64,6 +83,7 @@ class PrescriptionController extends Controller
             $data['medications'] = json_encode($data['medications']);
         }
         $prescription->update($data);
+
         return response()->json(['message' => 'Prescrição atualizada com sucesso!', 'prescription' => $prescription]);
     }
 
@@ -71,6 +91,7 @@ class PrescriptionController extends Controller
     {
         $prescription = Prescription::where('professional_id', $request->user()->id)->findOrFail($id);
         $prescription->delete();
+
         return response()->json(['message' => 'Prescrição removida com sucesso!']);
     }
 
@@ -82,9 +103,11 @@ class PrescriptionController extends Controller
                 $q->whereNull('valid_until')->orWhere('valid_until', '>=', now());
             });
         if ($request->has('pet_id')) {
+            $this->resolvePetForRead($request, (int) $request->pet_id);
             $query->where('pet_id', $request->pet_id);
         }
         $valid = $query->orderBy('valid_until', 'asc')->get();
+
         return response()->json($valid);
     }
 }

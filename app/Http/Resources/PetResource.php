@@ -5,6 +5,11 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/**
+ * Lightweight resource for pet listings (index endpoint).
+ * Only includes fields needed for cards/lists.
+ * For full details, see PetDetailResource.
+ */
 class PetResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -15,6 +20,7 @@ class PetResource extends JsonResource
             'name' => $this->name,
             'species' => $this->species,
             'breed' => $this->breed,
+            'breed_id' => $this->breed_id,
             'gender' => $this->gender,
 
             // Age calculation
@@ -23,48 +29,24 @@ class PetResource extends JsonResource
 
             // Physical characteristics
             'weight' => $this->weight ? (float) $this->weight : null,
+            'size' => $this->size,
             'color' => $this->color,
+            'coat_colors' => $this->coat_colors,
 
             // Health basics
             'neutered' => $this->neutered,
-            'blood_type' => $this->blood_type,
-            'allergies' => $this->allergies,
-            'has_allergies' => !empty($this->allergies),
-            'chronic_diseases' => $this->chronic_diseases,
-            'current_medications' => $this->current_medications,
-
-            // Behavior
-            'temperament' => $this->temperament,
-            'behavior_notes' => $this->behavior_notes,
-            'social_with' => $this->social_with,
+            'neutered_status' => $this->neutered_status,
+            'microchip_number' => $this->microchip_number,
 
             // Media
             'image' => $this->image_url,
 
             // Lost pet
             'is_lost' => $this->is_lost ?? false,
-            'lost_alert_message' => $this->when($this->is_lost, $this->lost_alert_message),
             'lost_since' => $this->when($this->is_lost, $this->lost_since?->toISOString()),
-
-            // Notes
-            'notes' => $this->notes,
-
-            // Vaccination status
-            'vaccines_up_to_date' => $this->whenLoaded('vaccinations', function () {
-                $overdue = $this->vaccinations->filter(fn ($v) => $v->next_dose_date && $v->next_dose_date < now());
-                return $overdue->isEmpty();
-            }, true),
-
-            // Related data
-            'vaccinations' => $this->whenLoaded('vaccinations'),
-            'dewormings' => $this->whenLoaded('dewormings'),
-            'medications' => $this->whenLoaded('medications'),
-            'weight_history' => $this->whenLoaded('weightHistory'),
-            'vet_accesses' => $this->whenLoaded('vetAccesses'),
 
             // Owner
             'user_id' => $this->user_id,
-            'owner' => new UserResource($this->whenLoaded('user')),
 
             // Timestamps
             'created_at' => $this->created_at?->toISOString(),
@@ -75,18 +57,20 @@ class PetResource extends JsonResource
     /**
      * Calculate a human-friendly age string.
      */
-    private function calculateAge(): array
+    protected function calculateAge(): array
     {
+        $birth = $this->birth_date;
         $now = now();
-        $years = $now->diffInYears($this->birth_date);
-        $months = $now->diffInMonths($this->birth_date) % 12;
+
+        $years = (int) floor($birth->diffInYears($now));
+        $months = ((int) floor($birth->diffInMonths($now))) % 12;
 
         return [
             'years' => $years,
             'months' => $months,
             'label' => $years > 0
-                ? "{$years} ano" . ($years > 1 ? 's' : '') . ($months > 0 ? " e {$months} mes" . ($months > 1 ? 'es' : '') : '')
-                : "{$months} mes" . ($months > 1 ? 'es' : ''),
+                ? "{$years} ano".($years > 1 ? 's' : '').($months > 0 ? " e {$months} mes".($months > 1 ? 'es' : '') : '')
+                : "{$months} mes".($months > 1 ? 'es' : ''),
         ];
     }
 }

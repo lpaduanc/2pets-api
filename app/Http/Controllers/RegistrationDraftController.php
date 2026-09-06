@@ -17,49 +17,49 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $data = $request->all();
-            
+
             // CRITICAL DEBUG: Log the received data
-            \Log::info("=== PROFESSIONAL DRAFT SAVE START ===", [
+            \Log::info('=== PROFESSIONAL DRAFT SAVE START ===', [
                 'user_id' => $user->id,
                 'user_type' => $user->user_type,
                 'payload_user_type' => $data['user_type'] ?? 'NOT_PRESENT',
                 'has_cnpj' => isset($data['cnpj']),
                 'cnpj' => $data['cnpj'] ?? 'none',
-                'step' => $data['current_step'] ?? 'unknown'
+                'step' => $data['current_step'] ?? 'unknown',
             ]);
-            
+
             // Store draft in cache for quick restoration (7 days)
             $cacheKey = "registration_draft_professional_{$user->id}";
             Cache::put($cacheKey, $data, now()->addDays(7));
-            
+
             // ALSO save to database (progressive completion)
             $result = $this->updateProfessionalDatabase($user, $data);
-            
-            \Log::info("=== PROFESSIONAL DRAFT SAVE END ===", [
+
+            \Log::info('=== PROFESSIONAL DRAFT SAVE END ===', [
                 'user_id' => $user->id,
-                'result' => $result ? 'success' : 'failed'
+                'result' => $result ? 'success' : 'failed',
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Rascunho salvo com sucesso',
                 'saved_at' => now()->toIso8601String(),
-                'saved_to_database' => $result
+                'saved_to_database' => $result,
             ]);
         } catch (\Exception $e) {
-            \Log::error("=== PROFESSIONAL DRAFT SAVE ERROR ===", [
+            \Log::error('=== PROFESSIONAL DRAFT SAVE ERROR ===', [
                 'user_id' => $request->user()->id ?? 'unknown',
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao salvar rascunho: ' . $e->getMessage()
+                'message' => 'Erro ao salvar rascunho: '.$e->getMessage(),
             ], 500);
         }
     }
-    
+
     /**
      * Update professional data in database progressively
      * BULLETPROOF v2: Comprehensive logging and error handling
@@ -67,15 +67,19 @@ class RegistrationDraftController extends Controller
     private function updateProfessionalDatabase($user, $data)
     {
         try {
-            \Log::info("=== UPDATE PROFESSIONAL DATABASE START ===", [
+            \Log::info('=== UPDATE PROFESSIONAL DATABASE START ===', [
                 'user_id' => $user->id,
                 'user_type_from_user' => $user->user_type,
-                'user_type_from_data' => $data['user_type'] ?? 'NOT_IN_PAYLOAD'
+                'user_type_from_data' => $data['user_type'] ?? 'NOT_IN_PAYLOAD',
             ]);
-            
-            // Get user_type from data (payload) or fallback to user model
-            $userType = $data['user_type'] ?? $user->user_type;
-            
+
+            // `professional_type` deriva sempre de `$user->user_type` (já validado contra
+            // `ProfessionalType` em `RegisterRequest`), nunca do payload do rascunho —
+            // `$data['user_type']` vem de `$request->all()` sem validação nenhuma, e
+            // escrevê-lo direto em `professional_type` era a mesma causa-raiz documentada
+            // em `docs/taxonomia-professional-type.md` para `RegistrationCompletionController`.
+            $userType = $user->user_type;
+
             // Map fields from form to database
             $professionalFields = [
                 'business_name',
@@ -99,84 +103,84 @@ class RegistrationDraftController extends Controller
                 'services_offered',
                 'products_sold',
                 'equipment',
-                'certifications'
+                'certifications',
             ];
-            
+
             $professionalData = [];
             foreach ($professionalFields as $field) {
                 if (isset($data[$field]) && $data[$field] !== '' && $data[$field] !== null) {
                     $professionalData[$field] = $data[$field];
                 }
             }
-            
-            \Log::info("Prepared professional data", [
+
+            \Log::info('Prepared professional data', [
                 'field_count' => count($professionalData),
                 'has_cnpj' => isset($professionalData['cnpj']),
-                'cnpj_value' => $professionalData['cnpj'] ?? 'none'
+                'cnpj_value' => $professionalData['cnpj'] ?? 'none',
             ]);
-            
-            if (!empty($professionalData)) {
+
+            if (! empty($professionalData)) {
                 // BULLETPROOF: Check existing record OUTSIDE transaction first
                 $existingRecord = \App\Models\Professional::where('user_id', $user->id)->first();
-                
-                \Log::info("Existing record check", [
+
+                \Log::info('Existing record check', [
                     'user_id' => $user->id,
                     'found' => $existingRecord ? 'YES' : 'NO',
                     'existing_id' => $existingRecord->id ?? 'none',
-                    'existing_cnpj' => $existingRecord->cnpj ?? 'none'
+                    'existing_cnpj' => $existingRecord->cnpj ?? 'none',
                 ]);
-                
+
                 if ($existingRecord) {
                     // RECORD EXISTS - Just UPDATE it (no transaction needed for simple update)
                     $existingRecord->update($professionalData);
-                    
-                    \Log::info("=== UPDATED EXISTING RECORD ===", [
+
+                    \Log::info('=== UPDATED EXISTING RECORD ===', [
                         'professional_id' => $existingRecord->id,
                         'user_id' => $user->id,
-                        'cnpj' => $professionalData['cnpj'] ?? 'not_in_update'
+                        'cnpj' => $professionalData['cnpj'] ?? 'not_in_update',
                     ]);
                 } else {
                     // RECORD DOESN'T EXIST - Need to create
-                    \Log::info("Creating new professional record", [
+                    \Log::info('Creating new professional record', [
                         'user_id' => $user->id,
-                        'cnpj' => $professionalData['cnpj'] ?? 'none'
+                        'cnpj' => $professionalData['cnpj'] ?? 'none',
                     ]);
-                    
+
                     // Check if CNPJ already exists for ANOTHER user
-                    if (!empty($professionalData['cnpj'])) {
+                    if (! empty($professionalData['cnpj'])) {
                         $cnpjCheck = \App\Models\Professional::where('cnpj', $professionalData['cnpj'])->first();
-                        
+
                         if ($cnpjCheck) {
-                            \Log::warning("=== CNPJ CONFLICT DETECTED ===", [
+                            \Log::warning('=== CNPJ CONFLICT DETECTED ===', [
                                 'cnpj' => $professionalData['cnpj'],
                                 'existing_record_id' => $cnpjCheck->id,
                                 'existing_user_id' => $cnpjCheck->user_id,
-                                'new_user_id' => $user->id
+                                'new_user_id' => $user->id,
                             ]);
-                            
+
                             // Delete the conflicting record
                             $cnpjCheck->delete();
-                            
-                            \Log::info("Deleted conflicting record", [
-                                'deleted_id' => $cnpjCheck->id
+
+                            \Log::info('Deleted conflicting record', [
+                                'deleted_id' => $cnpjCheck->id,
                             ]);
                         }
                     }
-                    
+
                     // Now create safely
                     $professionalData['user_id'] = $user->id;
                     $professionalData['professional_type'] = $userType;
-                    
+
                     $newRecord = \App\Models\Professional::create($professionalData);
-                    
-                    \Log::info("=== CREATED NEW RECORD ===", [
+
+                    \Log::info('=== CREATED NEW RECORD ===', [
                         'professional_id' => $newRecord->id,
                         'user_id' => $user->id,
-                        'cnpj' => $newRecord->cnpj
+                        'cnpj' => $newRecord->cnpj,
                     ]);
                 }
             }
-            
+
             // Update user fields
             $userFields = [
                 'cpf',
@@ -188,38 +192,38 @@ class RegistrationDraftController extends Controller
                 'neighborhood',
                 'city',
                 'state',
-                'zip_code'
+                'zip_code',
             ];
-            
+
             $userUpdateData = [];
             foreach ($userFields as $key => $field) {
                 $sourceField = is_numeric($key) ? $field : $field;
                 $targetField = is_numeric($key) ? $field : $key;
-                
+
                 if (isset($data[$sourceField]) && $data[$sourceField] !== '' && $data[$sourceField] !== null) {
                     $userUpdateData[$targetField] = $data[$sourceField];
                 }
             }
-            
-            if (!empty($userUpdateData)) {
+
+            if (! empty($userUpdateData)) {
                 $user->update($userUpdateData);
             }
-            
-            \Log::info("=== UPDATE PROFESSIONAL DATABASE END (SUCCESS) ===");
-            
+
+            \Log::info('=== UPDATE PROFESSIONAL DATABASE END (SUCCESS) ===');
+
             return true;
         } catch (\Exception $e) {
-            \Log::error("=== UPDATE PROFESSIONAL DATABASE FAILED ===", [
+            \Log::error('=== UPDATE PROFESSIONAL DATABASE FAILED ===', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
+                'line' => $e->getLine(),
             ]);
-            
+
             return false;
         }
     }
-    
+
     /**
      * Load draft data for professional registration
      * Now also includes existing database data
@@ -229,47 +233,47 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $cacheKey = "registration_draft_professional_{$user->id}";
-            
+
             // Get draft from cache
             $draft = Cache::get($cacheKey);
-            
+
             // Get existing data from database
             $existingData = $this->fetchProfessionalData($user);
-            
+
             // Merge: existing data as base, draft overrides if newer
             $mergedData = $existingData;
             if ($draft) {
                 $mergedData = array_merge($existingData, $draft);
             }
-            
+
             return response()->json([
                 'success' => true,
                 'draft' => $mergedData,
-                'has_draft' => !empty($mergedData),
-                'has_database_data' => !empty($existingData),
-                'source' => $draft ? 'draft_and_database' : 'database_only'
+                'has_draft' => ! empty($mergedData),
+                'has_database_data' => ! empty($existingData),
+                'source' => $draft ? 'draft_and_database' : 'database_only',
             ]);
         } catch (\Exception $e) {
-            Log::error("Error loading professional draft: " . $e->getMessage());
-            
+            Log::error('Error loading professional draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao carregar rascunho',
-                'has_draft' => false
+                'has_draft' => false,
             ], 500);
         }
     }
-    
+
     /**
      * Fetch existing professional data from database
      */
     private function fetchProfessionalData($user)
     {
         $data = [];
-        
+
         // Get professional record
         $professional = \App\Models\Professional::where('user_id', $user->id)->first();
-        
+
         if ($professional) {
             $data = [
                 'business_name' => $professional->business_name,
@@ -285,7 +289,7 @@ class RegistrationDraftController extends Controller
                 'service_radius_km' => $professional->service_radius_km,
                 'opening_hours' => $professional->opening_hours,
                 'closing_hours' => $professional->closing_hours,
-                'working_days' => $professional->working_days ?? [1,2,3,4,5],
+                'working_days' => $professional->working_days ?? [1, 2, 3, 4, 5],
                 'description' => $professional->description,
                 'technical_responsible_name' => $professional->technical_responsible_name,
                 'technical_responsible_crmv' => $professional->technical_responsible_crmv,
@@ -295,7 +299,7 @@ class RegistrationDraftController extends Controller
                 'certifications' => $professional->certifications ?? [],
             ];
         }
-        
+
         // Add user data
         $data['cpf'] = $user->cpf;
         $data['birth_date'] = $user->birth_date;
@@ -307,22 +311,22 @@ class RegistrationDraftController extends Controller
         $data['city'] = $user->city;
         $data['state'] = $user->state;
         $data['zip_code'] = $user->zip_code;
-        
+
         // SENIOR FIX: Fetch uploaded documents (corrected column names)
         $documents = \DB::table('documents')
             ->where('user_id', $user->id)
             ->select('id', 'document_type', 'file_path', 'file_name', 'created_at')
             ->get()
             ->toArray();
-        
-        if (!empty($documents)) {
+
+        if (! empty($documents)) {
             $data['documents'] = $documents;
         }
-        
+
         // Remove null values
-        return array_filter($data, fn($value) => $value !== null && $value !== '');
+        return array_filter($data, fn ($value) => $value !== null && $value !== '');
     }
-    
+
     /**
      * Delete draft data for professional registration
      */
@@ -331,23 +335,23 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $cacheKey = "registration_draft_professional_{$user->id}";
-            
+
             Cache::forget($cacheKey);
-            
+
             return response()->json([
                 'success' => true,
-                'message' => 'Rascunho removido'
+                'message' => 'Rascunho removido',
             ]);
         } catch (\Exception $e) {
-            Log::error("Error deleting professional draft: " . $e->getMessage());
-            
+            Log::error('Error deleting professional draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao remover rascunho'
+                'message' => 'Erro ao remover rascunho',
             ], 500);
         }
     }
-    
+
     /**
      * Save draft data for company registration
      * Now saves to BOTH cache AND database for progressive completion
@@ -357,32 +361,32 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $data = $request->all();
-            
+
             // Store draft in cache for quick restoration (7 days)
             $cacheKey = "registration_draft_company_{$user->id}";
             Cache::put($cacheKey, $data, now()->addDays(7));
-            
+
             // ALSO save to database (progressive completion)
             $this->updateCompanyDatabase($user, $data);
-            
+
             Log::info("Company draft saved for user {$user->id}");
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Rascunho salvo com sucesso',
                 'saved_at' => now()->toIso8601String(),
-                'saved_to_database' => true
+                'saved_to_database' => true,
             ]);
         } catch (\Exception $e) {
-            Log::error("Error saving company draft: " . $e->getMessage());
-            
+            Log::error('Error saving company draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao salvar rascunho'
+                'message' => 'Erro ao salvar rascunho',
             ], 500);
         }
     }
-    
+
     /**
      * Update company data in database progressively
      * Fixed: Properly handles existing records to avoid duplicate errors
@@ -414,23 +418,23 @@ class RegistrationDraftController extends Controller
                 'company_neighborhood',
                 'company_city',
                 'company_state',
-                'company_zip_code'
+                'company_zip_code',
             ];
-            
+
             $companyData = [];
             foreach ($companyFields as $key => $field) {
                 $sourceField = is_numeric($key) ? $field : $field;
                 $targetField = is_numeric($key) ? $field : $key;
-                
+
                 if (isset($data[$sourceField]) && $data[$sourceField] !== '' && $data[$sourceField] !== null) {
                     $companyData[$targetField] = $data[$sourceField];
                 }
             }
-            
-            if (!empty($companyData)) {
+
+            if (! empty($companyData)) {
                 // SENIOR FIX: Check if record exists first, then update or create
                 $company = \App\Models\Company::where('user_id', $user->id)->first();
-                
+
                 if ($company) {
                     // Record exists - UPDATE it
                     $company->update($companyData);
@@ -440,10 +444,10 @@ class RegistrationDraftController extends Controller
                     \App\Models\Company::create($companyData);
                 }
             }
-            
+
             // Update user fields
             $userUpdateData = [];
-            
+
             if (isset($data['cnpj']) && $data['cnpj'] !== '') {
                 $userUpdateData['cnpj'] = $data['cnpj'];
             }
@@ -453,21 +457,21 @@ class RegistrationDraftController extends Controller
             if (isset($data['additional_notes']) && $data['additional_notes'] !== '') {
                 $userUpdateData['additional_notes'] = $data['additional_notes'];
             }
-            
-            if (!empty($userUpdateData)) {
+
+            if (! empty($userUpdateData)) {
                 $user->update($userUpdateData);
             }
-            
+
             return true;
         } catch (\Exception $e) {
-            \Log::error("Error updating company database: " . $e->getMessage(), [
+            \Log::error('Error updating company database: '.$e->getMessage(), [
                 'user_id' => $user->id,
-                'data' => $data
+                'data' => $data,
             ]);
             throw $e;
         }
     }
-    
+
     /**
      * Load draft data for company registration
      * Now also includes existing database data
@@ -477,47 +481,47 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $cacheKey = "registration_draft_company_{$user->id}";
-            
+
             // Get draft from cache
             $draft = Cache::get($cacheKey);
-            
+
             // Get existing data from database
             $existingData = $this->fetchCompanyData($user);
-            
+
             // Merge: existing data as base, draft overrides if newer
             $mergedData = $existingData;
             if ($draft) {
                 $mergedData = array_merge($existingData, $draft);
             }
-            
+
             return response()->json([
                 'success' => true,
                 'draft' => $mergedData,
-                'has_draft' => !empty($mergedData),
-                'has_database_data' => !empty($existingData),
-                'source' => $draft ? 'draft_and_database' : 'database_only'
+                'has_draft' => ! empty($mergedData),
+                'has_database_data' => ! empty($existingData),
+                'source' => $draft ? 'draft_and_database' : 'database_only',
             ]);
         } catch (\Exception $e) {
-            Log::error("Error loading company draft: " . $e->getMessage());
-            
+            Log::error('Error loading company draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao carregar rascunho',
-                'has_draft' => false
+                'has_draft' => false,
             ], 500);
         }
     }
-    
+
     /**
      * Fetch existing company data from database
      */
     private function fetchCompanyData($user)
     {
         $data = [];
-        
+
         // Get company record
         $company = \App\Models\Company::where('user_id', $user->id)->first();
-        
+
         if ($company) {
             $data = [
                 'company_name' => $company->company_name,
@@ -545,27 +549,27 @@ class RegistrationDraftController extends Controller
                 'company_zip_code' => $company->company_zip_code,
             ];
         }
-        
+
         // Add user data
         $data['cnpj'] = $data['cnpj'] ?? $user->cnpj;
         $data['employee_count'] = $data['employee_count'] ?? $user->employee_count;
         $data['additional_notes'] = $data['additional_notes'] ?? $user->additional_notes;
-        
+
         // Fetch uploaded documents
         $documents = \DB::table('documents')
             ->where('user_id', $user->id)
             ->select('id', 'document_type', 'file_path', 'file_name', 'created_at')
             ->get()
             ->toArray();
-        
-        if (!empty($documents)) {
+
+        if (! empty($documents)) {
             $data['documents'] = $documents;
         }
-        
+
         // Remove null values
-        return array_filter($data, fn($value) => $value !== null && $value !== '');
+        return array_filter($data, fn ($value) => $value !== null && $value !== '');
     }
-    
+
     /**
      * Delete draft data for company registration
      */
@@ -574,23 +578,23 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $cacheKey = "registration_draft_company_{$user->id}";
-            
+
             Cache::forget($cacheKey);
-            
+
             return response()->json([
                 'success' => true,
-                'message' => 'Rascunho removido'
+                'message' => 'Rascunho removido',
             ]);
         } catch (\Exception $e) {
-            Log::error("Error deleting company draft: " . $e->getMessage());
-            
+            Log::error('Error deleting company draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao remover rascunho'
+                'message' => 'Erro ao remover rascunho',
             ], 500);
         }
     }
-    
+
     /**
      * Save draft data for tutor registration
      * Now saves to BOTH cache AND database for progressive completion
@@ -600,32 +604,32 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $data = $request->all();
-            
+
             // Store draft in cache for quick restoration (7 days)
             $cacheKey = "registration_draft_tutor_{$user->id}";
             Cache::put($cacheKey, $data, now()->addDays(7));
-            
+
             // ALSO save to database (progressive completion)
             $this->updateTutorDatabase($user, $data);
-            
+
             Log::info("Tutor draft saved for user {$user->id}");
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Rascunho salvo com sucesso',
                 'saved_at' => now()->toIso8601String(),
-                'saved_to_database' => true
+                'saved_to_database' => true,
             ]);
         } catch (\Exception $e) {
-            Log::error("Error saving tutor draft: " . $e->getMessage());
-            
+            Log::error('Error saving tutor draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao salvar rascunho'
+                'message' => 'Erro ao salvar rascunho',
             ], 500);
         }
     }
-    
+
     /**
      * Update tutor data in database progressively
      */
@@ -643,23 +647,23 @@ class RegistrationDraftController extends Controller
             'neighborhood',
             'city',
             'state',
-            'zip_code'
+            'zip_code',
         ];
-        
+
         $updateData = [];
         foreach ($tutorFields as $field) {
             if (isset($data[$field]) && $data[$field] !== '' && $data[$field] !== null) {
                 $updateData[$field] = $data[$field];
             }
         }
-        
-        if (!empty($updateData)) {
+
+        if (! empty($updateData)) {
             $user->update($updateData);
         }
-        
+
         return true;
     }
-    
+
     /**
      * Load draft data for tutor registration
      * Now also includes existing database data
@@ -669,37 +673,37 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $cacheKey = "registration_draft_tutor_{$user->id}";
-            
+
             // Get draft from cache
             $draft = Cache::get($cacheKey);
-            
+
             // Get existing data from database
             $existingData = $this->fetchTutorData($user);
-            
+
             // Merge: existing data as base, draft overrides if newer
             $mergedData = $existingData;
             if ($draft) {
                 $mergedData = array_merge($existingData, $draft);
             }
-            
+
             return response()->json([
                 'success' => true,
                 'draft' => $mergedData,
-                'has_draft' => !empty($mergedData),
-                'has_database_data' => !empty($existingData),
-                'source' => $draft ? 'draft_and_database' : 'database_only'
+                'has_draft' => ! empty($mergedData),
+                'has_database_data' => ! empty($existingData),
+                'source' => $draft ? 'draft_and_database' : 'database_only',
             ]);
         } catch (\Exception $e) {
-            Log::error("Error loading tutor draft: " . $e->getMessage());
-            
+            Log::error('Error loading tutor draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao carregar rascunho',
-                'has_draft' => false
+                'has_draft' => false,
             ], 500);
         }
     }
-    
+
     /**
      * Fetch existing tutor data from database
      */
@@ -718,22 +722,22 @@ class RegistrationDraftController extends Controller
             'state' => $user->state,
             'zip_code' => $user->zip_code,
         ];
-        
+
         // Fetch uploaded documents
         $documents = \DB::table('documents')
             ->where('user_id', $user->id)
             ->select('id', 'document_type', 'file_path', 'file_name', 'created_at')
             ->get()
             ->toArray();
-        
-        if (!empty($documents)) {
+
+        if (! empty($documents)) {
             $data['documents'] = $documents;
         }
-        
+
         // Remove null values
-        return array_filter($data, fn($value) => $value !== null && $value !== '');
+        return array_filter($data, fn ($value) => $value !== null && $value !== '');
     }
-    
+
     /**
      * Delete draft data for tutor registration
      */
@@ -742,21 +746,20 @@ class RegistrationDraftController extends Controller
         try {
             $user = $request->user();
             $cacheKey = "registration_draft_tutor_{$user->id}";
-            
+
             Cache::forget($cacheKey);
-            
+
             return response()->json([
                 'success' => true,
-                'message' => 'Rascunho removido'
+                'message' => 'Rascunho removido',
             ]);
         } catch (\Exception $e) {
-            Log::error("Error deleting tutor draft: " . $e->getMessage());
-            
+            Log::error('Error deleting tutor draft: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao remover rascunho'
+                'message' => 'Erro ao remover rascunho',
             ], 500);
         }
     }
 }
-

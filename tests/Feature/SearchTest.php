@@ -85,17 +85,17 @@ class SearchTest extends TestCase
 
     public function test_search_filters_by_professional_type(): void
     {
-        $this->createApprovedProfessional([], ['professional_type' => 'veterinarian']);
+        $this->createApprovedProfessional([], ['professional_type' => 'vet']);
         $this->createApprovedProfessional([], ['professional_type' => 'petshop']);
 
-        $response = $this->getJson('/api/public/search?professional_type=veterinarian');
+        $response = $this->getJson('/api/public/search?professional_type=vet');
 
         $response->assertOk();
 
         $data = $response->json('data');
         foreach ($data as $item) {
             if (isset($item['professional_type'])) {
-                $this->assertEquals('veterinarian', $item['professional_type']);
+                $this->assertEquals('vet', $item['professional_type']);
             }
         }
     }
@@ -109,6 +109,53 @@ class SearchTest extends TestCase
         $response = $this->getJson('/api/public/search?latitude=-23.55&longitude=-46.63');
 
         $response->assertOk();
+    }
+
+    // ---------------------------------------------------------------
+    // Fuzzy search (pg_trgm) — Fase 5 do plano de otimização
+    // ---------------------------------------------------------------
+
+    /**
+     * Requisito de produto que justifica trigram em vez de tsvector: `to_tsvector` faz
+     * casamento exato de lexema ("veterinria" não casaria com "veterinária"), trigram tolera
+     * o erro de digitação porque compara fragmentos de 3 letras, não a palavra inteira.
+     */
+    public function test_search_query_finds_professional_with_typo_and_missing_accent(): void
+    {
+        $professionalUser = $this->createApprovedProfessional(['name' => 'Dra. Ana Veterinária']);
+
+        $response = $this->getJson('/api/public/search?query=veterinria');
+
+        $response->assertOk();
+
+        $matchedIds = collect($response->json('data'))->pluck('id');
+        $this->assertTrue($matchedIds->contains($professionalUser->id));
+    }
+
+    public function test_search_query_finds_clinic_ignoring_missing_accent(): void
+    {
+        $professionalUser = $this->createApprovedProfessional(
+            [],
+            ['business_name' => 'Clínica Veterinária']
+        );
+
+        $response = $this->getJson('/api/public/search?query=clinica');
+
+        $response->assertOk();
+
+        $matchedIds = collect($response->json('data'))->pluck('id');
+        $this->assertTrue($matchedIds->contains($professionalUser->id));
+    }
+
+    /**
+     * Abaixo de 3 caracteres o pg_trgm não extrai um trigrama completo do termo, então o
+     * índice GIN nunca casaria — `SearchFiltersDTO` rejeita antes de chegar ao banco.
+     */
+    public function test_search_rejects_query_shorter_than_three_characters(): void
+    {
+        $response = $this->getJson('/api/public/search?query=ab');
+
+        $response->assertStatus(422)->assertJsonValidationErrors('query');
     }
 
     // ---------------------------------------------------------------

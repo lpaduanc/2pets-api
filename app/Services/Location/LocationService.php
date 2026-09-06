@@ -4,11 +4,16 @@ namespace App\Services\Location;
 
 use App\Models\Location;
 use App\Models\User;
+use App\Services\Search\GeoLocationService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class LocationService
 {
+    public function __construct(
+        private readonly GeoLocationService $geoLocationService
+    ) {}
+
     public function createLocation(User $professional, array $data): Location
     {
         return DB::transaction(function () use ($professional, $data) {
@@ -29,13 +34,14 @@ final class LocationService
     {
         return DB::transaction(function () use ($location, $data) {
             // If setting this as primary, unset other primary locations
-            if (($data['is_primary'] ?? false) && !$location->is_primary) {
+            if (($data['is_primary'] ?? false) && ! $location->is_primary) {
                 Location::where('professional_id', $location->professional_id)
                     ->where('id', '!=', $location->id)
                     ->update(['is_primary' => false]);
             }
 
             $location->update($data);
+
             return $location->fresh();
         });
     }
@@ -46,7 +52,7 @@ final class LocationService
             $staff->id => [
                 'role' => $role,
                 'is_active' => true,
-            ]
+            ],
         ]);
     }
 
@@ -78,7 +84,7 @@ final class LocationService
         $todayAppointments = $location->appointments()
             ->whereDate('date', today())
             ->count();
-        
+
         $revenue = $location->appointments()
             ->where('status', 'completed')
             ->sum('total_amount');
@@ -97,23 +103,22 @@ final class LocationService
         ];
     }
 
+    /**
+     * `ST_DWithin` no WHERE aproveita o indice GIST de `locations.location`
+     * (migration `2026_09_06_000201_...`) — o Haversine cru anterior usava
+     * `HAVING`, avaliado apos a projecao, ou seja, para TODA linha da
+     * tabela, sempre, sem indice possivel.
+     */
     public function getNearbyLocations(float $latitude, float $longitude, float $radiusKm = 10): Collection
     {
-        // Using Haversine formula to calculate distance
+        $dWithin = $this->geoLocationService->dWithinExpression('locations.location', $latitude, $longitude, $radiusKm);
+        $distance = $this->geoLocationService->distanceExpression('locations.location', $latitude, $longitude);
+
         return Location::select('locations.*')
-            ->selectRaw('
-                (6371 * acos(
-                    cos(radians(?)) * 
-                    cos(radians(latitude)) * 
-                    cos(radians(longitude) - radians(?)) + 
-                    sin(radians(?)) * 
-                    sin(radians(latitude))
-                )) AS distance
-            ', [$latitude, $longitude, $latitude])
+            ->selectRaw("({$distance['sql']}) / 1000 AS distance_km", $distance['bindings'])
             ->where('is_active', true)
-            ->having('distance', '<=', $radiusKm)
-            ->orderBy('distance')
+            ->whereRaw($dWithin['sql'], $dWithin['bindings'])
+            ->orderBy('distance_km')
             ->get();
     }
 }
-

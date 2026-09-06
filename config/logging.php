@@ -123,6 +123,17 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        // Canal da instrumentação de performance (Fase 0 do plano de otimização):
+        // violação de lazy loading, atributo descartado silenciosamente e query lenta.
+        // Retenção curta — é sinal de debug de dev, não auditoria.
+        'perf' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/perf.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'days' => 7,
+            'replace_placeholders' => true,
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

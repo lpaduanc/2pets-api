@@ -2,13 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Models\Surgery;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Validator;
 
 class SurgeryController extends Controller
 {
+    use PaginatesResults;
+
+    /** Covers the surgery history screen of a professional. */
+    private const DEFAULT_PER_PAGE = 100;
+
     public function index(Request $request)
     {
         $query = Surgery::with(['pet', 'professional'])
@@ -16,8 +23,11 @@ class SurgeryController extends Controller
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
-        $surgeries = $query->orderBy('surgery_date', 'desc')->get();
-        return response()->json($surgeries);
+
+        $surgeries = $query->orderBy('surgery_date', 'desc')
+            ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
+
+        return JsonResource::collection($surgeries);
     }
 
     public function store(Request $request)
@@ -42,6 +52,7 @@ class SurgeryController extends Controller
         $data['professional_id'] = $request->user()->id;
 
         $surgery = Surgery::create($data);
+
         return response()->json(['message' => 'Surgery scheduled', 'surgery' => $surgery], 201);
     }
 
@@ -50,6 +61,7 @@ class SurgeryController extends Controller
         $surgery = Surgery::with(['pet', 'professional'])
             ->where('professional_id', $request->user()->id)
             ->findOrFail($id);
+
         return response()->json($surgery);
     }
 
@@ -73,6 +85,7 @@ class SurgeryController extends Controller
         }
 
         $surgery->update($validator->validated());
+
         return response()->json(['message' => 'Surgery updated', 'surgery' => $surgery]);
     }
 
@@ -80,6 +93,7 @@ class SurgeryController extends Controller
     {
         $surgery = Surgery::where('professional_id', $request->user()->id)->findOrFail($id);
         $surgery->delete();
+
         return response()->json(['message' => 'Surgery removed']);
     }
 }

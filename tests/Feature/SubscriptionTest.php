@@ -4,9 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Subscription;
 use App\Models\SubscriptionPlan;
-use App\Models\SubscriptionUsage;
 use App\Models\User;
-use App\Services\Payment\StripeService;
 use App\Services\Subscription\BillingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -17,7 +15,9 @@ class SubscriptionTest extends TestCase
     use RefreshDatabase;
 
     private User $tutor;
+
     private SubscriptionPlan $freePlan;
+
     private SubscriptionPlan $proPlan;
 
     protected function setUp(): void
@@ -29,7 +29,9 @@ class SubscriptionTest extends TestCase
         $this->freePlan = SubscriptionPlan::create([
             'name' => 'Gratuito',
             'slug' => 'free',
-            'tier' => 'free',
+            // `tier` é o enum PlanTier (basic|pro|enterprise) e tem CHECK constraint no banco;
+            // o nome comercial do plano vive no `slug`. Ver SubscriptionPlanSeeder.
+            'tier' => 'basic',
             'monthly_price' => 0,
             'yearly_price' => 0,
             'trial_days' => 0,
@@ -42,7 +44,7 @@ class SubscriptionTest extends TestCase
         $this->proPlan = SubscriptionPlan::create([
             'name' => 'Premium',
             'slug' => 'premium',
-            'tier' => 'premium',
+            'tier' => 'pro',
             'monthly_price' => 29.90,
             'yearly_price' => 299.00,
             'trial_days' => 7,
@@ -51,19 +53,13 @@ class SubscriptionTest extends TestCase
             'is_active' => true,
             'sort_order' => 2,
         ]);
-
-        // Mock the BillingService to avoid external Stripe calls
-        $this->mockBillingService();
     }
 
-    private function mockBillingService(): void
-    {
-        $mock = \Mockery::mock(BillingService::class);
-        $mock->shouldReceive('createSubscription')->andReturnNull();
-        $mock->shouldReceive('updateSubscription')->andReturnNull();
-        $mock->shouldReceive('cancelSubscription')->andReturnNull();
-        $this->app->instance(BillingService::class, $mock);
-    }
+    // Não há mock de BillingService: a classe é `final` (Mockery não consegue substituí-la) e,
+    // mais importante, não precisa de mock. Os três métodos têm early return quando não há
+    // `stripe_price_id` / `gateway_subscription_id` — e os planos deste teste não têm nenhum dos
+    // dois, então o serviço real roda o caminho local e nunca chama o Stripe. Mockar aqui
+    // esconderia o comportamento de ativação que os testes deveriam justamente provar.
 
     // ---------------------------------------------------------------
     // View plans

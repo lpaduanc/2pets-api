@@ -123,13 +123,25 @@ class ReviewController extends Controller
     {
         $validated = $request->validate([
             'approve' => 'required|boolean',
+            'note' => 'nullable|string|max:1000',
         ]);
 
         $review = Review::findOrFail($reviewId);
 
-        $this->reviewService->moderateReview($review, $validated['approve']);
+        $this->reviewService->moderateReview(
+            $review,
+            $validated['approve'],
+            $validated['note'] ?? null,
+            $request->user()
+        );
 
         return response()->json(['message' => 'Review moderated successfully']);
     }
-}
 
+    public function pending(Request $request): JsonResponse
+    {
+        return response()->json(
+            $this->reviewService->listPending((int) $request->integer('per_page', 20))
+        );
+    }
+}

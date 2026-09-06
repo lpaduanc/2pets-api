@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\VideoConsultation\CreateVideoConsultationRequest;
 use App\Models\Appointment;
 use App\Models\ConsultationRecording;
 use App\Models\VideoConsultation;
@@ -18,24 +19,26 @@ class VideoConsultationController extends Controller
         private readonly RecordingService $recordingService
     ) {}
 
-    public function create(Request $request): JsonResponse
+    public function create(CreateVideoConsultationRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'appointment_id' => 'required|exists:appointments,id',
-            'recording_enabled' => 'boolean',
-        ]);
-
-        $appointment = Appointment::findOrFail($validated['appointment_id']);
-
-        // Authorization check
+        $validated = $request->validated();
         $user = $request->user();
-        if ($appointment->user_id !== $user->id && $appointment->professional_id !== $user->id) {
+
+        $appointment = isset($validated['appointment_id'])
+            ? Appointment::findOrFail($validated['appointment_id'])
+            : null;
+
+        // Authorization — envolve o usuário atual como tutor OU profissional.
+        if ($appointment && $appointment->client_id !== $user->id && $appointment->professional_id !== $user->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
         $consultation = $this->videoCallService->createConsultation(
             $appointment,
-            $validated['recording_enabled'] ?? false
+            $validated['recording_enabled'] ?? false,
+            $validated['teleatendimento_type'],
+            $validated['previous_appointment_id'] ?? null,
+            $validated['vet_counterpart_id'] ?? null,
         );
 
         return response()->json([
@@ -50,7 +53,7 @@ class VideoConsultationController extends Controller
         $user = $request->user();
 
         // Authorization check
-        if ($consultation->appointment->user_id !== $user->id && 
+        if ($consultation->appointment->user_id !== $user->id &&
             $consultation->appointment->professional_id !== $user->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -152,4 +155,3 @@ class VideoConsultationController extends Controller
         return response()->json(['message' => 'Consent revoked and recording deleted']);
     }
 }
-

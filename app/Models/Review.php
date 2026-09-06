@@ -6,9 +6,20 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Review extends Model
 {
+    use SoftDeletes;
+
+    public const MODERATION_PENDING = 'pending';
+
+    public const MODERATION_APPROVED = 'approved';
+
+    public const MODERATION_REJECTED = 'rejected';
+
+    public const MODERATION_FLAGGED = 'flagged';
+
     protected $fillable = [
         'professional_id',
         'client_id',
@@ -20,6 +31,10 @@ class Review extends Model
         'is_flagged',
         'flag_reason',
         'helpful_count',
+        'moderation_status',
+        'moderation_note',
+        'moderated_by',
+        'moderated_at',
     ];
 
     protected $casts = [
@@ -28,6 +43,7 @@ class Review extends Model
         'is_visible' => 'boolean',
         'is_flagged' => 'boolean',
         'helpful_count' => 'integer',
+        'moderated_at' => 'datetime',
     ];
 
     public function professional(): BelongsTo
@@ -69,5 +85,22 @@ class Review extends Model
     {
         return $this->is_verified;
     }
-}
 
+    /**
+     * Helper de teste — cria review pendente de moderação para um profissional.
+     */
+    public static function factoryPending(int $professionalId): self
+    {
+        $client = User::factory()->tutor()->create();
+
+        return self::create([
+            'professional_id' => $professionalId,
+            'client_id' => $client->id,
+            'rating' => 5,
+            'comment' => 'Teste',
+            'is_verified' => false,
+            'is_visible' => false,
+            'moderation_status' => self::MODERATION_PENDING,
+        ]);
+    }
+}

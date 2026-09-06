@@ -4,9 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Hospitalization extends Model
 {
+    use LogsActivity, SoftDeletes;
+
     protected $fillable = [
         'pet_id',
         'professional_id',
@@ -26,6 +31,14 @@ class Hospitalization extends Model
         'medications' => 'array',
         'total_cost' => 'decimal:2',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logFillable()
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
 
     public function pet(): BelongsTo
     {

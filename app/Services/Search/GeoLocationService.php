@@ -17,10 +17,10 @@ final class GeoLocationService
         float $lng2
     ): float {
         $result = DB::selectOne(
-            "SELECT ST_Distance(
+            'SELECT ST_Distance(
                 ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
                 ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography
-            ) AS distance_meters",
+            ) AS distance_meters',
             [$lng1, $lat1, $lng2, $lat2]
         );
 
@@ -53,11 +53,11 @@ final class GeoLocationService
         $radiusMeters = $radiusKm * 1000;
 
         $result = DB::selectOne(
-            "SELECT ST_DWithin(
+            'SELECT ST_DWithin(
                 ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
                 ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
                 ?
-            ) AS within",
+            ) AS within',
             [$lng1, $lat1, $lng2, $lat2, $radiusMeters]
         );
 
@@ -73,7 +73,7 @@ final class GeoLocationService
     public function makePointExpression(float $latitude, float $longitude): array
     {
         return [
-            'sql' => "ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography",
+            'sql' => 'ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography',
             'bindings' => [$longitude, $latitude],
         ];
     }
@@ -82,13 +82,19 @@ final class GeoLocationService
      * Gera a expressao SQL para ST_DWithin usando a coluna location da tabela.
      * Ideal para WHERE clauses que aproveitam o indice GIST.
      *
+     * `int|float` no raio (Fase 6 do plano de otimizacao): `lost_pet_alerts.alert_radius_km`
+     * e `decimal(5,2)` e chega aqui como float (ex.: 7.50 km) — truncar para int perderia
+     * ate 999m de raio informado pelo usuario. Alteracao aditiva e retrocompativel: todo
+     * chamador que passava `int` (ex.: `ProfessionalSearchService::applyLocationFilter()`)
+     * continua funcionando sem mudanca.
+     *
      * @return array{sql: string, bindings: array<int, float|int>}
      */
     public function dWithinExpression(
         string $locationColumn,
         float $latitude,
         float $longitude,
-        int $radiusKm
+        int|float $radiusKm
     ): array {
         $radiusMeters = $radiusKm * 1000;
 

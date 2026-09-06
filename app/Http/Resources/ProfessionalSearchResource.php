@@ -28,10 +28,12 @@ class ProfessionalSearchResource extends JsonResource
             'average_rating' => (float) ($professional?->average_rating ?? 0),
             'reviews_count' => (int) ($professional?->total_reviews ?? 0),
             'starting_price' => $minPrice ? (float) $minPrice : null,
-            'verified' => !empty($professional?->crmv),
+            // Badge "verificado" só após aprovação manual do CRMV pelo admin (CLAUDE.md §2).
+            // Ter CRMV no cadastro não basta — tem que estar aprovado.
+            'verified' => (bool) ($professional?->is_crmv_verified ?? false),
             'is_featured' => (bool) ($professional?->is_featured ?? false),
             'professional_type' => $professional?->professional_type,
-            'professional_type_label' => $this->getProfessionalTypeLabel($professional?->professional_type),
+            'professional_type_label' => $professional?->professional_type?->label() ?? 'Profissional',
             'professional' => [
                 'type' => $professional?->professional_type,
                 'business_name' => $professional?->business_name,
@@ -73,23 +75,9 @@ class ProfessionalSearchResource extends JsonResource
         return implode(', ', $parts);
     }
 
-    private function getProfessionalTypeLabel(?string $type): string
-    {
-        return match ($type) {
-            'veterinarian' => 'Veterinário',
-            'clinic' => 'Clínica Veterinária',
-            'petshop' => 'Pet Shop',
-            'groomer' => 'Banho e Tosa',
-            'trainer' => 'Adestrador',
-            'pet_sitter' => 'Pet Sitter',
-            'daycare' => 'Creche/Hotel',
-            default => 'Profissional',
-        };
-    }
-
     private function isOpenNow(?object $professional): bool
     {
-        if (!$professional?->working_days || !$professional?->opening_hours || !$professional?->closing_hours) {
+        if (! $professional?->working_days || ! $professional?->opening_hours || ! $professional?->closing_hours) {
             return false;
         }
 
@@ -97,11 +85,12 @@ class ProfessionalSearchResource extends JsonResource
         $dayMap = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
         $today = $dayMap[$now->dayOfWeek] ?? '';
 
-        if (!in_array($today, $professional->working_days ?? [])) {
+        if (! in_array($today, $professional->working_days ?? [])) {
             return false;
         }
 
         $currentTime = $now->format('H:i');
+
         return $currentTime >= $professional->opening_hours && $currentTime <= $professional->closing_hours;
     }
 }

@@ -8,8 +8,7 @@
     "require": {
         "php": "^8.3",
         "barryvdh/laravel-dompdf": "^3.1",
-        "intervention/image": "^4.0",
-        "knuckleswtf/scribe": "^5.9",
+        "google/auth": "^1.50",
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/scout": "^11.1",
@@ -21,6 +20,8 @@
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "intervention/image": "^4.0",
+        "knuckleswtf/scribe": "^5.9",
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.24",
         "laravel/sail": "^1.41",

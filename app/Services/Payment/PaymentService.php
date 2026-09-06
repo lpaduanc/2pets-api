@@ -35,14 +35,16 @@ final class PaymentService
             ];
 
             $result = $this->gateway->createPayment(
-                $invoice->total_amount,
+                // A coluna da tabela `invoices` é `total`; `total_amount` não existe e chegava
+                // como null no gateway (TypeError em createPayment(float $amount)).
+                (float) $invoice->total,
                 $method,
                 $payerData,
                 $installments,
                 $metadata
             );
 
-            if (!$result['success']) {
+            if (! $result['success']) {
                 throw new \Exception($result['error'] ?? 'Payment creation failed');
             }
 
@@ -52,7 +54,7 @@ final class PaymentService
                 'gateway' => 'mercadopago',
                 'gateway_payment_id' => $result['payment_id'],
                 'method' => $method->value,
-                'amount' => $invoice->total_amount,
+                'amount' => $invoice->total,
                 'status' => $result['status'],
                 'installments' => $installments,
                 'gateway_response' => $result['response'] ?? null,
@@ -77,7 +79,7 @@ final class PaymentService
 
         $payment->update(['status' => $status]);
 
-        if ($status === PaymentStatus::PAID->value && !$payment->paid_at) {
+        if ($status === PaymentStatus::PAID->value && ! $payment->paid_at) {
             $payment->update(['paid_at' => now()]);
             $this->markInvoiceAsPaid($payment->invoice, $payment);
         }
@@ -114,4 +116,3 @@ final class PaymentService
         // TODO: Dispatch PaymentReceived event for notifications
     }
 }
-

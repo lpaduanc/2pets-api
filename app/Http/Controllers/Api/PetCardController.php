@@ -8,7 +8,6 @@ use App\Services\PetCard\PetCardService;
 use App\Services\PetCard\QRCodeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 
 class PetCardController extends Controller
 {
@@ -17,7 +16,7 @@ class PetCardController extends Controller
         private readonly QRCodeService $qrCodeService
     ) {}
 
-    public function getQRCode(Request $request, int $petId): Response
+    public function getQRCode(Request $request, int $petId): JsonResponse
     {
         $pet = Pet::where('id', $petId)
             ->where('user_id', $request->user()->id)
@@ -59,4 +58,3 @@ class PetCardController extends Controller
         return response()->json(['message' => 'Pet marked as found']);
     }
 }
-

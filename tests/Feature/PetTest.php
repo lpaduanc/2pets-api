@@ -121,7 +121,10 @@ class PetTest extends TestCase
         $response->assertOk()
             ->assertJson(['message' => 'Pet removido com sucesso!']);
 
-        $this->assertDatabaseMissing('pets', ['id' => $pet->id]);
+        // Pet usa SoftDeletes (CLAUDE.md: "soft delete em tudo"). A linha continua no banco
+        // com `deleted_at` preenchido — assertDatabaseMissing aqui exigiria hard delete e
+        // contrariaria a regra de auditoria do projeto.
+        $this->assertSoftDeleted('pets', ['id' => $pet->id]);
     }
 
     // ---------------------------------------------------------------

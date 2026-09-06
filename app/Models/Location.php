@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasGeoPoint;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Location extends Model
 {
+    use HasGeoPoint;
+
     protected $fillable = [
         'professional_id',
         'name',
@@ -75,18 +78,18 @@ class Location extends Model
         $now = now();
         $dayOfWeek = strtolower($now->format('l'));
 
-        if (!in_array($dayOfWeek, $this->working_days ?? [])) {
+        if (! in_array($dayOfWeek, $this->working_days ?? [])) {
             return false;
         }
 
         $openingHours = $this->opening_hours[$dayOfWeek] ?? null;
-        
-        if (!$openingHours) {
+
+        if (! $openingHours) {
             return false;
         }
 
         $currentTime = $now->format('H:i');
+
         return $currentTime >= $openingHours['open'] && $currentTime <= $openingHours['close'];
     }
 }
-

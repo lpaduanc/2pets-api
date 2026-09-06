@@ -12,6 +12,9 @@ class VideoConsultation extends Model
         'appointment_id',
         'room_id',
         'provider',
+        'teleatendimento_type',
+        'previous_appointment_id',
+        'vet_counterpart_id',
         'status',
         'started_at',
         'ended_at',
@@ -64,4 +67,3 @@ class VideoConsultation extends Model
         return in_array($this->status, ['waiting', 'in_progress']);
     }
 }
-

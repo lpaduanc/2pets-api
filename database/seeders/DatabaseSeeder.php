@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -27,6 +26,9 @@ class DatabaseSeeder extends Seeder
             PetSeeder::class,
             ProfessionalSeeder::class,
             MedicalDataSeeder::class,
+            SubscriptionPlanSeeder::class,
+            CouponSeeder::class,
+            DemoDataSeeder::class,
         ]);
     }
 }

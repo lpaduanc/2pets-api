@@ -2,15 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
-use App\Models\Professional;
+use App\Enums\ProfessionalType;
 use App\Models\Company;
+use App\Models\Professional;
 use App\Models\User;
 use App\Services\CpfValidationService;
 use App\Services\CrmvValidationService;
 use App\Services\Location\GeocodingService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class RegistrationCompletionController extends Controller
@@ -32,16 +31,24 @@ class RegistrationCompletionController extends Controller
             'city' => 'required|string',
             'state' => 'required|string|size:2',
             'zip_code' => 'required|string',
+
+            // Google Places coords (optional; if provided, skip server-side geocoding)
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+
+            // Optional profile photo (multipart upload). Accepts the same mime types
+            // declared on the User media collection 'avatar'.
+            'avatar' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
 
         // Validate CPF
-        $cpfService = new CpfValidationService();
-        if (!$cpfService->validate($validated['cpf'])) {
+        $cpfService = new CpfValidationService;
+        if (! $cpfService->validate($validated['cpf'])) {
             return response()->json(['errors' => ['cpf' => ['CPF inválido']]], 422);
         }
 
         $updateData = [
-            'cpf' => $cpfService->format($validated['cpf']),
+            'cpf' => $validated['cpf'], // User model mutator normalizes to digits-only.
             'birth_date' => $validated['birth_date'],
             'gender' => $validated['gender'] ?? null,
             'occupation' => $validated['occupation'] ?? null,
@@ -55,8 +62,17 @@ class RegistrationCompletionController extends Controller
             'profile_completed' => true,
         ];
 
-        // Geocode the address (non-blocking)
-        $coords = $this->geocodeAddress($validated);
+        // Prefer coords from Google Places (pulled at autocomplete time — more accurate
+        // than re-geocoding the free-text address). Fall back to server-side geocoding.
+        $coords = null;
+        if (isset($validated['latitude'], $validated['longitude'])) {
+            $coords = [
+                'latitude' => (float) $validated['latitude'],
+                'longitude' => (float) $validated['longitude'],
+            ];
+        } else {
+            $coords = $this->geocodeAddress($validated);
+        }
 
         if ($coords) {
             $updateData['latitude'] = $coords['latitude'];
@@ -64,11 +80,21 @@ class RegistrationCompletionController extends Controller
         }
 
         $user = $request->user();
+        // location (geography) e sincronizada automaticamente pelo trait HasGeoPoint
+        // quando latitude/longitude mudam nesta escrita.
         $user->update($updateData);
 
-        // Set PostGIS location column if coordinates are available
-        if ($coords) {
-            $this->updatePostGISLocation($user, $coords);
+        // Attach profile photo via Spatie Media Library (singleFile collection — replaces any existing avatar).
+        // Non-blocking: a failed upload should not break registration; only log and move on.
+        if ($request->hasFile('avatar')) {
+            try {
+                $user->addMediaFromRequest('avatar')->toMediaCollection('avatar');
+            } catch (\Throwable $e) {
+                Log::warning('RegistrationCompletionController: Failed to store tutor avatar', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return response()->json([
@@ -77,24 +103,23 @@ class RegistrationCompletionController extends Controller
         ]);
     }
 
+    /**
+     * `professional_type` nunca é lido de novo do request nem redigitado aqui — o único
+     * ponto de verdade é `ProfessionalType::tryFrom($user->user_type)`, o mesmo enum que
+     * `RegisterRequest` já validou na etapa 1 do cadastro.
+     */
     public function completeProfessional(Request $request)
     {
-        // Multi-step validation based on professional_type
         $user = $request->user();
+        $professionalType = ProfessionalType::tryFrom($user->user_type);
 
-        switch ($user->user_type) {
-            case 'vet':
-                return $this->completeVet($request, $user);
-            case 'clinic':
-            case 'laboratory':
-            case 'petshop':
-            case 'pet_hotel':
-            case 'grooming':
-            case 'training':
-                return $this->completeGenericProfessional($request, $user);
-            default:
-                return response()->json(['message' => 'Invalid user type'], 400);
+        if ($professionalType === null) {
+            return response()->json(['message' => 'Invalid user type'], 400);
         }
+
+        return $professionalType === ProfessionalType::VET
+            ? $this->completeVet($request, $user)
+            : $this->completeGenericProfessional($request, $user, $professionalType);
     }
 
     private function completeVet(Request $request, User $user)
@@ -113,7 +138,7 @@ class RegistrationCompletionController extends Controller
 
             // Academic
             'university' => 'required|string',
-            'graduation_year' => 'required|integer|min:1950|max:' . date('Y'),
+            'graduation_year' => 'required|integer|min:1950|max:'.date('Y'),
             'courses' => 'nullable|array',
 
             // Professional
@@ -129,14 +154,14 @@ class RegistrationCompletionController extends Controller
         ]);
 
         // Validate CPF
-        $cpfService = new CpfValidationService();
-        if (!$cpfService->validate($validated['cpf'])) {
+        $cpfService = new CpfValidationService;
+        if (! $cpfService->validate($validated['cpf'])) {
             return response()->json(['errors' => ['cpf' => ['CPF inválido']]], 422);
         }
 
         // Validate CRMV
-        $crmvService = new CrmvValidationService();
-        if (!$crmvService->validateFormat($validated['crmv'], $validated['crmv_state'])) {
+        $crmvService = new CrmvValidationService;
+        if (! $crmvService->validateFormat($validated['crmv'], $validated['crmv_state'])) {
             return response()->json(['errors' => ['crmv' => ['CRMV inválido']]], 422);
         }
 
@@ -145,7 +170,7 @@ class RegistrationCompletionController extends Controller
 
         // Update user
         $updateData = [
-            'cpf' => $cpfService->format($validated['cpf']),
+            'cpf' => $validated['cpf'], // User model mutator normalizes to digits-only.
             'birth_date' => $validated['birth_date'],
             'address' => $validated['address'],
             'number' => $validated['number'],
@@ -162,17 +187,13 @@ class RegistrationCompletionController extends Controller
             $updateData['longitude'] = $coords['longitude'];
         }
 
+        // location (geography) e sincronizada automaticamente pelo trait HasGeoPoint.
         $user->update($updateData);
-
-        // Set PostGIS location column if coordinates are available
-        if ($coords) {
-            $this->updatePostGISLocation($user, $coords);
-        }
 
         // Create professional record
         Professional::create([
             'user_id' => $user->id,
-            'professional_type' => 'vet',
+            'professional_type' => ProfessionalType::VET,
             'crmv' => $crmvService->format($validated['crmv'], $validated['crmv_state']),
             'crmv_state' => $validated['crmv_state'],
             'university' => $validated['university'],
@@ -193,11 +214,11 @@ class RegistrationCompletionController extends Controller
         ]);
     }
 
-    private function completeGenericProfessional(Request $request, User $user)
+    private function completeGenericProfessional(Request $request, User $user, ProfessionalType $professionalType)
     {
-        \Log::info("=== COMPLETE GENERIC PROFESSIONAL START ===", [
+        \Log::info('=== COMPLETE GENERIC PROFESSIONAL START ===', [
             'user_id' => $user->id,
-            'user_type' => $user->user_type
+            'user_type' => $user->user_type,
         ]);
 
         $rules = [
@@ -224,7 +245,7 @@ class RegistrationCompletionController extends Controller
         ];
 
         // Add technical responsible for Clinic and Laboratory
-        if (in_array($user->user_type, ['clinic', 'laboratory'])) {
+        if (in_array($professionalType, [ProfessionalType::CLINIC, ProfessionalType::LABORATORY], true)) {
             // Allow either an ID (existing user) OR details (name + crmv)
             $rules['technical_responsible_id'] = 'nullable|exists:users,id';
             $rules['technical_responsible_name'] = 'required_without:technical_responsible_id|nullable|string';
@@ -234,7 +255,7 @@ class RegistrationCompletionController extends Controller
 
         $validated = $request->validate($rules);
 
-        \Log::info("Validation passed", ['cnpj' => $validated['cnpj']]);
+        \Log::info('Validation passed', ['cnpj' => $validated['cnpj']]);
 
         // Geocode the address (non-blocking)
         $coords = $this->geocodeAddress($validated);
@@ -256,17 +277,13 @@ class RegistrationCompletionController extends Controller
             $updateData['longitude'] = $coords['longitude'];
         }
 
+        // location (geography) e sincronizada automaticamente pelo trait HasGeoPoint.
         $user->update($updateData);
-
-        // Set PostGIS location column if coordinates are available
-        if ($coords) {
-            $this->updatePostGISLocation($user, $coords);
-        }
 
         // BULLETPROOF FIX: Use updateOrCreate to handle auto-saved records
         $professionalData = [
             'user_id' => $user->id,
-            'professional_type' => $user->user_type,
+            'professional_type' => $professionalType,
             'business_name' => $validated['business_name'],
             'cnpj' => $validated['cnpj'],
             'opening_hours' => $validated['opening_hours'],
@@ -283,28 +300,28 @@ class RegistrationCompletionController extends Controller
             'technical_responsible_crmv_state' => $validated['technical_responsible_crmv_state'] ?? null,
         ];
 
-        \Log::info("Creating/Updating professional", [
+        \Log::info('Creating/Updating professional', [
             'user_id' => $user->id,
-            'cnpj' => $professionalData['cnpj']
+            'cnpj' => $professionalData['cnpj'],
         ]);
 
         // Check if record exists (from auto-save)
         $existing = Professional::where('user_id', $user->id)->first();
 
         if ($existing) {
-            \Log::info("Found existing professional record - UPDATING", [
+            \Log::info('Found existing professional record - UPDATING', [
                 'professional_id' => $existing->id,
                 'existing_cnpj' => $existing->cnpj,
-                'new_cnpj' => $professionalData['cnpj']
+                'new_cnpj' => $professionalData['cnpj'],
             ]);
 
             $existing->update($professionalData);
         } else {
-            \Log::info("No existing record - CREATING NEW");
+            \Log::info('No existing record - CREATING NEW');
             Professional::create($professionalData);
         }
 
-        \Log::info("=== COMPLETE GENERIC PROFESSIONAL END (SUCCESS) ===");
+        \Log::info('=== COMPLETE GENERIC PROFESSIONAL END (SUCCESS) ===');
 
         return response()->json([
             'message' => 'Professional profile completed successfully!',
@@ -382,7 +399,7 @@ class RegistrationCompletionController extends Controller
      * Returns coordinates array or null if geocoding fails.
      * This is non-blocking: failures are logged but do not interrupt registration.
      *
-     * @param array $validated Validated request data containing address fields
+     * @param  array  $validated  Validated request data containing address fields
      * @return array{latitude: float, longitude: float}|null
      */
     private function geocodeAddress(array $validated): ?array
@@ -408,31 +425,6 @@ class RegistrationCompletionController extends Controller
             ]);
 
             return null;
-        }
-    }
-
-    /**
-     * Update the PostGIS geography location column on the user record.
-     * Uses a raw query since Eloquent does not natively handle geography types.
-     *
-     * @param User $user
-     * @param array{latitude: float, longitude: float} $coords
-     */
-    private function updatePostGISLocation(User $user, array $coords): void
-    {
-        try {
-            DB::table('users')
-                ->where('id', $user->id)
-                ->update([
-                    'location' => DB::raw(
-                        "ST_SetSRID(ST_MakePoint({$coords['longitude']}, {$coords['latitude']}), 4326)::geography"
-                    ),
-                ]);
-        } catch (\Throwable $e) {
-            Log::warning('RegistrationCompletionController: Failed to update PostGIS location column', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage(),
-            ]);
         }
     }
 }

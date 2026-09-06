@@ -3,9 +3,11 @@
 namespace App\Services\Medical;
 
 use App\Models\Exam;
+use App\Models\ExamImage;
 use App\Models\Pet;
 use App\Models\User;
 use App\Services\FileUploadService;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
 final class ExamService
@@ -46,30 +48,48 @@ final class ExamService
             ]);
         }
 
-        if (!$exam->isCompleted()) {
+        if (! $exam->isCompleted()) {
             $exam->complete();
         }
 
         // TODO: Notify pet owner about results
     }
 
-    public function addImages(Exam $exam, array $files, int $userId): void
+    /**
+     * Attach uploaded files (PDFs / images) to an exam.
+     *
+     * Files are stored on a PRIVATE disk. Controllers must have already authorized
+     * the caller via AuthorizesPetAccess::resolvePetForWrite (tutor OR vet with
+     * WRITE/FULL grant) before calling this.
+     *
+     * @param  array<int, array{file: UploadedFile, type?: string}>  $files
+     * @return array<int, ExamImage>
+     */
+    public function addImages(Exam $exam, array $files, int $uploaderId): array
     {
-        foreach ($files as $file) {
-            $path = $this->fileUploadService->uploadFile(
-                $file['file'],
-                'exams',
-                $userId
-            );
+        $disk = $this->fileUploadService->privateDisk();
+        $created = [];
 
-            $exam->images()->create([
+        foreach ($files as $file) {
+            /** @var UploadedFile $uploaded */
+            $uploaded = $file['file'];
+
+            $path = $this->fileUploadService->uploadForExam($uploaded, $exam->id, $uploaderId);
+
+            $created[] = $exam->images()->create([
+                'uploader_id' => $uploaderId,
+                'disk' => $disk,
                 'file_path' => $path,
-                'file_name' => $file['file']->getClientOriginalName(),
-                'mime_type' => $file['file']->getMimeType(),
-                'file_size' => $file['file']->getSize(),
+                // NUNCA usar o original_name direto no disco — mas guardar como metadado
+                // para exibir ao usuário é ok (é escapado no frontend).
+                'file_name' => $uploaded->getClientOriginalName(),
+                'mime_type' => $uploaded->getMimeType(),
+                'file_size' => $uploaded->getSize(),
                 'image_type' => $file['type'] ?? null,
             ]);
         }
+
+        return $created;
     }
 
     public function getPetExams(int $petId)
@@ -109,4 +129,3 @@ final class ExamService
         ];
     }
 }
-

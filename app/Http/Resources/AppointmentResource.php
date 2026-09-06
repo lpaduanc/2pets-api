@@ -12,11 +12,9 @@ class AppointmentResource extends JsonResource
         return [
             'id' => $this->id,
 
-            // Core fields
-            'appointment_date' => $this->appointment_date?->format('Y-m-d'),
-            'appointment_time' => $this->appointment_time instanceof \DateTimeInterface
-                ? $this->appointment_time->format('H:i')
-                : $this->appointment_time,
+            // Core fields — appointment_date is stored as full datetime (see BookingService::createBooking)
+            'appointment_date' => $this->appointment_date?->toISOString(),
+            'appointment_time' => $this->appointment_date?->format('H:i'),
             'duration' => $this->duration,
             'type' => $this->type,
             'status' => $this->status,
@@ -25,6 +23,9 @@ class AppointmentResource extends JsonResource
             'reason' => $this->reason,
             'notes' => $this->notes,
             'price' => $this->price ? (float) $this->price : null,
+            'cancellation_reason' => $this->cancellation_reason,
+            'cancelled_at' => $this->cancelled_at?->toISOString(),
+            'confirmed_at' => $this->confirmed_at?->toISOString(),
 
             // Formatted helpers for the frontend
             'status_label' => $this->getStatusLabel(),
@@ -49,6 +50,7 @@ class AppointmentResource extends JsonResource
     private function getStatusLabel(): string
     {
         return match ($this->status) {
+            'pending' => 'Aguardando confirmacao',
             'scheduled' => 'Agendado',
             'confirmed' => 'Confirmado',
             'in_progress' => 'Em andamento',

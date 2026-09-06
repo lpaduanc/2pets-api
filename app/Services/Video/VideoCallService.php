@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 final class VideoCallService
 {
     private ?string $apiKey;
+
     private string $baseUrl = 'https://api.daily.co/v1';
 
     public function __construct()
@@ -18,17 +19,23 @@ final class VideoCallService
     }
 
     public function createConsultation(
-        Appointment $appointment,
-        bool $recordingEnabled = false
+        ?Appointment $appointment,
+        bool $recordingEnabled = false,
+        string $teleatendimentoType = 'teletriagem',
+        ?int $previousAppointmentId = null,
+        ?int $vetCounterpartId = null,
     ): VideoConsultation {
         $roomId = $this->createRoom($appointment, $recordingEnabled);
 
         return VideoConsultation::create([
-            'appointment_id' => $appointment->id,
+            'appointment_id' => $appointment?->id,
             'room_id' => $roomId,
             'provider' => 'daily',
             'status' => 'scheduled',
             'recording_enabled' => $recordingEnabled,
+            'teleatendimento_type' => $teleatendimentoType,
+            'previous_appointment_id' => $previousAppointmentId,
+            'vet_counterpart_id' => $vetCounterpartId,
         ]);
     }
 
@@ -37,7 +44,7 @@ final class VideoCallService
         int $userId,
         bool $isOwner = false
     ): string {
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             return $this->generateMockToken($consultation->room_id, $userId);
         }
 
@@ -69,7 +76,7 @@ final class VideoCallService
 
     public function deleteRoom(string $roomId): void
     {
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             return;
         }
 
@@ -80,9 +87,9 @@ final class VideoCallService
 
     private function createRoom(Appointment $appointment, bool $recordingEnabled): string
     {
-        $roomName = "consultation-{$appointment->id}-" . Str::random(8);
+        $roomName = "consultation-{$appointment->id}-".Str::random(8);
 
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             return $roomName;
         }
 
@@ -118,4 +125,3 @@ final class VideoCallService
         ]));
     }
 }
-

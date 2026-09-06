@@ -51,7 +51,7 @@ final class NotificationService
             return $this->getDefaultChannels($type);
         }
 
-        return $preferences->map(fn($pref) => NotificationChannel::from($pref->channel))->toArray();
+        return $preferences->map(fn ($pref) => NotificationChannel::from($pref->channel))->toArray();
     }
 
     private function getDefaultChannels(NotificationType $type): array
@@ -73,7 +73,8 @@ final class NotificationService
                 NotificationChannel::EMAIL,
                 NotificationChannel::PUSH,
             ],
-            NotificationType::NEW_MESSAGE => [
+            NotificationType::NEW_MESSAGE,
+            NotificationType::LOST_PET_ALERT_NEARBY => [
                 NotificationChannel::PUSH,
             ],
             default => [NotificationChannel::EMAIL],
@@ -117,4 +118,3 @@ final class NotificationService
         ));
     }
 }
-

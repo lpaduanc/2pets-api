@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ProfessionalType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -21,6 +22,12 @@ class Professional extends Model
         'description',
         'crmv',
         'crmv_state',
+        // Badge "verificado" (CLAUDE.md §2) — só é setado de verdade via
+        // `Professional::where(...)->update()` no AdminController::verifyDocument, que é uma
+        // escrita em massa via query builder e por isso ignora $fillable. Ainda assim precisa
+        // estar aqui: qualquer escrita via instância (Model::create()/Model::update(), inclusive
+        // em teste) passa pela guarda de mass assignment.
+        'is_crmv_verified',
         'university',
         'graduation_year',
         'courses',
@@ -40,6 +47,7 @@ class Professional extends Model
     ];
 
     protected $casts = [
+        'professional_type' => ProfessionalType::class,
         'specialties' => 'array',
         'working_days' => 'array',
         'courses' => 'array',

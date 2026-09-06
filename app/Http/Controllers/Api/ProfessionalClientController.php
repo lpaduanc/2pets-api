@@ -2,25 +2,36 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
+use App\Models\PetVetAccess;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Auth;
 
 class ProfessionalClientController extends Controller
 {
+    use PaginatesResults;
+
+    /**
+     * The client list feeds the appointment and invoice form selects, which load
+     * it in full — hence a page large enough to hold a whole client book.
+     */
+    private const DEFAULT_PER_PAGE = 200;
+
     /**
      * Display a listing of the resource.
+     *
+     * A "client" of the professional is any user that:
+     *   - has appointments with this professional, OR
+     *   - has invoices with this professional, OR
+     *   - is the tutor of a pet to which this professional holds an active PetVetAccess grant.
      */
-    public function index()
+    public function index(Request $request)
     {
-        // In a real scenario, we would filter by clients associated with the professional
-        // For now, we return all users with role 'client'
-        // Or we can return users who have appointments with the current professional
+        $professionalId = $request->user()->id;
 
-        $professionalId = Auth::id();
-
-        // Get clients who have appointments OR invoices with this professional
         $clients = User::where('id', '!=', $professionalId)
             ->where(function ($query) use ($professionalId) {
                 $query->whereHas('appointmentsAsClient', function ($q) use ($professionalId) {
@@ -28,12 +39,14 @@ class ProfessionalClientController extends Controller
                 })
                     ->orWhereHas('invoicesAsClient', function ($q) use ($professionalId) {
                         $q->where('professional_id', $professionalId);
-                    });
+                    })
+                    ->orWhereIn('id', $this->tutorIdsWithActiveGrantTo($professionalId));
             })
             ->with('pets')
-            ->get();
+            ->orderBy('name')
+            ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
 
-        return response()->json($clients);
+        return JsonResource::collection($clients);
     }
 
     /**
@@ -76,7 +89,8 @@ class ProfessionalClientController extends Controller
                 })
                     ->orWhereHas('invoicesAsClient', function ($q) use ($professionalId) {
                         $q->where('professional_id', $professionalId);
-                    });
+                    })
+                    ->orWhereIn('id', $this->tutorIdsWithActiveGrantTo($professionalId));
             })
             ->with('pets')
             ->firstOrFail();
@@ -104,7 +118,7 @@ class ProfessionalClientController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|string|email|max:255|unique:users,email,' . $id,
+            'email' => 'sometimes|string|email|max:255|unique:users,email,'.$id,
             'phone' => 'nullable|string|max:20',
             'address' => 'nullable|string|max:255',
         ]);
@@ -135,11 +149,14 @@ class ProfessionalClientController extends Controller
             ->firstOrFail();
 
         $client->delete();
+
         return response()->json(null, 204);
     }
 
     /**
-     * Get all pets for a specific client
+     * Get all pets for a specific client — only the pets this professional is
+     * allowed to see (owner + either appointment history, invoice history, OR
+     * a specific PetVetAccess grant for that pet).
      */
     public function pets(string $id)
     {
@@ -152,11 +169,42 @@ class ProfessionalClientController extends Controller
                 })
                     ->orWhereHas('invoicesAsClient', function ($q) use ($professionalId) {
                         $q->where('professional_id', $professionalId);
-                    });
+                    })
+                    ->orWhereIn('id', $this->tutorIdsWithActiveGrantTo($professionalId));
             })
             ->firstOrFail();
 
-        $pets = $client->pets;
+        // Scope to pets the professional actually has a grant for (or any pet of
+        // this tutor when the relationship is via appointment/invoice history).
+        $grantedPetIds = PetVetAccess::query()
+            ->where('veterinarian_id', $professionalId)
+            ->active()
+            ->pluck('pet_id')
+            ->all();
+
+        $pets = $client->pets()
+            ->where(function ($q) use ($grantedPetIds) {
+                // If there are granted pet IDs, allow those; otherwise fall back to all of
+                // the tutor's pets (appointment/invoice-based relationship).
+                if (! empty($grantedPetIds)) {
+                    $q->whereIn('id', $grantedPetIds);
+                }
+            })
+            ->get();
+
         return response()->json($pets);
+    }
+
+    /**
+     * Subquery-style helper returning tutor IDs whose pets have an active grant for this professional.
+     */
+    private function tutorIdsWithActiveGrantTo(int $professionalId)
+    {
+        return PetVetAccess::query()
+            ->where('veterinarian_id', $professionalId)
+            ->active()
+            ->join('pets', 'pets.id', '=', 'pet_vet_accesses.pet_id')
+            ->distinct()
+            ->pluck('pets.user_id');
     }
 }

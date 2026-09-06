@@ -2,23 +2,26 @@
 
 namespace App\Services\LostPet;
 
-use App\Models\LostPetAlert;
+use App\Jobs\NotifyNearbyUsersOfLostPetAlert;
 use App\Models\FoundPetReport;
+use App\Models\LostPetAlert;
 use App\Models\Pet;
 use App\Models\User;
 use App\Services\Notification\NotificationService;
+use App\Services\Search\GeoLocationService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class LostPetAlertService
 {
     public function __construct(
-        private NotificationService $notificationService
+        private NotificationService $notificationService,
+        private GeoLocationService $geoLocationService
     ) {}
 
     public function createAlert(Pet $pet, array $data): LostPetAlert
     {
-        return DB::transaction(function () use ($pet, $data) {
+        $alert = DB::transaction(function () use ($pet, $data) {
             // Mark pet as lost
             $pet->update([
                 'is_lost' => true,
@@ -26,18 +29,20 @@ final class LostPetAlertService
                 'lost_alert_message' => $data['description'] ?? null,
             ]);
 
-            $alert = LostPetAlert::create([
+            return LostPetAlert::create([
                 'pet_id' => $pet->id,
                 'user_id' => $pet->user_id,
                 'status' => 'active',
                 ...$data,
             ]);
-
-            // Notify nearby users
-            $this->notifyNearbyUsers($alert);
-
-            return $alert;
         });
+
+        // Notificar usuarios proximos so DEPOIS do commit: full scan de
+        // `users` + N notificacoes nao pode segurar o lock da transacao que
+        // criou o alerta (ver notifyNearbyUsers()).
+        $this->notifyNearbyUsers($alert);
+
+        return $alert;
     }
 
     public function reportFound(
@@ -55,8 +60,8 @@ final class LostPetAlertService
         $this->notificationService->send(
             $alert->user,
             'lost_pet_report',
-            'Possível Avistamento do ' . $alert->pet->name,
-            "Alguém reportou ter visto seu pet! Verifique os detalhes no app.",
+            'Possível Avistamento do '.$alert->pet->name,
+            'Alguém reportou ter visto seu pet! Verifique os detalhes no app.',
             ['email', 'push'],
             ['alert_id' => $alert->id, 'report_id' => $report->id]
         );
@@ -64,22 +69,23 @@ final class LostPetAlertService
         return $report;
     }
 
+    /**
+     * `ST_DWithin` no WHERE aproveita o indice GIST PARCIAL de
+     * `lost_pet_alerts.last_seen_geo` (`WHERE status = 'active'`, migration
+     * `2026_09_06_000202_...`) — o Haversine cru anterior usava `HAVING`,
+     * avaliado apos a projecao para toda linha, sem indice possivel.
+     */
     public function getNearbyAlerts(float $latitude, float $longitude, float $radiusKm = 10): Collection
     {
+        $dWithin = $this->geoLocationService->dWithinExpression('lost_pet_alerts.last_seen_geo', $latitude, $longitude, $radiusKm);
+        $distance = $this->geoLocationService->distanceExpression('lost_pet_alerts.last_seen_geo', $latitude, $longitude);
+
         return LostPetAlert::select('lost_pet_alerts.*')
-            ->selectRaw('
-                (6371 * acos(
-                    cos(radians(?)) * 
-                    cos(radians(last_seen_latitude)) * 
-                    cos(radians(last_seen_longitude) - radians(?)) + 
-                    sin(radians(?)) * 
-                    sin(radians(last_seen_latitude))
-                )) AS distance
-            ', [$latitude, $longitude, $latitude])
+            ->selectRaw("({$distance['sql']}) / 1000 AS distance_km", $distance['bindings'])
             ->where('status', 'active')
-            ->having('distance', '<=', $radiusKm)
+            ->whereRaw($dWithin['sql'], $dWithin['bindings'])
             ->with(['pet', 'user'])
-            ->orderBy('distance')
+            ->orderBy('distance_km')
             ->get();
     }
 
@@ -99,39 +105,24 @@ final class LostPetAlertService
             ->get();
     }
 
+    /**
+     * Varre `users` inteira (~200k linhas no benchmark) por proximidade — a
+     * mesma consulta usava Haversine cru em `HAVING`, full scan sempre. Agora
+     * `ST_DWithin` usa o indice GIST de `users.location` (migration
+     * `2026_04_04_000002_...`).
+     *
+     * O disparo em si roda no worker (`queue:work`), nao aqui: com o volume
+     * de usuarios, notificar de forma sincrona bloquearia o request que
+     * criou o alerta pelo tempo de notificar todo mundo dentro do raio. Ver
+     * {@see NotifyNearbyUsersOfLostPetAlert::notifyUsersWithinRadius()} para
+     * o `chunkById` que efetivamente varre e notifica.
+     */
     private function notifyNearbyUsers(LostPetAlert $alert): void
     {
-        if (!$alert->last_seen_latitude || !$alert->last_seen_longitude) {
+        if (! $alert->last_seen_latitude || ! $alert->last_seen_longitude) {
             return;
         }
 
-        // Find users within alert radius
-        $nearbyUsers = User::select('users.*')
-            ->selectRaw('
-                (6371 * acos(
-                    cos(radians(?)) * 
-                    cos(radians(latitude)) * 
-                    cos(radians(longitude) - radians(?)) + 
-                    sin(radians(?)) * 
-                    sin(radians(latitude))
-                )) AS distance
-            ', [$alert->last_seen_latitude, $alert->last_seen_longitude, $alert->last_seen_latitude])
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
-            ->having('distance', '<=', $alert->alert_radius_km)
-            ->where('id', '!=', $alert->user_id)
-            ->get();
-
-        foreach ($nearbyUsers as $user) {
-            $this->notificationService->send(
-                $user,
-                'lost_pet_alert',
-                'Pet Perdido na sua Região',
-                "{$alert->pet->name} está perdido próximo de você. Ajude a encontrá-lo!",
-                ['push'],
-                ['alert_id' => $alert->id]
-            );
-        }
+        NotifyNearbyUsersOfLostPetAlert::dispatch($alert->id);
     }
 }
-

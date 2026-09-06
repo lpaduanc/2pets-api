@@ -14,6 +14,7 @@ class PetWeightHistory extends Model
 
     protected $fillable = [
         'pet_id',
+        'measured_by_user_id',
         'weight',
         'measured_at',
         'notes',
@@ -34,6 +35,11 @@ class PetWeightHistory extends Model
     public function pet(): BelongsTo
     {
         return $this->belongsTo(Pet::class);
+    }
+
+    public function measuredBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'measured_by_user_id');
     }
 
     // ──────────────────────────────────────────────

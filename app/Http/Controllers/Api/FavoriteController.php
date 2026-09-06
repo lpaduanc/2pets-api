@@ -17,12 +17,16 @@ class FavoriteController extends Controller
             ->latest()
             ->paginate(15);
 
+        // `through()` keeps the paginator shape, nesting items under data.data.data
+        // on the client. Flatten to a plain array of items.
+        $items = $favorites->getCollection()->map(fn ($fav) => [
+            'id' => $fav->id,
+            'professional' => new ProfessionalSearchResource($fav->professional),
+            'created_at' => $fav->created_at,
+        ])->values();
+
         return response()->json([
-            'data' => $favorites->through(fn ($fav) => [
-                'id' => $fav->id,
-                'professional' => new ProfessionalSearchResource($fav->professional),
-                'created_at' => $fav->created_at,
-            ]),
+            'data' => $items,
             'meta' => [
                 'current_page' => $favorites->currentPage(),
                 'last_page' => $favorites->lastPage(),
@@ -41,6 +45,7 @@ class FavoriteController extends Controller
 
         if ($existing) {
             $existing->delete();
+
             return response()->json([
                 'favorited' => false,
                 'message' => 'Profissional removido dos favoritos',

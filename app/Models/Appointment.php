@@ -4,13 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Appointment extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'professional_id',
         'client_id',
         'pet_id',
+        'service_id',
         'appointment_date',
         'appointment_time',
         'duration',
@@ -19,16 +23,23 @@ class Appointment extends Model
         'reason',
         'notes',
         'price',
+        'booking_source',
+        'requires_confirmation',
+        'confirmed_at',
+        'cancelled_at',
+        'cancellation_reason',
     ];
 
     protected $casts = [
-        'appointment_date' => 'date',
+        'appointment_date' => 'datetime',
         'appointment_time' => 'datetime:H:i',
         'duration' => 'integer',
         'price' => 'decimal:2',
+        'requires_confirmation' => 'boolean',
+        'confirmed_at' => 'datetime',
+        'cancelled_at' => 'datetime',
     ];
 
-    // Relationships
     public function professional(): BelongsTo
     {
         return $this->belongsTo(User::class, 'professional_id');
@@ -42,6 +53,11 @@ class Appointment extends Model
     public function pet(): BelongsTo
     {
         return $this->belongsTo(Pet::class);
+    }
+
+    public function service(): BelongsTo
+    {
+        return $this->belongsTo(Service::class);
     }
 
     public function medicalRecords()
@@ -59,16 +75,22 @@ class Appointment extends Model
         return $this->hasMany(Vaccination::class);
     }
 
-    // Scopes
+    /**
+     * `whereDate()` casts the column, which blocks index usage on this
+     * `datetime` column — a plain range is sargable and semantically identical.
+     */
     public function scopeToday($query)
     {
-        return $query->whereDate('appointment_date', today());
+        $today = today();
+
+        return $query->where('appointment_date', '>=', $today)
+            ->where('appointment_date', '<', $today->copy()->addDay());
     }
 
     public function scopeUpcoming($query)
     {
         return $query->where('appointment_date', '>=', today())
-            ->whereIn('status', ['scheduled', 'confirmed']);
+            ->whereIn('status', ['scheduled', 'confirmed', 'pending']);
     }
 
     public function scopeForProfessional($query, $professionalId)

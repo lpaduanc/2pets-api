@@ -16,6 +16,7 @@ enum NotificationType: string
     case NEW_MESSAGE = 'new_message';
     case REVIEW_REQUEST = 'review_request';
     case WAITLIST_AVAILABLE = 'waitlist_available';
+    case LOST_PET_ALERT_NEARBY = 'lost_pet_alert_nearby';
 
     public function label(): string
     {
@@ -32,7 +33,7 @@ enum NotificationType: string
             self::NEW_MESSAGE => 'Nova mensagem',
             self::REVIEW_REQUEST => 'Solicitação de avaliação',
             self::WAITLIST_AVAILABLE => 'Horário disponível',
+            self::LOST_PET_ALERT_NEARBY => 'Pet perdido na sua região',
         };
     }
 }
-

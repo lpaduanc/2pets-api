@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Payment\CreatePaymentRequest;
+use App\Models\Coupon;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\Payment\PaymentService;
@@ -16,13 +18,9 @@ class PaymentController extends Controller
         private readonly PaymentService $paymentService
     ) {}
 
-    public function create(Request $request): JsonResponse
+    public function create(CreatePaymentRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'invoice_id' => 'required|exists:invoices,id',
-            'payment_method' => 'required|string|in:pix,credit_card,debit_card,boleto',
-            'installments' => 'nullable|integer|min:1|max:12',
-        ]);
+        $validated = $request->validated();
 
         $invoice = Invoice::findOrFail($validated['invoice_id']);
 
@@ -41,9 +39,9 @@ class PaymentController extends Controller
             $installments = $validated['installments'] ?? 1;
 
             // Validate installments
-            if ($installments > 1 && !$method->allowsInstallments()) {
+            if ($installments > 1 && ! $method->allowsInstallments()) {
                 return response()->json([
-                    'message' => 'Installments not allowed for this payment method'
+                    'message' => 'Installments not allowed for this payment method',
                 ], 422);
             }
 
@@ -84,6 +82,32 @@ class PaymentController extends Controller
         return response()->json(['data' => $payment]);
     }
 
+    public function validateCoupon(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'code' => 'required|string|max:20',
+        ]);
+
+        $coupon = Coupon::where('code', strtoupper($validated['code']))->first();
+
+        if (! $coupon || ! $coupon->isValid()) {
+            return response()->json([
+                'valid' => false,
+                'message' => 'Cupom invalido ou expirado',
+            ]);
+        }
+
+        return response()->json([
+            'valid' => true,
+            'code' => $coupon->code,
+            'discount_type' => $coupon->discount_type,
+            'discount_value' => (float) $coupon->discount_value,
+            'discount_amount' => $coupon->discount_type === 'fixed'
+                ? (float) $coupon->discount_value
+                : null,
+        ]);
+    }
+
     public function refund(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
@@ -116,4 +140,3 @@ class PaymentController extends Controller
         }
     }
 }
-

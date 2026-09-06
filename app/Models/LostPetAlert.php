@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasGeoPoint;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LostPetAlert extends Model
 {
+    use HasGeoPoint;
+
     protected $fillable = [
         'pet_id',
         'user_id',
@@ -105,5 +108,25 @@ class LostPetAlert extends Model
     {
         return $this->last_seen_at->diffInDays(now());
     }
-}
 
+    /**
+     * `lost_pet_alerts` usa nomes de coluna diferentes de `users`/`locations`
+     * (padrao do `HasGeoPoint`). A coluna geografica se chama `last_seen_geo`,
+     * nao `last_seen_location` — esse nome ja e ocupado por uma coluna varchar
+     * existente (o endereco textual digitado pelo tutor).
+     */
+    protected function geoLatitudeColumn(): string
+    {
+        return 'last_seen_latitude';
+    }
+
+    protected function geoLongitudeColumn(): string
+    {
+        return 'last_seen_longitude';
+    }
+
+    protected function geoLocationColumn(): string
+    {
+        return 'last_seen_geo';
+    }
+}

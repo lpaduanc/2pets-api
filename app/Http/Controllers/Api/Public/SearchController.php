@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Api\Public;
 
 use App\DataTransferObjects\SearchFiltersDTO;
+use App\Enums\ProfessionalType;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProfessionalSearchResource;
+use App\Models\User;
+use App\Services\Search\GeoLocationService;
 use App\Services\Search\ProfessionalSearchService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -13,7 +17,8 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 class SearchController extends Controller
 {
     public function __construct(
-        private readonly ProfessionalSearchService $searchService
+        private readonly ProfessionalSearchService $searchService,
+        private readonly GeoLocationService $geoLocationService,
     ) {}
 
     public function search(Request $request): AnonymousResourceCollection
@@ -54,7 +59,7 @@ class SearchController extends Controller
 
     public function featured(Request $request): AnonymousResourceCollection
     {
-        $query = \App\Models\User::query()
+        $query = User::query()
             ->where('role', 'professional')
             ->where('profile_completed', true)
             ->where('registration_status', 'approved')
@@ -62,19 +67,35 @@ class SearchController extends Controller
             ->whereHas('professional', fn ($q) => $q->where('is_featured', true))
             ->with(['professional', 'professional.services']);
 
-        if ($request->has('latitude') && $request->has('longitude')) {
-            $lat = (float) $request->latitude;
-            $lng = (float) $request->longitude;
-            $query->selectRaw(
-                "users.*, ST_Distance(location, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) / 1000 AS distance_km",
-                [$lng, $lat]
-            )->orderByRaw('distance_km ASC NULLS LAST');
-        } else {
-            $query->select('users.*')
-                ->selectRaw('NULL::double precision AS distance_km');
-        }
+        $this->applyFeaturedDistance($query, $request);
 
         return ProfessionalSearchResource::collection($query->limit(10)->get());
+    }
+
+    /**
+     * Mesma expressão PostGIS usada por `ProfessionalSearchService::buildBaseQuery()`,
+     * delegada a `GeoLocationService` em vez de duplicada aqui — duas implementações da
+     * mesma expressão divergem cedo ou tarde e uma delas para de casar o índice parcial
+     * GIST da Fase 4 (`idx_users_visible_professional_location`) em silêncio.
+     */
+    private function applyFeaturedDistance(Builder $query, Request $request): void
+    {
+        if (! $request->has('latitude') || ! $request->has('longitude')) {
+            $query->select('users.*')->selectRaw('NULL::double precision AS distance_km');
+
+            return;
+        }
+
+        $distance = $this->geoLocationService->distanceExpression(
+            'users.location',
+            (float) $request->latitude,
+            (float) $request->longitude
+        );
+
+        $query->selectRaw(
+            "users.*, ({$distance['sql']}) / 1000 AS distance_km",
+            $distance['bindings']
+        )->orderByRaw('distance_km ASC NULLS LAST');
     }
 
     public function categories(): JsonResponse
@@ -99,22 +120,22 @@ class SearchController extends Controller
             'query' => 'nullable|string|max:255',
             'sort_by' => 'nullable|string|in:distance,rating,relevance,price_low,price_high',
             'per_page' => 'nullable|integer|min:1|max:50',
+            'available_now' => 'nullable|boolean',
+            'page' => 'nullable|integer|min:1',
         ]);
     }
 
+    /**
+     * Os 7 tipos canônicos vêm de `ProfessionalType`, nunca de uma lista redigitada —
+     * ver `docs/taxonomia-professional-type.md`. `pet_sitter`/`pharmacy`/`other` ficam
+     * fora até existir cadastro real (oferecê-los aqui sempre devolveria zero resultados).
+     */
     private function getProfessionalTypes(): array
     {
-        return [
-            ['value' => 'veterinarian', 'label' => 'Veterinário'],
-            ['value' => 'clinic', 'label' => 'Clínica Veterinária'],
-            ['value' => 'petshop', 'label' => 'Pet Shop'],
-            ['value' => 'groomer', 'label' => 'Banho e Tosa'],
-            ['value' => 'trainer', 'label' => 'Adestrador'],
-            ['value' => 'pet_sitter', 'label' => 'Pet Sitter'],
-            ['value' => 'daycare', 'label' => 'Creche/Hotel'],
-            ['value' => 'laboratory', 'label' => 'Laboratório'],
-            ['value' => 'pharmacy', 'label' => 'Farmácia Veterinária'],
-        ];
+        return array_map(
+            fn (ProfessionalType $type): array => ['value' => $type->value, 'label' => $type->label()],
+            ProfessionalType::cases()
+        );
     }
 
     private function getServiceCategories(): array

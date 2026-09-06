@@ -6,9 +6,12 @@ final class QRCodeService
 {
     public function generateQRCodeUrl(string $data): string
     {
-        // Using Google Charts API for QR code generation (no dependencies)
+        // A Google desligou a Image Charts API (`chart.googleapis.com/chart`)
+        // em marco de 2024, entao o QR de TODAS as carteirinhas vinha quebrado:
+        // a imagem falhava e o cartao exibia um retangulo branco vazio.
         $encodedData = urlencode($data);
-        return "https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl={$encodedData}&choe=UTF-8";
+
+        return "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$encodedData}";
     }
 
     public function generatePetCardUrl(string $publicId): string
@@ -20,7 +23,7 @@ final class QRCodeService
     {
         // Simple inline SVG QR code placeholder
         $url = $this->generatePetCardUrl($data);
-        
+
         return <<<SVG
         <svg width="{$size}" height="{$size}" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
             <rect fill="#ffffff" width="200" height="200"/>
@@ -34,4 +37,3 @@ final class QRCodeService
         SVG;
     }
 }
-

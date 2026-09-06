@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\User;
 use App\Models\Professional;
+use App\Models\User;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 class ProfessionalSeeder extends Seeder
@@ -35,10 +35,10 @@ class ProfessionalSeeder extends Seeder
         );
 
         // Update location column for PostGIS spatial queries
-        \Illuminate\Support\Facades\DB::statement("
+        \Illuminate\Support\Facades\DB::statement('
             UPDATE users SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
             WHERE id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL AND location IS NULL
-        ", [$professional->id]);
+        ', [$professional->id]);
 
         // Create professional profile
         Professional::updateOrCreate(
@@ -84,10 +84,10 @@ class ProfessionalSeeder extends Seeder
             ]
         );
 
-        \Illuminate\Support\Facades\DB::statement("
+        \Illuminate\Support\Facades\DB::statement('
             UPDATE users SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
             WHERE id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL AND location IS NULL
-        ", [$company->id]);
+        ', [$company->id]);
 
         // Create petshop professional profile
         Professional::updateOrCreate(
@@ -131,16 +131,16 @@ class ProfessionalSeeder extends Seeder
             ]
         );
 
-        \Illuminate\Support\Facades\DB::statement("
+        \Illuminate\Support\Facades\DB::statement('
             UPDATE users SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
             WHERE id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL AND location IS NULL
-        ", [$vet2->id]);
+        ', [$vet2->id]);
 
         Professional::updateOrCreate(
             ['user_id' => $vet2->id],
             [
                 'business_name' => 'Dra. Ana - Cardiologia Veterinária',
-                'professional_type' => 'veterinarian',
+                'professional_type' => 'vet',
                 'description' => 'Especialista em cardiologia veterinária com 15 anos de experiência. Atendimento domiciliar em São Paulo.',
                 'crmv' => '67890-SP',
                 'crmv_state' => 'SP',
@@ -179,16 +179,16 @@ class ProfessionalSeeder extends Seeder
             ]
         );
 
-        \Illuminate\Support\Facades\DB::statement("
+        \Illuminate\Support\Facades\DB::statement('
             UPDATE users SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
             WHERE id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL AND location IS NULL
-        ", [$vet3->id]);
+        ', [$vet3->id]);
 
         Professional::updateOrCreate(
             ['user_id' => $vet3->id],
             [
                 'business_name' => 'Dr. Marcos - Ortopedia Animal',
-                'professional_type' => 'veterinarian',
+                'professional_type' => 'vet',
                 'description' => 'Ortopedista veterinário especializado em cirurgias de coluna e articulações.',
                 'crmv' => '45678-SP',
                 'crmv_state' => 'SP',
