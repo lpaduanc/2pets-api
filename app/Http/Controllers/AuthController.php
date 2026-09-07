@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ProfessionalType;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
@@ -55,14 +56,13 @@ class AuthController extends Controller
 
         $user = User::create($userData);
 
-        // Assign spatie role based on user_type
-        $spatieRole = match ($validatedData['user_type']) {
-            'tutor' => 'tutor',
-            'vet' => 'vet_freelancer',
-            'clinic' => 'clinic_owner',
-            'petshop' => 'petshop_owner',
-            default => null,
-        };
+        // Autorização é decidida pelo papel Spatie; a taxonomia canônica de tipo de negócio
+        // dita qual papel. O match antigo cobria só 4 dos 9 valores possíveis de `user_type` —
+        // laboratory, pet_hotel, grooming e training ficavam SEM papel nenhum, e a conta
+        // nascia invisível para todo endpoint com `hasAnyRole()`.
+        $spatieRole = $validatedData['user_type'] === 'tutor'
+            ? 'tutor'
+            : ProfessionalType::tryFrom($validatedData['user_type'])?->defaultRoleName();
 
         if ($spatieRole) {
             try {

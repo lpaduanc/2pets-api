@@ -2,11 +2,25 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Prescription extends Model
 {
+    /** Receita é documento clínico: `destroy()` marca `deleted_at`, nunca apaga a linha. */
+    use SoftDeletes;
+
+    /**
+     * Relações exigidas por `PrescriptionResource`. Fica aqui porque `Model::preventLazyLoading()`
+     * está ativo fora de produção: qualquer caminho que devolva a Resource sem estes eager loads
+     * estoura, e uma lista só evita o N+1 em metade dos endpoints.
+     *
+     * @var list<string>
+     */
+    public const RESOURCE_RELATIONS = ['pet.user', 'professional'];
+
     protected $fillable = [
         'pet_id',
         'professional_id',
@@ -47,11 +61,29 @@ class Prescription extends Model
         return $this->belongsTo(MedicalRecord::class);
     }
 
-    public function scopeValid($query)
+    /**
+     * Receita sem prazo OU com validade a partir de hoje.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeValid(Builder $query): Builder
     {
-        return $query->where(function ($q) {
-            $q->whereNull('valid_until')
+        return $query->where(function (Builder $scoped): void {
+            $scoped->whereNull('valid_until')
                 ->orWhere('valid_until', '>=', today());
         });
+    }
+
+    /**
+     * Complemento exato de `scopeValid()`: só receita com prazo já passado.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeExpired(Builder $query): Builder
+    {
+        return $query->whereNotNull('valid_until')
+            ->where('valid_until', '<', today());
     }
 }

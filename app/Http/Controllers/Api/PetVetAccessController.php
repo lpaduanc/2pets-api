@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\DataTransferObjects\VetAccessRequestData;
 use App\Enums\VetAccessLevel;
+use App\Exceptions\PetAccess\InvalidVetAccessTransitionException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\PetVetAccess\AcceptVetAccessRequest;
+use App\Http\Requests\PetVetAccess\ChangeVetAccessLevelRequest;
 use App\Http\Requests\PetVetAccess\GrantVetAccessRequest;
 use App\Http\Requests\PetVetAccess\RequestVetAccessRequest;
 use App\Http\Resources\PetPatientResource;
@@ -14,15 +18,21 @@ use App\Models\PetDeworming;
 use App\Models\PetVetAccess;
 use App\Models\User;
 use App\Models\Vaccination;
-use App\Notifications\PetVetAccessRequested;
+use App\Services\PetAccess\PatientSearchFilter;
+use App\Services\PetAccess\VetAccessGrantService;
+use App\Services\PetAccess\VetAccessRequestService;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class PetVetAccessController extends Controller
 {
+    // A Controller base do projeto não traz o trait — sem ele, `$this->authorize()` seria
+    // "method not found" em runtime e a autorização por Policy simplesmente não aconteceria.
+    use AuthorizesRequests;
+
     /**
      * Tutor concede acesso ao veterinário para visualizar dados do pet.
      *
@@ -44,7 +54,7 @@ class PetVetAccessController extends Controller
 
         // Verifica se o veterinário existe e tem role adequada
         $vet = User::findOrFail($data['veterinarian_id']);
-        if (! $vet->hasAnyRole(['veterinarian', 'vet_freelancer', 'clinic_vet'])) {
+        if (! $vet->isVeterinarian()) {
             return response()->json([
                 'message' => 'O usuário informado não é um profissional veterinário.',
             ], 422);
@@ -76,7 +86,7 @@ class PetVetAccessController extends Controller
             'status' => PetVetAccess::STATUS_ACCEPTED,
         ]);
 
-        $access->load(['pet', 'veterinarian', 'grantor']);
+        $access->load(['pet', ...PetVetAccess::PARTICIPANT_RELATIONS]);
 
         return response()->json([
             'message' => 'Acesso concedido com sucesso.',
@@ -92,107 +102,51 @@ class PetVetAccessController extends Controller
      *   2. Vet iniciou atendimento e só tem o CPF do tutor → envia `tutor_cpf` + `pet_data`;
      *      o pet é criado em nome do tutor e a solicitação fica pendente.
      */
-    public function requestAccess(RequestVetAccessRequest $request): JsonResponse
+    public function requestAccess(RequestVetAccessRequest $request, VetAccessRequestService $service): JsonResponse
     {
-        $vet = $request->user();
-        $data = $request->validated();
+        $access = $service->request(
+            $request->user(),
+            VetAccessRequestData::fromValidated($request->validated())
+        );
 
-        if (! $vet->hasAnyRole(['veterinarian', 'vet_freelancer', 'clinic_vet'])) {
-            return response()->json(['message' => 'Apenas veterinários podem solicitar acesso a pets.'], 403);
-        }
-
-        return DB::transaction(function () use ($vet, $data) {
-            if (! empty($data['pet_id'])) {
-                $pet = Pet::findOrFail($data['pet_id']);
-                $tutor = User::findOrFail($pet->user_id);
-            } else {
-                $cpfClean = preg_replace('/\D/', '', (string) $data['tutor_cpf']);
-                $tutor = User::where('cpf', $cpfClean)->first();
-                if (! $tutor) {
-                    return response()->json([
-                        'message' => 'Nenhum tutor encontrado com este CPF. Oriente o tutor a se cadastrar na plataforma antes.',
-                    ], 404);
-                }
-
-                $pet = Pet::create(array_merge($data['pet_data'], ['user_id' => $tutor->id]));
-            }
-
-            // Dedupe: uma solicitação pendente ou aceita já existente para este vet+pet bloqueia nova solicitação.
-            $existing = PetVetAccess::where('pet_id', $pet->id)
-                ->where('veterinarian_id', $vet->id)
-                ->whereIn('status', [PetVetAccess::STATUS_PENDING, PetVetAccess::STATUS_ACCEPTED])
-                ->first();
-
-            if ($existing) {
-                return response()->json([
-                    'message' => 'Já existe uma solicitação ativa para este pet.',
-                    'data' => new PetVetAccessResource($existing->load(['pet', 'veterinarian', 'grantor'])),
-                ], 409);
-            }
-
-            $access = PetVetAccess::create([
-                'pet_id' => $pet->id,
-                'veterinarian_id' => $vet->id,
-                'granted_by' => $tutor->id,
-                'access_level' => VetAccessLevel::tryFrom($data['access_level'] ?? 'read') ?? VetAccessLevel::READ,
-                'status' => PetVetAccess::STATUS_PENDING,
-                'requested_at' => now(),
-                'is_active' => false,
-            ]);
-
-            // Notify the tutor — queued to not block the response.
-            $crmv = optional($vet->professional)->crmv
-                ? $vet->professional->crmv.'/'.($vet->professional->crmv_state ?? 'BR')
-                : null;
-
-            try {
-                $tutor->notify(new PetVetAccessRequested($access, $pet, $vet, $crmv));
-            } catch (\Throwable $e) {
-                // A notification failure must not block granting the pending request.
-                Log::error('Failed to dispatch PetVetAccessRequested notification', [
-                    'access_id' => $access->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            Log::info('PetVetAccess requested', [
-                'access_id' => $access->id,
-                'vet_id' => $vet->id,
-                'pet_id' => $pet->id,
-                'tutor_id' => $tutor->id,
-            ]);
-
-            return response()->json([
-                'message' => 'Solicitação enviada. O tutor foi notificado e precisa aceitar para liberar o acesso.',
-                'data' => new PetVetAccessResource($access->load(['pet', 'veterinarian', 'grantor'])),
-            ], 201);
-        });
+        return response()->json([
+            'message' => 'Solicitação enviada. O tutor foi notificado e precisa aceitar para liberar o acesso.',
+            'data' => new PetVetAccessResource($access->load(['pet', ...PetVetAccess::PARTICIPANT_RELATIONS])),
+        ], 201);
     }
 
     /**
-     * Tutor aceita solicitação pendente. Só então o vet passa a ver os dados do pet.
+     * Tutor aceita solicitação pendente E define o nível concedido.
+     *
+     * O `requested_access_level` enviado pelo vet é só indicação de necessidade: o nível que
+     * vale é o `access_level` deste corpo. Aceitar um pedido de upgrade substitui a concessão
+     * anterior (ver VetAccessGrantService).
      */
-    public function accept(Request $request, int $accessId): JsonResponse
+    public function accept(AcceptVetAccessRequest $request, VetAccessGrantService $service, int $accessId): JsonResponse
     {
-        $user = $request->user();
         $access = PetVetAccess::with('pet')->findOrFail($accessId);
+        $this->authorize('respond', $access);
 
-        if ($access->pet->user_id !== $user->id) {
-            return response()->json(['message' => 'Apenas o tutor dono do pet pode aceitar.'], 403);
-        }
+        $granted = $service->accept($access, $request->grantedLevel(), $request->user());
 
-        if ($access->status !== PetVetAccess::STATUS_PENDING) {
-            return response()->json(['message' => 'Esta solicitação não está mais pendente.'], 422);
-        }
+        return $this->respondWithAccess($granted, 'Acesso liberado.');
+    }
 
-        $access->accept();
+    /**
+     * Tutor altera o nível de um acesso já concedido, para cima ou para baixo, sem precisar de
+     * nova solicitação do veterinário.
+     *
+     * A resposta traz a linha VIGENTE, que tem id novo quando o nível muda de fato: cada nível
+     * é uma janela própria e a anterior fica em `superseded` para a auditoria.
+     */
+    public function changeLevel(ChangeVetAccessLevelRequest $request, VetAccessGrantService $service, int $accessId): JsonResponse
+    {
+        $access = PetVetAccess::with('pet')->findOrFail($accessId);
+        $this->authorize('changeLevel', $access);
 
-        Log::info('PetVetAccess accepted', ['access_id' => $access->id, 'tutor_id' => $user->id]);
+        $updated = $service->changeLevel($access, $request->newLevel(), $request->user());
 
-        return response()->json([
-            'message' => 'Acesso liberado.',
-            'data' => new PetVetAccessResource($access->load(['pet', 'veterinarian', 'grantor'])),
-        ]);
+        return $this->respondWithAccess($updated, 'Nível de acesso atualizado.');
     }
 
     /**
@@ -204,23 +158,17 @@ class PetVetAccessController extends Controller
 
         $user = $request->user();
         $access = PetVetAccess::with('pet')->findOrFail($accessId);
-
-        if ($access->pet->user_id !== $user->id) {
-            return response()->json(['message' => 'Apenas o tutor dono do pet pode rejeitar.'], 403);
-        }
+        $this->authorize('respond', $access);
 
         if ($access->status !== PetVetAccess::STATUS_PENDING) {
-            return response()->json(['message' => 'Esta solicitação não está mais pendente.'], 422);
+            throw InvalidVetAccessTransitionException::notPending();
         }
 
         $access->reject($data['reason'] ?? null);
 
         Log::info('PetVetAccess rejected', ['access_id' => $access->id, 'tutor_id' => $user->id]);
 
-        return response()->json([
-            'message' => 'Solicitação recusada.',
-            'data' => new PetVetAccessResource($access->load(['pet', 'veterinarian', 'grantor'])),
-        ]);
+        return $this->respondWithAccess($access, 'Solicitação recusada.');
     }
 
     /**
@@ -235,29 +183,16 @@ class PetVetAccessController extends Controller
 
         $user = $request->user();
         $access = PetVetAccess::with('pet', 'veterinarian')->findOrFail($accessId);
-
-        if ($access->pet->user_id !== $user->id) {
-            return response()->json(['message' => 'Apenas o tutor dono do pet pode revogar acesso.'], 403);
-        }
+        $this->authorize('revoke', $access);
 
         if ($access->status !== PetVetAccess::STATUS_ACCEPTED) {
-            return response()->json(['message' => 'Este acesso não está ativo.'], 422);
+            throw InvalidVetAccessTransitionException::notAccepted();
         }
 
         $access->revoke($user->id, $data['reason'] ?? null);
+        $this->logRevocation($access, $user->id, $data['reason'] ?? null);
 
-        // Log imutável para auditoria LGPD.
-        Log::warning('PetVetAccess revoked', [
-            'access_id' => $access->id,
-            'tutor_id' => $user->id,
-            'vet_id' => $access->veterinarian_id,
-            'reason' => $data['reason'] ?? null,
-        ]);
-
-        return response()->json([
-            'message' => 'Acesso revogado com sucesso.',
-            'data' => new PetVetAccessResource($access->load(['pet', 'veterinarian', 'grantor'])),
-        ]);
+        return $this->respondWithAccess($access, 'Acesso revogado com sucesso.');
     }
 
     /**
@@ -267,7 +202,7 @@ class PetVetAccessController extends Controller
     {
         $user = $request->user();
 
-        $accesses = PetVetAccess::with(['pet', 'veterinarian'])
+        $accesses = PetVetAccess::with(['pet', ...PetVetAccess::PARTICIPANT_RELATIONS])
             ->whereHas('pet', fn ($q) => $q->where('user_id', $user->id))
             ->pending()
             ->orderByDesc('requested_at')
@@ -283,18 +218,18 @@ class PetVetAccessController extends Controller
      * next_event (soonest pending vaccine or deworming). This is what the vet's
      * "my patients" dashboard page consumes.
      */
-    public function myAccesses(Request $request): AnonymousResourceCollection
+    public function myAccesses(Request $request, PatientSearchFilter $searchFilter): AnonymousResourceCollection
     {
-        return $this->buildPatientList($request);
+        return $this->buildPatientList($request, $searchFilter);
     }
 
     /**
      * Alias — same contract as myAccesses but mounted under /professional/my-patients
      * for discoverability from the professional app namespace.
      */
-    public function myPatients(Request $request): AnonymousResourceCollection
+    public function myPatients(Request $request, PatientSearchFilter $searchFilter): AnonymousResourceCollection
     {
-        return $this->buildPatientList($request);
+        return $this->buildPatientList($request, $searchFilter);
     }
 
     /**
@@ -312,7 +247,7 @@ class PetVetAccessController extends Controller
             ], 403);
         }
 
-        $accesses = PetVetAccess::with(['veterinarian', 'grantor'])
+        $accesses = PetVetAccess::with(PetVetAccess::PARTICIPANT_RELATIONS)
             ->where('pet_id', $pet->id)
             ->orderByDesc('is_active')
             ->orderByDesc('granted_at')
@@ -327,20 +262,45 @@ class PetVetAccessController extends Controller
     // Internals
     // ────────────────────────────────────────────────────────────────────
 
+    /** Log imutável para auditoria LGPD — quem tirou o acesso de quem, quando e por quê. */
+    private function logRevocation(PetVetAccess $access, int $tutorId, ?string $reason): void
+    {
+        Log::warning('PetVetAccess revoked', [
+            'access_id' => $access->id,
+            'tutor_id' => $tutorId,
+            'vet_id' => $access->veterinarian_id,
+            'reason' => $reason,
+        ]);
+    }
+
+    /** Resposta padrão dos endpoints que devolvem um vínculo com as duas partes carregadas. */
+    private function respondWithAccess(PetVetAccess $access, string $message): JsonResponse
+    {
+        return response()->json([
+            'message' => $message,
+            'data' => new PetVetAccessResource($access->load(['pet', ...PetVetAccess::PARTICIPANT_RELATIONS])),
+        ]);
+    }
+
     /**
      * Build the enriched patient list shared by myAccesses + myPatients.
+     *
+     * `?q=` filters server-side (pet name or tutor name) — the app used to filter the loaded
+     * page in JavaScript, which silently missed every patient past the first page.
      */
-    private function buildPatientList(Request $request): AnonymousResourceCollection
+    private function buildPatientList(Request $request, PatientSearchFilter $searchFilter): AnonymousResourceCollection
     {
         $vet = $request->user();
 
-        $accesses = PetVetAccess::query()
+        $query = PetVetAccess::query()
             ->with([
                 'pet.breedRelation',
                 'grantor', // tutor
             ])
             ->where('veterinarian_id', $vet->id)
-            ->active()
+            ->active();
+
+        $accesses = $searchFilter->apply($query, $request->query('q'))
             ->orderByDesc('granted_at')
             ->paginate(20);
 

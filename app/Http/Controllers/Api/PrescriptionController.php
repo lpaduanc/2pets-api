@@ -2,13 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\PrescriptionSort;
+use App\Enums\PrescriptionStatusFilter;
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Prescription\StorePrescriptionRequest;
+use App\Http\Requests\Prescription\UpdatePrescriptionRequest;
+use App\Http\Resources\PrescriptionResource;
 use App\Models\Prescription;
+use App\Services\Medical\PrescriptionSearchFilter;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class PrescriptionController extends Controller
 {
@@ -17,97 +24,106 @@ class PrescriptionController extends Controller
     /** Covers the prescription history screen and the selects fed from it. */
     private const DEFAULT_PER_PAGE = 100;
 
-    public function index(Request $request)
+    public function __construct(private readonly PrescriptionSearchFilter $searchFilter) {}
+
+    /**
+     * Filtros opcionais: `pet_id`, `status` (all|valid|expired), `search` e `sort`
+     * (recent|oldest|validity). Nenhum é obrigatório — sem parâmetro, a resposta é a mesma
+     * lista de sempre, ordenada por data de emissão decrescente.
+     */
+    public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Prescription::with(['pet', 'professional'])
+        $query = Prescription::with(Prescription::RESOURCE_RELATIONS)
             ->where('professional_id', $request->user()->id);
 
-        if ($request->has('pet_id')) {
-            $this->resolvePetForRead($request, (int) $request->pet_id);
-            $query->where('pet_id', $request->pet_id);
-        }
+        $this->applyPetScope($request, $query);
 
-        $prescriptions = $query->orderBy('prescription_date', 'desc')
-            ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
+        PrescriptionStatusFilter::fromRequestValue($request->query('status'))->applyTo($query);
 
-        return JsonResource::collection($prescriptions);
+        $this->searchFilter->apply($query, $request->query('search'));
+
+        PrescriptionSort::fromRequestValue($request->query('sort'))->applyTo($query);
+
+        $prescriptions = $query->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
+
+        return PrescriptionResource::collection($prescriptions);
     }
 
-    public function store(Request $request)
+    public function store(StorePrescriptionRequest $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'pet_id' => 'required|exists:pets,id',
-            'prescription_date' => 'required|date',
-            'medications' => 'required|array',
-            'instructions' => 'nullable|string',
-            'valid_until' => 'nullable|date',
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-        $data = $validator->validated();
+        $data = $request->validated();
 
         // Vet must have write access to the pet they're prescribing for.
         $this->resolvePetForWrite($request, (int) $data['pet_id']);
 
         $data['professional_id'] = $request->user()->id;
-        $data['medications'] = json_encode($data['medications']);
+
+        // Sem `json_encode` aqui: o cast `array` do model já serializa. Encodar antes gravava
+        // uma string JSON dentro do JSON, e o cliente iterava os caracteres da string.
         $prescription = Prescription::create($data);
 
-        return response()->json(['message' => 'Prescrição criada com sucesso!', 'prescription' => $prescription], 201);
+        return $this->respondWithPrescription($prescription, 'Prescrição criada com sucesso!', 201);
     }
 
-    public function show(Request $request, $id)
+    public function show(Request $request, int $id): PrescriptionResource
     {
-        $prescription = Prescription::with(['pet', 'professional'])
-            ->where('professional_id', $request->user()->id)
-            ->findOrFail($id);
+        $prescription = $this->ownedPrescription($request, $id);
 
-        return response()->json($prescription);
+        return new PrescriptionResource($prescription->load(Prescription::RESOURCE_RELATIONS));
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdatePrescriptionRequest $request, int $id): JsonResponse
     {
-        $prescription = Prescription::where('professional_id', $request->user()->id)->findOrFail($id);
-        $validator = Validator::make($request->all(), [
-            'prescription_date' => 'sometimes|date',
-            'medications' => 'sometimes|array',
-            'instructions' => 'nullable|string',
-            'valid_until' => 'nullable|date',
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-        $data = $validator->validated();
-        if (isset($data['medications'])) {
-            $data['medications'] = json_encode($data['medications']);
-        }
-        $prescription->update($data);
+        $prescription = $this->ownedPrescription($request, $id);
+        $prescription->update($request->validated());
 
-        return response()->json(['message' => 'Prescrição atualizada com sucesso!', 'prescription' => $prescription]);
+        return $this->respondWithPrescription($prescription, 'Prescrição atualizada com sucesso!');
     }
 
-    public function destroy(Request $request, $id)
+    public function destroy(Request $request, int $id): JsonResponse
     {
-        $prescription = Prescription::where('professional_id', $request->user()->id)->findOrFail($id);
-        $prescription->delete();
+        $this->ownedPrescription($request, $id)->delete();
 
         return response()->json(['message' => 'Prescrição removida com sucesso!']);
     }
 
-    // Example endpoint: list valid prescriptions
-    public function valid(Request $request)
+    /** Receitas ainda em vigor — sem prazo ou com validade a partir de hoje. */
+    public function valid(Request $request): AnonymousResourceCollection
     {
-        $query = Prescription::where('professional_id', $request->user()->id)
-            ->where(function ($q) {
-                $q->whereNull('valid_until')->orWhere('valid_until', '>=', now());
-            });
-        if ($request->has('pet_id')) {
-            $this->resolvePetForRead($request, (int) $request->pet_id);
-            $query->where('pet_id', $request->pet_id);
-        }
-        $valid = $query->orderBy('valid_until', 'asc')->get();
+        $query = Prescription::with(Prescription::RESOURCE_RELATIONS)
+            ->where('professional_id', $request->user()->id)
+            ->valid();
 
-        return response()->json($valid);
+        $this->applyPetScope($request, $query);
+
+        return PrescriptionResource::collection($query->orderBy('valid_until')->get());
+    }
+
+    /**
+     * @param  Builder<Prescription>  $query
+     */
+    private function applyPetScope(Request $request, Builder $query): void
+    {
+        if (! $request->has('pet_id')) {
+            return;
+        }
+
+        $pet = $this->resolvePetForRead($request, (int) $request->query('pet_id'));
+        $query->where('pet_id', $pet->id);
+    }
+
+    private function ownedPrescription(Request $request, int $id): Prescription
+    {
+        return Prescription::query()
+            ->where('professional_id', $request->user()->id)
+            ->findOrFail($id);
+    }
+
+    private function respondWithPrescription(Prescription $prescription, string $message, int $status = 200): JsonResponse
+    {
+        return (new PrescriptionResource($prescription->load(Prescription::RESOURCE_RELATIONS)))
+            ->additional(['message' => $message])
+            ->response()
+            ->setStatusCode($status);
     }
 }

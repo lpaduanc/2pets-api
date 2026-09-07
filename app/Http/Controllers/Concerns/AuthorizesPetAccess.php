@@ -22,6 +22,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  *   - Vet with access_level WRITE or FULL can also write (create/update/delete
  *     medical data nested under the pet; pet record itself stays owner-only — see
  *     PetPolicy::update).
+ *
+ * A ordem de privilégio entre os níveis vive só em `VetAccessLevel` (`covers()`/
+ * `valuesAtLeast()`); aqui não se repete lista de valores.
  *   - Anyone else gets 403 (we intentionally prefer 403 over 404 to keep the
  *     frontend UX honest: "you tried to touch this pet, you aren't allowed").
  *
@@ -88,10 +91,7 @@ trait AuthorizesPetAccess
             ->active();
 
         if ($writeRequired) {
-            $query->whereIn('access_level', [
-                VetAccessLevel::WRITE->value,
-                VetAccessLevel::FULL->value,
-            ]);
+            $query->whereIn('access_level', VetAccessLevel::valuesAtLeast(VetAccessLevel::WRITE));
         }
 
         return $query->exists();
@@ -113,7 +113,7 @@ trait AuthorizesPetAccess
         $hasFull = PetVetAccess::query()
             ->where('veterinarian_id', $user->id)
             ->where('pet_id', $pet->id)
-            ->where('access_level', VetAccessLevel::FULL->value)
+            ->whereIn('access_level', VetAccessLevel::valuesAtLeast(VetAccessLevel::FULL))
             ->active()
             ->exists();
 

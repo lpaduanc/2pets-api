@@ -38,12 +38,13 @@ class ReportController extends Controller
 
     public function downloadPrescription(Request $request, int $prescriptionId): Response
     {
-        $prescription = Prescription::findOrFail($prescriptionId);
+        // `pet` entra no eager load porque o gate abaixo o lê: `Model::preventLazyLoading()`
+        // está ativo fora de produção e o acesso lazy aqui derrubava o download com exceção.
+        $prescription = Prescription::with('pet')->findOrFail($prescriptionId);
 
         // Verify access
         $user = $request->user();
-        $pet = $prescription->pet;
-        if ($prescription->professional_id !== $user->id && $pet->user_id !== $user->id) {
+        if ($prescription->professional_id !== $user->id && $prescription->pet?->user_id !== $user->id) {
             abort(403, 'Unauthorized');
         }
 
@@ -75,4 +76,3 @@ class ReportController extends Controller
         return response()->json(['data' => $report]);
     }
 }
-

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\DataTransferObjects\Cnpj;
 use App\Enums\ProfessionalType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -22,6 +23,20 @@ class RegisterRequest extends FormRequest
         return true; // Public endpoint
     }
 
+    /** Regra de projeto: documento trafega limpo (so digitos). Ver `DocumentNumber`. */
+    protected function prepareForValidation(): void
+    {
+        $additionalData = $this->input('additional_data');
+
+        if (! is_array($additionalData) || ! array_key_exists('cnpj', $additionalData)) {
+            return;
+        }
+
+        $additionalData['cnpj'] = Cnpj::stripMask($additionalData['cnpj']);
+
+        $this->merge(['additional_data' => $additionalData]);
+    }
+
     public function rules(): array
     {
         return [
@@ -34,7 +49,7 @@ class RegisterRequest extends FormRequest
             ])],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'additional_data' => ['array', 'nullable'],
-            'additional_data.cnpj' => ['nullable', 'string', 'max:20'],
+            'additional_data.cnpj' => ['nullable', 'digits:'.Cnpj::DIGIT_COUNT],
             'additional_data.employee_count' => ['nullable', 'string', 'max:50'],
             'additional_data.message' => ['nullable', 'string', 'max:1000'],
         ];

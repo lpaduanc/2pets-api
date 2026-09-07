@@ -42,11 +42,14 @@ class PetVetAccessRequested extends Notification implements ShouldQueue
         $crmvLine = $this->crmv ? " (CRMV {$this->crmv})" : '';
         $requestedAt = $this->access->requested_at?->format('d/m/Y H:i') ?? now()->format('d/m/Y H:i');
 
+        $requested = $this->access->requested_access_level;
+
         return (new MailMessage)
             ->subject("Novo pedido de acesso veterinário a {$this->pet->name} — 2pets")
             ->greeting("Olá, {$notifiable->name}!")
             ->line("O(a) veterinário(a) **{$this->vet->name}**{$crmvLine} solicitou acesso ao prontuário de **{$this->pet->name}** em {$requestedAt}.")
-            ->line('Só após sua aprovação os dados clínicos do seu pet serão compartilhados. Você pode revogar o acesso a qualquer momento.')
+            ->line("Nível indicado pelo profissional: **{$requested?->label()}** — {$requested?->description()}")
+            ->line('Quem decide o nível é você, na hora de aprovar, e pode alterá-lo depois. Só após sua aprovação os dados clínicos do seu pet serão compartilhados; você pode revogar o acesso a qualquer momento.')
             ->action('Ver solicitação', url('/app/vets/solicitacoes'))
             ->line('Se você não reconhece este pedido, clique em recusar.');
     }
@@ -65,6 +68,7 @@ class PetVetAccessRequested extends Notification implements ShouldQueue
                 'vet_id' => $this->vet->id,
                 'vet_name' => $this->vet->name,
                 'crmv' => $this->crmv,
+                'requested_access_level' => $this->access->requested_access_level?->value,
                 'requested_at' => $this->access->requested_at?->toISOString(),
             ],
         ];

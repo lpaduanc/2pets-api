@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -32,10 +33,30 @@ class ProfessionalProfileResource extends JsonResource
             'graduation_year' => $this->graduation_year,
             'experience_years' => $this->experience_years,
             'working_days' => $this->working_days ?? [],
-            'opening_hours' => $this->opening_hours,
-            'closing_hours' => $this->closing_hours,
+            'opening_hours' => $this->formatTime($this->opening_hours),
+            'closing_hours' => $this->formatTime($this->closing_hours),
+            'technical_responsible_id' => $this->technical_responsible_id,
+            'technical_responsible_name' => $this->technical_responsible_name,
+            'technical_responsible_crmv' => $this->technical_responsible_crmv,
+            'technical_responsible_crmv_state' => $this->technical_responsible_crmv_state,
             'average_rating' => (float) $this->average_rating,
             'total_reviews' => $this->total_reviews,
         ];
+    }
+
+    /**
+     * A coluna `professionals.opening_hours`/`closing_hours` é `time` no
+     * Postgres e chega crua do PDO como string `H:i:s` (ex.: `08:00:00`),
+     * sem cast no model. Normaliza para `H:i` para que o mesmo payload
+     * devolvido por este resource seja aceito de volta por
+     * `UpdateProfileRequest` — round-trip GET → PUT sem 422.
+     */
+    private function formatTime(?string $time): ?string
+    {
+        if ($time === null || $time === '') {
+            return null;
+        }
+
+        return Carbon::parse($time)->format('H:i');
     }
 }

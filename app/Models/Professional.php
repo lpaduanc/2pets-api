@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\DataTransferObjects\Cnpj;
 use App\Enums\ProfessionalType;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -62,6 +64,18 @@ class Professional extends Model
         'total_reviews' => 'integer',
         'is_featured' => 'boolean',
     ];
+
+    /**
+     * Regra de projeto: documento sempre gravado limpo, só dígitos. Ver `DocumentNumber`.
+     * Sem isto, um cadastro que envia `12.345.678/0001-90` grava a máscara e a coluna
+     * `professionals_cnpj_unique` deixa de detectar o mesmo CNPJ escrito de outra forma.
+     */
+    protected function cnpj(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => Cnpj::normalizeForStorage($value),
+        );
+    }
 
     public function user()
     {

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\DataTransferObjects\Cnpj;
+use App\DataTransferObjects\Cpf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -16,7 +18,7 @@ class RegistrationDraftController extends Controller
     {
         try {
             $user = $request->user();
-            $data = $request->all();
+            $data = $this->withNormalizedDocuments($request->all());
 
             // CRITICAL DEBUG: Log the received data
             \Log::info('=== PROFESSIONAL DRAFT SAVE START ===', [
@@ -148,7 +150,8 @@ class RegistrationDraftController extends Controller
 
                     // Check if CNPJ already exists for ANOTHER user
                     if (! empty($professionalData['cnpj'])) {
-                        $cnpjCheck = \App\Models\Professional::where('cnpj', $professionalData['cnpj'])->first();
+                        // Documento sempre limpo: comparar mascara contra coluna limpa nunca acha o conflito.
+                        $cnpjCheck = \App\Models\Professional::where('cnpj', Cnpj::stripMask($professionalData['cnpj']))->first();
 
                         if ($cnpjCheck) {
                             \Log::warning('=== CNPJ CONFLICT DETECTED ===', [
@@ -267,6 +270,27 @@ class RegistrationDraftController extends Controller
     /**
      * Fetch existing professional data from database
      */
+    /**
+     * Regra de projeto: CPF/CNPJ sempre limpos (so digitos). O rascunho grava direto do
+     * payload do formulario, entao a normalizacao precisa acontecer aqui — caso contrario a
+     * mascara vaza para as consultas de conflito, que comparam contra a coluna ja limpa.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function withNormalizedDocuments(array $data): array
+    {
+        if (array_key_exists('cpf', $data)) {
+            $data['cpf'] = Cpf::stripMask($data['cpf']);
+        }
+
+        if (array_key_exists('cnpj', $data)) {
+            $data['cnpj'] = Cnpj::stripMask($data['cnpj']);
+        }
+
+        return $data;
+    }
+
     private function fetchProfessionalData($user)
     {
         $data = [];
@@ -360,7 +384,7 @@ class RegistrationDraftController extends Controller
     {
         try {
             $user = $request->user();
-            $data = $request->all();
+            $data = $this->withNormalizedDocuments($request->all());
 
             // Store draft in cache for quick restoration (7 days)
             $cacheKey = "registration_draft_company_{$user->id}";
@@ -603,7 +627,7 @@ class RegistrationDraftController extends Controller
     {
         try {
             $user = $request->user();
-            $data = $request->all();
+            $data = $this->withNormalizedDocuments($request->all());
 
             // Store draft in cache for quick restoration (7 days)
             $cacheKey = "registration_draft_tutor_{$user->id}";

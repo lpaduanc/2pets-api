@@ -5,17 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Enums\VetAccessLevel;
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Pet\SearchPetsRequest;
 use App\Http\Requests\Pet\StorePetRequest;
 use App\Http\Requests\Pet\UpdatePetRequest;
 use App\Http\Resources\PetDetailResource;
 use App\Http\Resources\PetResource;
+use App\Http\Resources\PetSearchResultResource;
 use App\Models\Breed;
 use App\Models\Pet;
 use App\Models\PetMedication;
 use App\Models\PetVetAccess;
 use App\Models\Vaccination;
 use App\Notifications\PetUpdatedByVet;
+use App\Services\Pet\PetSearchService;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -24,13 +28,6 @@ use Illuminate\Support\Str;
 class PetController extends Controller
 {
     use AuthorizesPetAccess;
-
-    /**
-     * Spatie role names that identify a veterinarian. The `users.role` column is a
-     * coarse bucket (`tutor|professional|admin`); the real role lives in Spatie —
-     * always check `hasAnyRole(self::VET_ROLES)`, never the column directly.
-     */
-    private const VET_ROLES = ['veterinarian', 'vet_freelancer', 'clinic_vet'];
 
     private const PET_LIST_COLUMNS = [
         'id',
@@ -86,53 +83,18 @@ class PetController extends Controller
     }
 
     /**
-     * Vet-only lookup: find pets by tutor CPF so the vet can request access.
+     * Vet-only lookup: find pets by an EXACT tutor identifier (CPF or microchip) so the vet
+     * can request access. Authorization lives in PetPolicy::search, validation in
+     * SearchPetsRequest, the query in PetSearchService.
      *
-     * Returns a minimal projection (no medical data) — the vet is expected to
-     * follow up with POST /pet-vet-access/request to get the real grant.
+     * Returns a minimal projection (no medical data, no tutor contact) — the vet is expected
+     * to follow up with POST /pet-vet-access/request to get the real grant.
      */
-    public function search(Request $request)
+    public function search(SearchPetsRequest $request, PetSearchService $service): AnonymousResourceCollection
     {
-        $user = $request->user();
-
-        if (! $user->hasAnyRole(self::VET_ROLES)) {
-            abort(403, 'Somente veterinários podem buscar pets por CPF do tutor.');
-        }
-
-        $cpfClean = preg_replace('/\D/', '', (string) $request->input('tutor_cpf', ''));
-        if (strlen($cpfClean) !== 11) {
-            return response()->json([
-                'message' => 'Informe um CPF válido (11 dígitos).',
-                'errors' => ['tutor_cpf' => ['CPF deve conter 11 dígitos.']],
-            ], 422);
-        }
-
-        $tutor = \App\Models\User::where('cpf', $cpfClean)->first();
-        if (! $tutor) {
-            return response()->json(['data' => []]);
-        }
-
-        $pets = Pet::where('user_id', $tutor->id)
-            ->select(['id', 'user_id', 'name', 'species', 'breed', 'birth_date', 'image_url', 'public_id'])
-            ->orderBy('name')
-            ->limit(50)
-            ->get();
-
-        $data = $pets->map(fn ($pet) => [
-            'id' => $pet->id,
-            'name' => $pet->name,
-            'species' => $pet->species,
-            'breed' => $pet->breed,
-            'birth_date' => $pet->birth_date,
-            'image_url' => $pet->image_url,
-            'public_id' => $pet->public_id,
-            'tutor' => [
-                'id' => $tutor->id,
-                'name' => $tutor->name,
-            ],
-        ]);
-
-        return response()->json(['data' => $data]);
+        return PetSearchResultResource::collection(
+            $service->search($request->toFilters(), $request->user())
+        );
     }
 
     public function store(StorePetRequest $request)

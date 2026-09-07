@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\VideoConsultationController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\DocumentFileController;
 use App\Http\Controllers\RegistrationCompletionController;
 use App\Http\Controllers\RegistrationDraftController;
 use App\Http\Middleware\AdminMiddleware;
@@ -97,6 +98,14 @@ Route::prefix('public')->middleware('throttle:30,1')->group(function () {
     Route::get('/food-allergies', [MasterDataController::class, 'foodAllergies']);
     Route::get('/dietary-restrictions', [MasterDataController::class, 'dietaryRestrictions']);
 });
+
+// Signed document file access (CRMV/RG/diploma preview in the admin panel).
+// No `auth:sanctum` on purpose: an `<img src>`/direct link can't carry a bearer
+// token. The short-lived signature — minted only for authorized viewers by
+// DocumentResource::documentUrl() — is the access control instead.
+Route::get('/documents/{document}/file', [DocumentFileController::class, 'show'])
+    ->name('documents.file')
+    ->middleware(['signed', 'throttle:60,1']);
 
 // Public booking routes (require auth)
 Route::prefix('public')->middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
@@ -188,6 +197,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/pending', [PetVetAccessController::class, 'pendingForTutor']);
         Route::post('/{accessId}/accept', [PetVetAccessController::class, 'accept']);
         Route::post('/{accessId}/reject', [PetVetAccessController::class, 'reject']);
+
+        // Tutor → altera o nível de um acesso já aceito (sobe ou desce), sem nova solicitação.
+        Route::patch('/{accessId}/level', [PetVetAccessController::class, 'changeLevel']);
 
         // Tutor → revoga acesso aceito.
         Route::post('/{accessId}/revoke', [PetVetAccessController::class, 'revoke']);
@@ -421,5 +433,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::put('/users/{id}', [AdminController::class, 'updateUser']);
         Route::post('/users/{id}/suspend', [AdminController::class, 'suspendUser']);
         Route::post('/users/{id}/activate', [AdminController::class, 'activateUser']);
+        Route::delete('/users/{id}', [AdminController::class, 'deleteUser']);
     });
 });

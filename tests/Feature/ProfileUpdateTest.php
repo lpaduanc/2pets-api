@@ -176,6 +176,72 @@ class ProfileUpdateTest extends TestCase
         $response->assertJsonStructure(['professional' => ['is_crmv_verified', 'average_rating', 'total_reviews']]);
     }
 
+    public function test_get_profile_normalizes_time_columns_to_hi_format(): void
+    {
+        $professional = Professional::factory()->veterinarian()->create([
+            'opening_hours' => '08:00:00',
+            'closing_hours' => '20:00:00',
+        ]);
+
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->getJson('/api/profile');
+
+        $response->assertOk();
+        $response->assertJsonPath('professional.opening_hours', '08:00');
+        $response->assertJsonPath('professional.closing_hours', '20:00');
+    }
+
+    /**
+     * Bug real: a coluna `professionals.opening_hours`/`closing_hours` e
+     * `time` no Postgres e chega crua do PDO como `H:i:s`. Sem normalizacao
+     * no resource, o GET devolvia `"08:00:00"` e o PUT — que a tela "Meu
+     * Perfil" alimenta com o proprio payload do GET — rejeitava com 422
+     * porque a regra exigia `date_format:H:i`. Nenhuma clinica com horario
+     * preenchido conseguia salvar qualquer campo do perfil.
+     */
+    public function test_put_accepts_the_exact_payload_returned_by_get_for_time_fields(): void
+    {
+        $professional = Professional::factory()->veterinarian()->create([
+            'opening_hours' => '08:00:00',
+            'closing_hours' => '20:00:00',
+        ]);
+
+        Sanctum::actingAs($professional->user);
+
+        $getResponse = $this->getJson('/api/profile');
+        $getResponse->assertOk();
+
+        $putResponse = $this->putJson('/api/profile', [
+            'professional' => [
+                'opening_hours' => $getResponse->json('professional.opening_hours'),
+                'closing_hours' => $getResponse->json('professional.closing_hours'),
+            ],
+        ]);
+
+        $putResponse->assertOk();
+    }
+
+    public function test_put_still_accepts_legacy_his_time_format(): void
+    {
+        $professional = Professional::factory()->veterinarian()->create();
+
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => [
+                'opening_hours' => '08:00:00',
+                'closing_hours' => '20:00:00',
+            ],
+        ]);
+
+        $response->assertOk();
+
+        $professional->refresh();
+        $this->assertSame('08:00:00', $professional->opening_hours);
+        $this->assertSame('20:00:00', $professional->closing_hours);
+    }
+
     public function test_get_profile_returns_company_block_for_company_user(): void
     {
         $company = Company::factory()->create();
@@ -338,6 +404,120 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertSame('Clinica A Atualizada', $ownProfessional->business_name);
         $this->assertSame('Clinica B', $otherProfessional->business_name);
+    }
+
+    public function test_get_profile_returns_technical_responsible_fields_for_clinic(): void
+    {
+        $professional = Professional::factory()->clinic()->create([
+            'technical_responsible_name' => 'Dra. Ana Souza',
+            'technical_responsible_crmv' => '12345',
+            'technical_responsible_crmv_state' => 'SP',
+        ]);
+
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->getJson('/api/profile');
+
+        $response->assertOk();
+        $response->assertJsonPath('professional.technical_responsible_name', 'Dra. Ana Souza');
+        $response->assertJsonPath('professional.technical_responsible_crmv', '12345');
+        $response->assertJsonPath('professional.technical_responsible_crmv_state', 'SP');
+    }
+
+    public function test_update_persists_technical_responsible_for_clinic(): void
+    {
+        $professional = Professional::factory()->clinic()->create([
+            'technical_responsible_name' => 'Dra. Ana Souza',
+            'technical_responsible_crmv' => '12345',
+            'technical_responsible_crmv_state' => 'SP',
+        ]);
+
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => [
+                'technical_responsible_name' => 'Dr. Carlos Lima',
+                'technical_responsible_crmv' => '54321',
+                'technical_responsible_crmv_state' => 'RJ',
+            ],
+        ]);
+
+        $response->assertOk();
+
+        $professional->refresh();
+        $this->assertSame('Dr. Carlos Lima', $professional->technical_responsible_name);
+        $this->assertSame('54321', $professional->technical_responsible_crmv);
+        $this->assertSame('RJ', $professional->technical_responsible_crmv_state);
+    }
+
+    public function test_update_rejects_blank_technical_responsible_for_clinic(): void
+    {
+        $professional = Professional::factory()->clinic()->create([
+            'technical_responsible_name' => 'Dra. Ana Souza',
+            'technical_responsible_crmv' => '12345',
+            'technical_responsible_crmv_state' => 'SP',
+        ]);
+
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => [
+                'professional_type' => 'clinic',
+                'technical_responsible_name' => '',
+                'technical_responsible_crmv' => '',
+                'technical_responsible_crmv_state' => '',
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors([
+            'professional.technical_responsible_name',
+            'professional.technical_responsible_crmv',
+            'professional.technical_responsible_crmv_state',
+        ]);
+    }
+
+    public function test_update_without_technical_responsible_fields_does_not_regress_vet_freelancer(): void
+    {
+        $professional = Professional::factory()->veterinarian()->create();
+
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => ['description' => 'Atendimento domiciliar'],
+        ]);
+
+        $response->assertOk();
+
+        $professional->refresh();
+        $this->assertSame('Atendimento domiciliar', $professional->description);
+    }
+
+    public function test_update_rejects_blank_technical_responsible_when_professional_type_is_omitted(): void
+    {
+        $professional = Professional::factory()->clinic()->create([
+            'technical_responsible_name' => 'Dra. Ana Souza',
+            'technical_responsible_crmv' => '12345',
+            'technical_responsible_crmv_state' => 'SP',
+        ]);
+
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => [
+                'description' => 'Nova descricao da clinica',
+                'technical_responsible_name' => '',
+                'technical_responsible_crmv' => '',
+                'technical_responsible_crmv_state' => '',
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors([
+            'professional.technical_responsible_name',
+            'professional.technical_responsible_crmv',
+            'professional.technical_responsible_crmv_state',
+        ]);
     }
 
     public function test_put_response_shape_matches_get_response_shape(): void

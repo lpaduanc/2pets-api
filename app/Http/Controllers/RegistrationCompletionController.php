@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\DataTransferObjects\Cnpj;
+use App\DataTransferObjects\Cpf;
 use App\Enums\ProfessionalType;
 use App\Models\Company;
 use App\Models\Professional;
@@ -16,9 +18,11 @@ class RegistrationCompletionController extends Controller
 {
     public function completeTutor(Request $request)
     {
+        $this->normalizeDocuments($request);
+
         $validated = $request->validate([
             // Personal
-            'cpf' => 'required|string',
+            'cpf' => 'required|digits:'.Cpf::DIGIT_COUNT,
             'birth_date' => 'required|date',
             'gender' => 'nullable|string|in:male,female,other,not_specified',
             'occupation' => 'nullable|string|max:255',
@@ -124,9 +128,11 @@ class RegistrationCompletionController extends Controller
 
     private function completeVet(Request $request, User $user)
     {
+        $this->normalizeDocuments($request);
+
         $validated = $request->validate([
             // Personal
-            'cpf' => 'required|string',
+            'cpf' => 'required|digits:'.Cpf::DIGIT_COUNT,
             'birth_date' => 'required|date',
             'address' => 'required|string',
             'number' => 'required|string',
@@ -216,6 +222,8 @@ class RegistrationCompletionController extends Controller
 
     private function completeGenericProfessional(Request $request, User $user, ProfessionalType $professionalType)
     {
+        $this->normalizeDocuments($request);
+
         \Log::info('=== COMPLETE GENERIC PROFESSIONAL START ===', [
             'user_id' => $user->id,
             'user_type' => $user->user_type,
@@ -224,7 +232,7 @@ class RegistrationCompletionController extends Controller
         $rules = [
             // Business Info
             'business_name' => 'required|string',
-            'cnpj' => 'required|string',
+            'cnpj' => 'required|digits:'.Cnpj::DIGIT_COUNT,
             'address' => 'required|string',
             'number' => 'required|string',
             'complement' => 'nullable|string',
@@ -331,10 +339,12 @@ class RegistrationCompletionController extends Controller
 
     public function completeCompany(Request $request)
     {
+        $this->normalizeDocuments($request);
+
         $validated = $request->validate([
             // Company Info
             'company_name' => 'required|string',
-            'cnpj' => 'required|string',
+            'cnpj' => 'required|digits:'.Cnpj::DIGIT_COUNT,
             'contact_name' => 'required|string',
             'contact_position' => 'nullable|string',
             'phone' => 'required|string',
@@ -402,6 +412,23 @@ class RegistrationCompletionController extends Controller
      * @param  array  $validated  Validated request data containing address fields
      * @return array{latitude: float, longitude: float}|null
      */
+    /**
+     * Regra de projeto: documento trafega e e gravado limpo (so digitos). Normalizar antes do
+     * `validate()` e o que permite exigir `digits:11`/`digits:14` sem reprovar o CPF/CNPJ que
+     * o app manda mascarado, e o que faz qualquer checagem de unicidade comparar o mesmo
+     * formato que esta na coluna indexada.
+     */
+    private function normalizeDocuments(Request $request): void
+    {
+        if ($request->has('cpf')) {
+            $request->merge(['cpf' => Cpf::stripMask($request->input('cpf'))]);
+        }
+
+        if ($request->has('cnpj')) {
+            $request->merge(['cnpj' => Cnpj::stripMask($request->input('cnpj'))]);
+        }
+    }
+
     private function geocodeAddress(array $validated): ?array
     {
         try {

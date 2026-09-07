@@ -10,6 +10,25 @@ use App\Models\User;
 class PetPolicy
 {
     /**
+     * Class-level ability: looking up someone else's pet by an exact tutor identifier
+     * (CPF/microchip) so the vet can request access to it. Restricted to veterinarians —
+     * this endpoint reads tutor PII (name) of users the requester has no relationship with,
+     * so it must never be reachable by a tutor account.
+     */
+    public function search(User $user): bool
+    {
+        return $user->isVeterinarian();
+    }
+
+    /**
+     * Class-level ability: opening a consent handshake for a pet the vet does not own.
+     */
+    public function requestAccess(User $user): bool
+    {
+        return $user->isVeterinarian();
+    }
+
+    /**
      * Tutor (owner) or vet with any active access can view the pet.
      */
     public function view(User $user, Pet $pet): bool
@@ -51,8 +70,10 @@ class PetPolicy
             ->where('pet_id', $petId)
             ->active();
 
+        // Níveis são cumulativos: exigir FULL aceita FULL e qualquer coisa acima dele.
+        // A ordem vive em VetAccessLevel, nunca numa lista repetida aqui.
         if ($requiredLevel !== null) {
-            $query->where('access_level', $requiredLevel->value);
+            $query->whereIn('access_level', VetAccessLevel::valuesAtLeast($requiredLevel));
         }
 
         return $query->exists();

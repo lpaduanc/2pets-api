@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\DataTransferObjects\Cnpj;
+use App\DataTransferObjects\Cpf;
 use App\Models\Concerns\HasGeoPoint;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -116,15 +118,38 @@ class User extends Authenticatable implements HasMedia
     // ------------------------------------------------------------------
 
     /**
-     * CPF is always stored as a digits-only string. Any caller may submit it
-     * formatted (`123.456.789-00`) or clean — the mutator normalizes to `12345678900`.
-     * Callers searching by CPF should also pass digits-only to match.
+     * Regra de projeto: documento é sempre gravado limpo (só dígitos). Qualquer caminho pode
+     * enviar `123.456.789-00` ou `12345678900` — o mutator normaliza. Quem busca precisa
+     * normalizar a entrada também (ver `DocumentNumber`).
      */
     protected function cpf(): Attribute
     {
         return Attribute::make(
-            set: fn (?string $value) => $value === null ? null : preg_replace('/\D/', '', $value),
+            set: fn (?string $value): ?string => Cpf::normalizeForStorage($value),
         );
+    }
+
+    protected function cnpj(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value): ?string => Cnpj::normalizeForStorage($value),
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Role helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Spatie role names that identify a veterinarian. The `users.role` column is a coarse
+     * bucket (`tutor|professional|admin`) and `users.user_type` is unreliable in legacy
+     * rows — the real role always lives in Spatie.
+     */
+    public const VET_ROLES = ['veterinarian', 'vet_freelancer', 'clinic_vet'];
+
+    public function isVeterinarian(): bool
+    {
+        return $this->hasAnyRole(self::VET_ROLES);
     }
 
     // ------------------------------------------------------------------

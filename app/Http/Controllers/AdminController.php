@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Enums\PaymentStatus;
+use App\Http\Resources\DocumentResource;
+use App\Http\Resources\UserResource;
 use App\Models\Appointment;
 use App\Models\Company;
 use App\Models\Document;
@@ -338,10 +340,10 @@ class AdminController extends Controller
     public function pendingDocuments(Request $request)
     {
         try {
+            // `user.media` so DocumentResource → UserResource can resolve the
+            // uploader's avatar (CLAUDE.md: avatares nunca apareciam no admin).
             $query = Document::where('verification_status', 'pending')
-                ->with(['user' => function ($query) {
-                    $query->select('id', 'name', 'email', 'role', 'user_type');
-                }, 'user.professional:user_id,crmv,crmv_state,is_crmv_verified'])
+                ->with(['user', 'user.media', 'user.professional:user_id,crmv,crmv_state,is_crmv_verified'])
                 ->orderBy('created_at', 'desc');
 
             if ($type = $request->query('type')) {
@@ -349,6 +351,7 @@ class AdminController extends Controller
             }
 
             $documents = $query->paginate((int) $request->integer('per_page', 20));
+            $documents = $documents->through(fn (Document $document) => (new DocumentResource($document))->resolve($request));
 
             return response()->json([
                 'success' => true,
@@ -405,7 +408,7 @@ class AdminController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Documento verificado com sucesso',
-                'document' => $document->fresh()->load('user'),
+                'document' => (new DocumentResource($document->fresh()->load(['user', 'user.media'])))->resolve($request),
             ]);
         } catch (\Exception $e) {
             Log::error('Error verifying document', [
@@ -452,7 +455,7 @@ class AdminController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Documento rejeitado',
-                'document' => $document->fresh()->load('user'),
+                'document' => (new DocumentResource($document->fresh()->load(['user', 'user.media'])))->resolve($request),
             ]);
         } catch (\Exception $e) {
             Log::error('Error rejecting document', [
@@ -474,7 +477,9 @@ class AdminController extends Controller
     public function listUsers(Request $request)
     {
         try {
-            $query = User::with(['professional', 'company']);
+            // `media` so UserResource can resolve `avatar_url` — the admin panel
+            // never showed avatars because this endpoint returned raw models.
+            $query = User::with(['professional', 'company', 'media']);
 
             // Apply filters
             if ($request->has('role')) {
@@ -504,6 +509,7 @@ class AdminController extends Controller
             $query->orderBy($sortBy, $sortOrder);
 
             $users = $query->paginate($request->get('per_page', 20));
+            $users = $users->through(fn (User $user) => (new UserResource($user))->resolve($request));
 
             return response()->json([
                 'success' => true,
@@ -528,12 +534,16 @@ class AdminController extends Controller
     public function showUser(Request $request, $id)
     {
         try {
-            $user = User::with(['professional', 'company', 'documents', 'pets'])
+            // `media` so UserResource can resolve `avatar_url`; `pets` swapped for
+            // `withCount('pets')` since UserResource only exposes the count (the
+            // frontend already reads `user.pets_count` — UserDetails.vue).
+            $user = User::withCount('pets')
+                ->with(['professional', 'company', 'media'])
                 ->findOrFail($id);
 
             return response()->json([
                 'success' => true,
-                'user' => $user,
+                'user' => (new UserResource($user))->resolve($request),
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching user details', [
@@ -574,7 +584,7 @@ class AdminController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Usuário atualizado com sucesso',
-                'user' => $user->fresh()->load(['professional', 'company']),
+                'user' => (new UserResource($user->fresh()->load(['professional', 'company', 'media'])))->resolve($request),
             ]);
         } catch (\Exception $e) {
             Log::error('Error updating user', [
@@ -624,7 +634,7 @@ class AdminController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Usuário suspenso',
-                'user' => $user->fresh(),
+                'user' => (new UserResource($user->fresh()->load('media')))->resolve($request),
             ]);
         } catch (\Exception $e) {
             Log::error('Error suspending user', [
@@ -660,7 +670,7 @@ class AdminController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Usuário reativado',
-                'user' => $user->fresh(),
+                'user' => (new UserResource($user->fresh()->load('media')))->resolve($request),
             ]);
         } catch (\Exception $e) {
             Log::error('Error activating user', [
@@ -674,5 +684,61 @@ class AdminController extends Controller
                 'message' => 'Erro ao reativar usuário',
             ], 500);
         }
+    }
+
+    /**
+     * Soft delete a user (admin panel "excluir" action).
+     *
+     * Never a hard delete — CLAUDE.md regra 5. `User::delete()` sets `deleted_at`;
+     * the row (and its audit trail) stays in the database.
+     */
+    public function deleteUser(Request $request, $id)
+    {
+        try {
+            $user = User::findOrFail($id);
+
+            if ($blocked = $this->blockedUserDeletionReason($request, $user)) {
+                return response()->json(['success' => false, 'message' => $blocked], 403);
+            }
+
+            $user->delete();
+
+            Log::warning('User soft-deleted by admin', [
+                'admin_id' => $request->user()->id,
+                'admin_email' => $request->user()->email,
+                'user_id' => $user->id,
+                'user_email' => $user->email,
+            ]);
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Error deleting user', [
+                'error' => $e->getMessage(),
+                'admin_id' => $request->user()->id,
+                'user_id' => $id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao excluir usuário',
+            ], 500);
+        }
+    }
+
+    /**
+     * An admin can never delete their own account, nor a super_admin's — both
+     * would risk locking the platform out of its own admin panel.
+     */
+    private function blockedUserDeletionReason(Request $request, User $user): ?string
+    {
+        if ($user->id === $request->user()->id) {
+            return 'Não é possível excluir a própria conta';
+        }
+
+        if ($user->hasRole('super_admin')) {
+            return 'Não é possível excluir um super administrador';
+        }
+
+        return null;
     }
 }

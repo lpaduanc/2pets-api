@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\SurgeryResource;
 use App\Models\Surgery;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Validator;
 
 class SurgeryController extends Controller
@@ -18,7 +18,10 @@ class SurgeryController extends Controller
 
     public function index(Request $request)
     {
-        $query = Surgery::with(['pet', 'professional'])
+        // `pet.user`/`pet.user.media` (not just `pet`) so SurgeryResource can hoist
+        // the tutor's name/avatar without an N+1 per row — see SurgeriesPage.vue
+        // (`surgery.pet?.tutor_name`).
+        $query = Surgery::with(['pet.user.media', 'professional'])
             ->where('professional_id', $request->user()->id);
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -27,7 +30,7 @@ class SurgeryController extends Controller
         $surgeries = $query->orderBy('surgery_date', 'desc')
             ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE));
 
-        return JsonResource::collection($surgeries);
+        return SurgeryResource::collection($surgeries);
     }
 
     public function store(Request $request)

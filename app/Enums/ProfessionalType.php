@@ -33,6 +33,28 @@ enum ProfessionalType: string
     }
 
     /**
+     * Papel Spatie que um cadastro deste tipo recebe.
+     *
+     * Autorização no 2pets é decidida SEMPRE pelo papel Spatie — `users.role` é um balde
+     * grosso (`tutor|professional|admin`) e `users.user_type` não é consultado por nenhum
+     * guard. Sem papel atribuído, a conta existe mas é invisível para todo endpoint com
+     * `hasAnyRole()`: o sintoma é 403 em funcionalidade que o usuário deveria ter.
+     *
+     * ⚠️ `laboratory`, `pet_hotel`, `grooming` e `training` caem em `petshop_owner` por ser o
+     * papel de "dono de negócio não-clínico" mais próximo entre os 8 que existem
+     * (`RolesAndPermissionsSeeder`). Papéis próprios para esses tipos são decisão de produto
+     * pendente — confirmar com o pet-business-specialist antes de criar.
+     */
+    public function defaultRoleName(): string
+    {
+        return match ($this) {
+            self::VET => 'vet_freelancer',
+            self::CLINIC => 'clinic_owner',
+            self::LABORATORY, self::PETSHOP, self::PET_HOTEL, self::GROOMING, self::TRAINING => 'petshop_owner',
+        };
+    }
+
+    /**
      * @return list<string>
      */
     public static function values(): array

@@ -2,19 +2,19 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\User;
-use App\Models\Pet;
 use App\Models\Appointment;
-use App\Models\MedicalRecord;
-use App\Models\Vaccination;
-use App\Models\Prescription;
 use App\Models\Hospitalization;
-use App\Models\Surgery;
-use App\Models\Invoice;
-use App\Models\Service;
 use App\Models\Inventory;
+use App\Models\Invoice;
+use App\Models\MedicalRecord;
+use App\Models\Pet;
+use App\Models\Prescription;
+use App\Models\Service;
+use App\Models\Surgery;
+use App\Models\User;
+use App\Models\Vaccination;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
 class MedicalDataSeeder extends Seeder
@@ -27,8 +27,9 @@ class MedicalDataSeeder extends Seeder
         $bella = Pet::where('name', 'Bella')->first();
         $max = Pet::where('name', 'Max')->first();
 
-        if (!$professional || !$tutor || !$bella || !$max) {
+        if (! $professional || ! $tutor || ! $bella || ! $max) {
             $this->command->error('Required users or pets not found. Run PetSeeder and ProfessionalSeeder first.');
+
             return;
         }
 
@@ -87,7 +88,7 @@ class MedicalDataSeeder extends Seeder
             'objective' => 'Animal alerta, hidratado, mucosas rosadas. Pelagem brilhante. Ausculta cardíaca e pulmonar normais.',
             'assessment' => 'Animal saudável, dentro dos parâmetros normais para a raça e idade.',
             'plan' => 'Manter alimentação atual. Retornar em 6 meses para check-up de rotina.',
-            'symptoms' => json_encode([]),
+            'symptoms' => [],
             'diagnosis' => 'Saudável',
             'treatment_plan' => 'Manutenção preventiva',
             'notes' => 'Próxima vacinação em 3 meses',
@@ -105,7 +106,7 @@ class MedicalDataSeeder extends Seeder
             'objective' => 'Gato alerta mas apático. Mucosas levemente pálidas. Desidratação leve.',
             'assessment' => 'Possível gastroenterite. Desidratação leve.',
             'plan' => 'Fluidoterapia SC. Antibiótico. Retornar em 3 dias.',
-            'symptoms' => json_encode(['apatia', 'anorexia', 'desidratação']),
+            'symptoms' => ['apatia', 'anorexia', 'desidratação'],
             'diagnosis' => 'Gastroenterite',
             'treatment_plan' => 'Fluidoterapia + Antibioticoterapia por 7 dias',
             'notes' => 'Orientado jejum de 12h e dieta leve',
@@ -153,7 +154,7 @@ class MedicalDataSeeder extends Seeder
             'professional_id' => $professional->id,
             'prescription_date' => Carbon::today()->subDays(30),
             'valid_until' => Carbon::today()->addDays(30),
-            'medications' => json_encode([
+            'medications' => [
                 [
                     'name' => 'Amoxicilina + Clavulanato',
                     'dosage' => '250mg',
@@ -168,7 +169,7 @@ class MedicalDataSeeder extends Seeder
                     'duration' => '3 dias',
                     'instructions' => 'Administrar 30 minutos antes das refeições.',
                 ],
-            ]),
+            ],
             'general_instructions' => 'Manter medicação em temperatura ambiente. Observar sinais de melhora em 48h.',
             'warnings' => 'Se não houver melhora em 48h ou piorar, retornar imediatamente.',
             'is_controlled' => false,
@@ -180,7 +181,7 @@ class MedicalDataSeeder extends Seeder
             'appointment_id' => $appointment1->id,
             'prescription_date' => Carbon::today(),
             'valid_until' => Carbon::today()->addMonths(3),
-            'medications' => json_encode([
+            'medications' => [
                 [
                     'name' => 'Simparic (Sarolaner)',
                     'dosage' => '40mg',
@@ -188,7 +189,7 @@ class MedicalDataSeeder extends Seeder
                     'duration' => '3 meses',
                     'instructions' => 'Administrar 1 comprimido por mês para controle de pulgas e carrapatos.',
                 ],
-            ]),
+            ],
             'general_instructions' => 'Antipulgas de uso mensal. Administrar sempre no mesmo dia do mês.',
             'is_controlled' => false,
         ]);
@@ -280,7 +281,7 @@ class MedicalDataSeeder extends Seeder
             'professional_id' => $professional->id,
             'client_id' => $tutor->id,
             'appointment_id' => $appointment1->id,
-            'invoice_number' => 'INV-' . strtoupper(Str::random(8)),
+            'invoice_number' => 'INV-'.strtoupper(Str::random(8)),
             'issue_date' => Carbon::today(),
             'due_date' => Carbon::today()->addDays(7),
             'items' => [

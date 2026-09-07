@@ -2,7 +2,10 @@
 
 namespace App\Http\Requests\User;
 
+use App\DataTransferObjects\Cnpj;
+use App\DataTransferObjects\Cpf;
 use App\Enums\ProfessionalType;
+use App\Models\Professional;
 use App\Models\User;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
@@ -36,6 +39,41 @@ class UpdateProfileRequest extends FormRequest
      * os dois formatos.
      */
     protected function prepareForValidation(): void
+    {
+        $this->normalizeDocuments();
+        $this->normalizeLegacyAddress();
+    }
+
+    /**
+     * Regra de projeto: documento trafega e e gravado limpo (so digitos). Normalizar ANTES
+     * da validacao e o que faz `digits:` e as checagens de unicidade compararem o mesmo
+     * formato que esta no banco — com mascara, um CPF duplicado passa pelo `unique` e so
+     * estoura no indice, virando 500.
+     */
+    private function normalizeDocuments(): void
+    {
+        if ($this->has('cpf')) {
+            $this->merge(['cpf' => Cpf::stripMask($this->input('cpf'))]);
+        }
+
+        $this->normalizeNestedDocument('professional', 'cnpj');
+        $this->normalizeNestedDocument('company', 'cnpj');
+    }
+
+    private function normalizeNestedDocument(string $section, string $field): void
+    {
+        $payload = $this->input($section);
+
+        if (! is_array($payload) || ! array_key_exists($field, $payload)) {
+            return;
+        }
+
+        $payload[$field] = Cnpj::stripMask($payload[$field]);
+
+        $this->merge([$section => $payload]);
+    }
+
+    private function normalizeLegacyAddress(): void
     {
         if (is_array($this->input('address'))) {
             return;
@@ -76,7 +114,7 @@ class UpdateProfileRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', 'unique:users,email,'.$this->user()->id],
             'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
-            'cpf' => ['sometimes', 'nullable', 'string', 'max:14', $this->uniqueCpfRule()],
+            'cpf' => ['sometimes', 'nullable', 'digits:'.Cpf::DIGIT_COUNT, $this->uniqueCpfRule()],
             'birth_date' => ['sometimes', 'nullable', 'date', 'before:today'],
             'gender' => ['sometimes', 'nullable', Rule::in(self::GENDERS)],
             'occupation' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -92,14 +130,32 @@ class UpdateProfileRequest extends FormRequest
     private function uniqueCpfRule(): Closure
     {
         return function (string $attribute, mixed $value, Closure $fail): void {
-            $digitsOnly = preg_replace('/\D/', '', (string) $value);
-
-            $cpfBelongsToAnotherUser = User::where('cpf', $digitsOnly)
+            $cpfBelongsToAnotherUser = User::query()
+                ->where('cpf', Cpf::stripMask($value))
                 ->where('id', '!=', $this->user()->id)
                 ->exists();
 
             if ($cpfBelongsToAnotherUser) {
                 $fail('Este CPF ja esta cadastrado.');
+            }
+        };
+    }
+
+    /**
+     * Mesmo raciocinio do CPF: `professionals.cnpj` tem indice unico e o mutator grava
+     * limpo, entao a checagem precisa comparar digitos contra digitos. Sem isto, um CNPJ
+     * ja usado passa na validacao e a gravacao morre com 23505 (HTTP 500).
+     */
+    private function uniqueProfessionalCnpjRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            $cnpjBelongsToAnother = Professional::query()
+                ->where('cnpj', Cnpj::stripMask($value))
+                ->where('user_id', '!=', $this->user()->id)
+                ->exists();
+
+            if ($cnpjBelongsToAnother) {
+                $fail('Este CNPJ ja esta cadastrado.');
             }
         };
     }
@@ -130,7 +186,7 @@ class UpdateProfileRequest extends FormRequest
             'professional' => ['sometimes', 'array'],
             'professional.professional_type' => ['sometimes', 'nullable', Rule::in(ProfessionalType::values())],
             'professional.business_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'professional.cnpj' => ['sometimes', 'nullable', 'string', 'max:18'],
+            'professional.cnpj' => ['sometimes', 'nullable', 'digits:'.Cnpj::DIGIT_COUNT, $this->uniqueProfessionalCnpjRule()],
             'professional.crmv' => ['sometimes', 'nullable', 'string', 'max:255'],
             'professional.crmv_state' => ['sometimes', 'nullable', 'string', 'max:2'],
             'professional.specialties' => ['sometimes', 'nullable', 'array'],
@@ -141,9 +197,64 @@ class UpdateProfileRequest extends FormRequest
             'professional.graduation_year' => ['sometimes', 'nullable', 'integer', 'min:1900', 'max:'.now()->year],
             'professional.experience_years' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:80'],
             'professional.working_days' => ['sometimes', 'nullable', 'array'],
-            'professional.opening_hours' => ['sometimes', 'nullable', 'date_format:H:i'],
-            'professional.closing_hours' => ['sometimes', 'nullable', 'date_format:H:i'],
+            // Aceita H:i (formato emitido por ProfessionalProfileResource e por
+            // <input type="time">) e H:i:s (compat com cliente antigo que
+            // reenvia o valor cru da coluna `time` do Postgres) — liberal no
+            // que aceita, estrito no que este mesmo endpoint emite no GET.
+            'professional.opening_hours' => ['sometimes', 'nullable', 'date_format:H:i,H:i:s'],
+            'professional.closing_hours' => ['sometimes', 'nullable', 'date_format:H:i,H:i:s'],
+            'professional.technical_responsible_id' => ['sometimes', 'nullable', 'exists:users,id'],
+            'professional.technical_responsible_name' => [
+                'sometimes', 'nullable', 'string', 'max:255',
+                Rule::requiredIf(fn (): bool => $this->technicalResponsibleIsRequired()),
+            ],
+            'professional.technical_responsible_crmv' => [
+                'sometimes', 'nullable', 'string', 'max:255',
+                Rule::requiredIf(fn (): bool => $this->technicalResponsibleIsRequired()),
+            ],
+            'professional.technical_responsible_crmv_state' => [
+                'sometimes', 'nullable', 'string', 'size:2',
+                Rule::requiredIf(fn (): bool => $this->technicalResponsibleIsRequired()),
+            ],
         ];
+    }
+
+    /**
+     * RT (responsavel tecnico) e obrigatorio para clinica/laboratorio que
+     * nao vincula um profissional ja cadastrado via `technical_responsible_id`.
+     */
+    private function technicalResponsibleIsRequired(): bool
+    {
+        if (! $this->isClinicOrLaboratory()) {
+            return false;
+        }
+
+        return $this->input('professional.technical_responsible_id') === null;
+    }
+
+    private function isClinicOrLaboratory(): bool
+    {
+        return in_array(
+            $this->effectiveProfessionalType(),
+            [ProfessionalType::CLINIC, ProfessionalType::LABORATORY],
+            true
+        );
+    }
+
+    /**
+     * `PUT /profile` e um patch parcial: `professional.professional_type`
+     * pode nao vir no payload. Quando ausente, cai para o tipo ja persistido
+     * do profissional autenticado — nunca assume tutor/vet por omissao.
+     */
+    private function effectiveProfessionalType(): ?ProfessionalType
+    {
+        $inputType = $this->input('professional.professional_type');
+
+        if ($inputType !== null) {
+            return ProfessionalType::tryFrom($inputType);
+        }
+
+        return $this->user()->professional?->professional_type;
     }
 
     /**
@@ -154,7 +265,7 @@ class UpdateProfileRequest extends FormRequest
         return [
             'company' => ['sometimes', 'array'],
             'company.company_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'company.cnpj' => ['sometimes', 'nullable', 'string', 'max:18'],
+            'company.cnpj' => ['sometimes', 'nullable', 'digits:'.Cnpj::DIGIT_COUNT],
             'company.contact_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'company.contact_position' => ['sometimes', 'nullable', 'string', 'max:255'],
             'company.phone' => ['sometimes', 'nullable', 'string', 'max:20'],
@@ -175,6 +286,11 @@ class UpdateProfileRequest extends FormRequest
             'new_password.confirmed' => 'A confirmacao da nova senha nao confere.',
             'new_password.required_with' => 'Informe a nova senha para trocar a senha.',
             'current_password.required_with' => 'Informe a senha atual para trocar a senha.',
+            'professional.technical_responsible_id.exists' => 'Responsavel tecnico invalido.',
+            'professional.technical_responsible_name.required' => 'Informe o nome do responsavel tecnico.',
+            'professional.technical_responsible_crmv.required' => 'Informe o CRMV do responsavel tecnico.',
+            'professional.technical_responsible_crmv_state.required' => 'Informe a UF do CRMV do responsavel tecnico.',
+            'professional.technical_responsible_crmv_state.size' => 'A UF do CRMV deve ter 2 letras.',
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\VaccinationResource;
 use App\Models\Vaccination;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -14,7 +15,10 @@ class VaccinationController extends Controller
 
     public function index(Request $request)
     {
-        $query = Vaccination::with(['pet', 'professional'])
+        // `pet.user`/`pet.user.media` (not just `pet`) so VaccinationResource can
+        // hoist the tutor's name + avatar without an N+1 per row — see
+        // VaccinationsPage.vue (`vacc.tutor?.name`).
+        $query = Vaccination::with(['pet.user.media', 'professional'])
             ->where('professional_id', $request->user()->id);
 
         if ($request->has('pet_id')) {
@@ -27,7 +31,7 @@ class VaccinationController extends Controller
 
         $vaccinations = $query->orderBy('application_date', 'desc')->get();
 
-        return response()->json($vaccinations);
+        return VaccinationResource::collection($vaccinations);
     }
 
     public function store(Request $request)

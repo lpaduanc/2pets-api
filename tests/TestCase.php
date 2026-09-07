@@ -2,10 +2,12 @@
 
 namespace Tests;
 
+use Dotenv\Dotenv;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use PDO;
 use PDOException;
 use RuntimeException;
+use Throwable;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -96,18 +98,19 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
-     * Conexão PDO crua, fora do `DatabaseManager`, lida diretamente das variáveis de
-     * ambiente do `phpunit.xml`/`.env` — nesta fase do boot (`setUp()` antes de
-     * `parent::setUp()`) o container do Laravel ainda não existe, então `config()` e
-     * `DB::` não estão disponíveis.
+     * Conexão PDO crua, fora do `DatabaseManager`: nesta fase do boot (`setUp()` antes de
+     * `parent::setUp()`) o container do Laravel ainda não existe, então `config()` e `DB::`
+     * não estão disponíveis.
      */
     private function connectDirectlyToTestDatabase(): ?PDO
     {
-        $host = getenv('DB_HOST') ?: '127.0.0.1';
-        $port = getenv('DB_PORT') ?: '5432';
-        $database = getenv('DB_TEST_DATABASE') ?: 'twopets_test';
-        $username = getenv('DB_USERNAME') ?: 'root';
-        $password = getenv('DB_PASSWORD') ?: '';
+        $environment = $this->environmentFileVariables();
+
+        $host = $environment['DB_HOST'] ?? '127.0.0.1';
+        $port = $environment['DB_PORT'] ?? '5432';
+        $database = $environment['DB_TEST_DATABASE'] ?? 'twopets_test';
+        $username = $environment['DB_USERNAME'] ?? 'root';
+        $password = $environment['DB_PASSWORD'] ?? '';
 
         try {
             return new PDO(
@@ -119,6 +122,28 @@ abstract class TestCase extends BaseTestCase
             // Sem conexão não há como checar o lock; deixa o RefreshDatabase seguir e
             // falhar com o próprio erro de conexão, que já é claro por si só.
             return null;
+        }
+    }
+
+    /**
+     * Lê o `.env` na mão, sem tocar em `$_ENV`/`putenv()`.
+     *
+     * O `phpunit.xml` publica apenas `DB_CONNECTION`; host, usuário e senha vivem no `.env`,
+     * que o Laravel só carrega ao criar a aplicação — ou seja, DEPOIS deste ponto. Medido:
+     * aqui `getenv('DB_HOST')` devolve `false`. Com isso a conexão caía em
+     * `127.0.0.1`/`root`, estourava `PDOException` e o guard virava um no-op silencioso: o
+     * advisory lock nunca era adquirido e duas suítes simultâneas seguiam se corrompendo
+     * exatamente como se ele não existisse.
+     *
+     * @return array<string, string|null>
+     */
+    private function environmentFileVariables(): array
+    {
+        try {
+            return Dotenv::createArrayBacked(dirname(__DIR__))->safeLoad();
+        } catch (Throwable) {
+            // `.env` ausente ou ilegível: cai nos defaults e o guard segue sem lock, como antes.
+            return [];
         }
     }
 }

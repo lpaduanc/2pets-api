@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\ProfessionalType;
 use App\Models\Professional;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -204,5 +205,25 @@ class ProfessionalSeeder extends Seeder
                 'is_featured' => false,
             ]
         );
+
+        // Autorizacao no 2pets e SEMPRE decidida pelo papel Spatie. Sem esta atribuicao, estas
+        // contas nasciam com `users.role = 'professional'` e papel nenhum — logavam
+        // normalmente e tomavam 403 em todo endpoint com `hasAnyRole()`, incluindo a busca de
+        // pet por CPF do tutor que o veterinario usa para pedir acesso.
+        $this->assignRoleFromUserType($professional);
+        $this->assignRoleFromUserType($company);
+        $this->assignRoleFromUserType($vet2);
+        $this->assignRoleFromUserType($vet3);
+    }
+
+    private function assignRoleFromUserType(User $user): void
+    {
+        $roleName = ProfessionalType::tryFrom((string) $user->user_type)?->defaultRoleName();
+
+        if ($roleName === null || $user->hasRole($roleName)) {
+            return;
+        }
+
+        $user->assignRole($roleName);
     }
 }

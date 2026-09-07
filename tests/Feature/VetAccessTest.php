@@ -456,7 +456,7 @@ class VetAccessTest extends TestCase
 
         $response = $this->postJson('/api/pet-vet-access/request', [
             'pet_id' => $this->pet->id,
-            'access_level' => 'read',
+            'requested_access_level' => 'read',
         ]);
 
         $response->assertStatus(201);
