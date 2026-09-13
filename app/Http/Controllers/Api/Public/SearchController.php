@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Public;
 use App\DataTransferObjects\SearchFiltersDTO;
 use App\Enums\ProfessionalType;
 use App\Http\Controllers\Controller;
-use App\Http\Resources\ProfessionalSearchResource;
+use App\Http\Resources\PublicProfessionalSearchResource;
 use App\Models\User;
 use App\Services\Search\GeoLocationService;
 use App\Services\Search\ProfessionalSearchService;
@@ -34,7 +34,7 @@ class SearchController extends Controller
             $results = $this->searchService->search($filters);
         }
 
-        return ProfessionalSearchResource::collection($results);
+        return PublicProfessionalSearchResource::collection($results);
     }
 
     public function nearby(Request $request): AnonymousResourceCollection
@@ -54,22 +54,19 @@ class SearchController extends Controller
 
         $results = $this->searchService->search($filters);
 
-        return ProfessionalSearchResource::collection($results);
+        return PublicProfessionalSearchResource::collection($results);
     }
 
     public function featured(Request $request): AnonymousResourceCollection
     {
         $query = User::query()
-            ->where('role', 'professional')
-            ->where('profile_completed', true)
-            ->where('registration_status', 'approved')
-            ->where('is_suspended', false)
+            ->visibleProfessional()
             ->whereHas('professional', fn ($q) => $q->where('is_featured', true))
             ->with(['professional', 'professional.services']);
 
         $this->applyFeaturedDistance($query, $request);
 
-        return ProfessionalSearchResource::collection($query->limit(10)->get());
+        return PublicProfessionalSearchResource::collection($query->limit(10)->get());
     }
 
     /**

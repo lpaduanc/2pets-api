@@ -30,7 +30,7 @@ class ProfessionalSeeder extends Seeder
                 'longitude' => -46.655981,
                 'profile_completed' => true,
                 'registration_status' => 'approved',
-                'email_verified' => true,
+                'email_verified_at' => now(),
                 'is_suspended' => false,
             ]
         );
@@ -80,7 +80,7 @@ class ProfessionalSeeder extends Seeder
                 'longitude' => -46.660607,
                 'profile_completed' => true,
                 'registration_status' => 'approved',
-                'email_verified' => true,
+                'email_verified_at' => now(),
                 'is_suspended' => false,
             ]
         );
@@ -127,7 +127,7 @@ class ProfessionalSeeder extends Seeder
                 'longitude' => -46.671944,
                 'profile_completed' => true,
                 'registration_status' => 'approved',
-                'email_verified' => true,
+                'email_verified_at' => now(),
                 'is_suspended' => false,
             ]
         );
@@ -175,7 +175,7 @@ class ProfessionalSeeder extends Seeder
                 'longitude' => -46.665000,
                 'profile_completed' => true,
                 'registration_status' => 'approved',
-                'email_verified' => true,
+                'email_verified_at' => now(),
                 'is_suspended' => false,
             ]
         );

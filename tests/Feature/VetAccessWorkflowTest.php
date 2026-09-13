@@ -6,7 +6,10 @@ use App\Enums\VetAccessLevel;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\User;
+use App\Notifications\PetVetAccessApproved;
+use App\Notifications\PetVetAccessRejected;
 use App\Notifications\PetVetAccessRequested;
+use App\Notifications\PetVetAccessRevoked;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
@@ -114,6 +117,44 @@ class VetAccessWorkflowTest extends TestCase
         $this->assertEquals('Não reconheço este profissional', $access->rejection_reason);
     }
 
+    /**
+     * Bug: o vet nunca era avisado de que o tutor aprovou o pedido — precisava ficar
+     * tentando abrir a tela de pacientes para descobrir.
+     */
+    public function test_vet_is_notified_when_tutor_accepts(): void
+    {
+        Notification::fake();
+        $access = PetVetAccess::factoryCreatePending($this->vet, $this->pet, VetAccessLevel::READ);
+
+        Sanctum::actingAs($this->tutor);
+        $this->postJson("/api/pet-vet-access/{$access->id}/accept", ['access_level' => 'write'])->assertOk();
+
+        Notification::assertSentTo(
+            $this->vet,
+            PetVetAccessApproved::class,
+            fn (PetVetAccessApproved $notification) => $notification->pet->id === $this->pet->id
+                && $notification->grantedLevel === VetAccessLevel::WRITE
+        );
+    }
+
+    /** Bug: o vet nunca era avisado de que o pedido foi recusado. */
+    public function test_vet_is_notified_when_tutor_rejects(): void
+    {
+        Notification::fake();
+        $access = PetVetAccess::factoryCreatePending($this->vet, $this->pet);
+
+        Sanctum::actingAs($this->tutor);
+        $this->postJson("/api/pet-vet-access/{$access->id}/reject", [
+            'reason' => 'Não reconheço este profissional',
+        ])->assertOk();
+
+        Notification::assertSentTo(
+            $this->vet,
+            PetVetAccessRejected::class,
+            fn (PetVetAccessRejected $notification) => $notification->reason === 'Não reconheço este profissional'
+        );
+    }
+
     public function test_non_owner_cannot_accept_request(): void
     {
         $access = PetVetAccess::factoryCreatePending($this->vet, $this->pet);
@@ -137,6 +178,28 @@ class VetAccessWorkflowTest extends TestCase
         $this->assertEquals(PetVetAccess::STATUS_REVOKED, $access->status);
         $this->assertFalse($access->is_active);
         $this->assertNotNull($access->revoked_at);
+    }
+
+    /**
+     * Bug: o vet só descobria a revogação levando um 403 na frente do cliente — nunca era
+     * avisado.
+     */
+    public function test_vet_is_notified_when_tutor_revokes(): void
+    {
+        Notification::fake();
+        $access = PetVetAccess::factoryCreatePending($this->vet, $this->pet);
+        $access->accept(VetAccessLevel::READ);
+
+        Sanctum::actingAs($this->tutor);
+        $this->postJson("/api/pet-vet-access/{$access->id}/revoke", [
+            'reason' => 'Trocando de veterinário',
+        ])->assertOk();
+
+        Notification::assertSentTo(
+            $this->vet,
+            PetVetAccessRevoked::class,
+            fn (PetVetAccessRevoked $notification) => $notification->reason === 'Trocando de veterinário'
+        );
     }
 
     public function test_tutor_cannot_revoke_non_accepted_access(): void

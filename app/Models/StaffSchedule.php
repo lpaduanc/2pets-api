@@ -28,7 +28,7 @@ class StaffSchedule extends Model
 
     public function staff(): BelongsTo
     {
-        return $this->belongsTo(Staff::class);
+        return $this->belongsTo(OrganizationMember::class, 'staff_id');
     }
 
     public function location(): BelongsTo
@@ -52,4 +52,3 @@ class StaffSchedule extends Model
         return $totalMinutes / 60;
     }
 }
-

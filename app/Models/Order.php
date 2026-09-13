@@ -44,6 +44,11 @@ class Order extends Model
         return $this->belongsTo(User::class, 'professional_id');
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
@@ -73,7 +78,7 @@ class Order extends Model
 
     public function cancel(): void
     {
-        if (!in_array($this->status, ['pending', 'confirmed'])) {
+        if (! in_array($this->status, ['pending', 'confirmed'])) {
             throw new \Exception('Cannot cancel order in current status');
         }
 
@@ -85,4 +90,3 @@ class Order extends Model
         }
     }
 }
-

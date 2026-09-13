@@ -5,9 +5,12 @@ namespace App\Http\Requests\User;
 use App\DataTransferObjects\Cnpj;
 use App\DataTransferObjects\Cpf;
 use App\Enums\ProfessionalType;
+use App\Http\Requests\Registration\Concerns\HasProfessionalCapabilityRules;
 use App\Models\Professional;
 use App\Models\User;
+use App\Rules\ValidCpf;
 use Closure;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,6 +28,8 @@ use Illuminate\Validation\Rule;
  */
 class UpdateProfileRequest extends FormRequest
 {
+    use HasProfessionalCapabilityRules;
+
     private const GENDERS = ['male', 'female', 'other', 'not_specified'];
 
     public function authorize(): bool
@@ -114,7 +119,13 @@ class UpdateProfileRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['sometimes', 'required', 'email', 'unique:users,email,'.$this->user()->id],
             'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
-            'cpf' => ['sometimes', 'nullable', 'digits:'.Cpf::DIGIT_COUNT, $this->uniqueCpfRule()],
+            // `digits:11` sozinho aceita qualquer sequência de 11 algarismos. Os três fluxos de
+            // cadastro (`Registration/Complete*Request`) já exigiam `ValidCpf`; editar o perfil
+            // não — mesmo campo, dois padrões. O sintoma real: um CNPJ colado num campo com
+            // máscara de 11 dígitos chega truncado (48328865000108 → 48328865000), passa no
+            // `digits` e grava como CPF. Foi assim que uma conta de clínica em dev ficou com CPF
+            // inválido.
+            'cpf' => ['sometimes', 'nullable', 'bail', 'digits:'.Cpf::DIGIT_COUNT, app(ValidCpf::class), $this->uniqueCpfRule()],
             'birth_date' => ['sometimes', 'nullable', 'date', 'before:today'],
             'gender' => ['sometimes', 'nullable', Rule::in(self::GENDERS)],
             'occupation' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -216,7 +227,63 @@ class UpdateProfileRequest extends FormRequest
                 'sometimes', 'nullable', 'string', 'size:2',
                 Rule::requiredIf(fn (): bool => $this->technicalResponsibleIsRequired()),
             ],
+            // Dupla trava por `professional_type` (docs/segmentacao-cadastro-profissional.md):
+            // os 18 campos de "Diferenciais e Facilidades" + `species_served`/`sizes_served`
+            // eram capturados no cadastro (Onda 3) mas não podiam ser editados depois —
+            // `professional.services_offered` acima cobre só o formato, esta chamada acrescenta
+            // a checagem "este serviço/equipamento/facilidade é permitido para ESTE tipo?" e
+            // sobrescreve a entrada solta de `services_offered`/`equipment` já declarada.
+            ...$this->professionalCapabilityPatchRules(),
         ];
+    }
+
+    /**
+     * `null` quando o usuário não tem `Professional` vinculado e não mandou
+     * `professional.professional_type` no payload — nesse caso nenhuma regra de capacidade é
+     * aplicada (não há tipo contra o qual segmentar).
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function professionalCapabilityPatchRules(): array
+    {
+        $type = $this->effectiveProfessionalType();
+
+        return $type === null ? [] : $this->capabilityPatchRules($type, 'professional.');
+    }
+
+    /** @return array<string, string> */
+    private function professionalCapabilityPatchMessages(): array
+    {
+        $type = $this->effectiveProfessionalType();
+
+        return $type === null ? [] : $this->capabilityPatchMessages($type, 'professional.');
+    }
+
+    /**
+     * Dependência serviço↔equipamento (`docs/equipamento-vet-volante-e-marketplace-b2b.md`
+     * §2.2) também vale para edição, não só para o cadastro inicial. Só roda quando o payload
+     * toca `services_offered` OU `equipment` — sem isso, editar telefone num perfil com dado
+     * legado incoerente (profissional cadastrado antes desta regra existir) quebraria uma
+     * requisição que nem chegou perto desses dois campos. Quando um dos dois vem no payload e
+     * o outro não, cai para o valor já persistido — mesma lógica de "estado efetivo depois do
+     * patch" que `effectiveProfessionalType()` já usa para o tipo.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v): void {
+            if (! $this->has('professional.services_offered') && ! $this->has('professional.equipment')) {
+                return;
+            }
+
+            $professional = $this->user()->professional;
+
+            $this->addServiceEquipmentDependencyErrors(
+                $v,
+                (array) $this->input('professional.services_offered', $professional?->services_offered ?? []),
+                (array) $this->input('professional.equipment', $professional?->equipment ?? []),
+                'professional.services_offered',
+            );
+        });
     }
 
     /**
@@ -291,6 +358,7 @@ class UpdateProfileRequest extends FormRequest
             'professional.technical_responsible_crmv.required' => 'Informe o CRMV do responsavel tecnico.',
             'professional.technical_responsible_crmv_state.required' => 'Informe a UF do CRMV do responsavel tecnico.',
             'professional.technical_responsible_crmv_state.size' => 'A UF do CRMV deve ter 2 letras.',
+            ...$this->professionalCapabilityPatchMessages(),
         ];
     }
 }

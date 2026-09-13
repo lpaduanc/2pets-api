@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Pet;
 use App\Models\User;
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -47,7 +48,7 @@ class PetUpdatedByVet extends Notification implements ShouldQueue
     public function toMail($notifiable): MailMessage
     {
         $title = $this->mailTitle();
-        $deepLink = url("/tutor/pets/{$this->pet->id}/authorized-vets");
+        $deepLink = FrontendRoute::absolute(FrontendRoute::tutorPetAuthorizedVets($this->pet->id));
 
         $mail = (new MailMessage)
             ->subject("Atualização no perfil de {$this->pet->name} — 2pets")
@@ -75,7 +76,7 @@ class PetUpdatedByVet extends Notification implements ShouldQueue
             'type' => 'pet_updated_by_vet',
             'title' => $this->shortTitle(),
             'message' => $this->shortMessage(),
-            'action_url' => "/tutor/pets/{$this->pet->id}/authorized-vets",
+            'action_url' => FrontendRoute::tutorPetAuthorizedVets($this->pet->id),
             'data' => [
                 'pet_id' => $this->pet->id,
                 'pet_name' => $this->pet->name,

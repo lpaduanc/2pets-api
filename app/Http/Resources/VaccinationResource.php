@@ -24,6 +24,8 @@ class VaccinationResource extends JsonResource
             'vaccine_name' => $this->vaccine_name,
             'manufacturer' => $this->manufacturer,
             'batch_number' => $this->batch_number,
+            'expiry_date' => $this->expiry_date?->format('Y-m-d'),
+            'inventory_id' => $this->inventory_id,
             'application_date' => $this->application_date?->format('Y-m-d'),
             'next_dose_date' => $this->next_dose_date?->format('Y-m-d'),
             'dose_number' => $this->dose_number,

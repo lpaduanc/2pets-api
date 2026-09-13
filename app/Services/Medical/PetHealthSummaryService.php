@@ -52,6 +52,7 @@ final class PetHealthSummaryService
             ->with([
                 'vaccinations' => fn (HasMany $query) => $query
                     ->select(['id', 'pet_id', 'vaccine_name', 'next_dose_date'])
+                    ->latestPerType()
                     ->whereNotNull('next_dose_date')
                     ->whereDate('next_dose_date', '<=', $dueUntil)
                     ->orderBy('next_dose_date'),

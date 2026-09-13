@@ -69,7 +69,6 @@ class UserFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'role' => 'tutor',
             'user_type' => 'tutor',
-            'email_verified' => true,
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,
@@ -84,7 +83,6 @@ class UserFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'role' => 'professional',
             'user_type' => 'vet',
-            'email_verified' => true,
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,
@@ -99,7 +97,6 @@ class UserFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'role' => 'vet_freelancer',
             'user_type' => 'vet',
-            'email_verified' => true,
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,
@@ -114,7 +111,6 @@ class UserFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'role' => 'company',
             'user_type' => 'clinic',
-            'email_verified' => true,
             'profile_completed' => false,
             'registration_status' => 'pending',
             'is_suspended' => false,
@@ -139,7 +135,6 @@ class UserFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'role' => 'admin',
             'user_type' => 'tutor',
-            'email_verified' => true,
             'profile_completed' => true,
             'registration_status' => 'approved',
             'is_suspended' => false,

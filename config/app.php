@@ -56,6 +56,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend Application URL
+    |--------------------------------------------------------------------------
+    |
+    | Public-facing URL of the logged-in web app (2pets-app / Quasar), used to
+    | build links that must open there instead of this API — password reset,
+    | e-mail verification, organization invitations, pet card QR code. Without
+    | this key the app falls back to the Laravel framework skeleton default
+    | (http://localhost:3000), which matches nothing in this project.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:9200'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

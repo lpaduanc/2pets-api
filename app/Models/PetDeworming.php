@@ -20,6 +20,7 @@ class PetDeworming extends Model
         'next_date',
         'weight_at_application',
         'veterinarian_id',
+        'inventory_id',
         'notes',
     ];
 
@@ -52,6 +53,12 @@ class PetDeworming extends Model
     public function veterinarian(): BelongsTo
     {
         return $this->belongsTo(User::class, 'veterinarian_id');
+    }
+
+    /** Item de estoque debitado por esta aplicação — nulo é o caso normal (ver item 2 do parecer). */
+    public function inventory(): BelongsTo
+    {
+        return $this->belongsTo(Inventory::class);
     }
 
     // ──────────────────────────────────────────────

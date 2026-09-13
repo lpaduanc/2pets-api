@@ -7,6 +7,7 @@ use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Services\Subscription\BillingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -67,6 +68,11 @@ class SubscriptionTest extends TestCase
 
     public function test_user_can_view_plans(): void
     {
+        // Sem `features.paid_plans`, `SubscriptionController::plans()` some com o plano pago
+        // de propósito (beta 100% grátis — ver `config/features.php`). Este teste quer os DOIS
+        // planos (é o que a asserção abaixo já dizia), então liga a flag explicitamente.
+        Config::set('features.paid_plans', true);
+
         Sanctum::actingAs($this->tutor);
 
         $response = $this->getJson('/api/subscriptions/plans');
@@ -116,6 +122,13 @@ class SubscriptionTest extends TestCase
 
     public function test_user_can_subscribe_to_plan(): void
     {
+        // `features.paid_plans` fica `false` por padrão em beta (MVP 100% grátis até o Stripe
+        // ter chaves reais — ver `config/features.php`) e `SubscriptionController::subscribe()`
+        // bloqueia planos pagos com 403 nesse caso. Este teste testa justamente o caminho de
+        // assinar um plano pago (trial), então precisa ligar a flag — mesmo padrão de
+        // `Config::set` já usado em `DashboardAggregationsTest` para `ai_business`.
+        Config::set('features.paid_plans', true);
+
         Sanctum::actingAs($this->tutor);
 
         $response = $this->postJson('/api/subscriptions/subscribe', [

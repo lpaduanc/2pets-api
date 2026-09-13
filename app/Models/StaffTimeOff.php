@@ -24,7 +24,7 @@ class StaffTimeOff extends Model
 
     public function staff(): BelongsTo
     {
-        return $this->belongsTo(Staff::class);
+        return $this->belongsTo(OrganizationMember::class, 'staff_id');
     }
 
     public function approvedBy(): BelongsTo
@@ -50,4 +50,3 @@ class StaffTimeOff extends Model
         return $this->start_date->diffInDays($this->end_date) + 1;
     }
 }
-

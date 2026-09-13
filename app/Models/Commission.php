@@ -29,6 +29,11 @@ class Commission extends Model
         return $this->belongsTo(User::class, 'professional_id');
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function payout(): BelongsTo
     {
         return $this->belongsTo(Payout::class);
@@ -44,4 +49,3 @@ class Commission extends Model
         $this->update(['status' => 'cancelled']);
     }
 }
-

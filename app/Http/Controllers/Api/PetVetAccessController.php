@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\DataTransferObjects\VetAccessRequestData;
 use App\Enums\VetAccessLevel;
-use App\Exceptions\PetAccess\InvalidVetAccessTransitionException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PetVetAccess\AcceptVetAccessRequest;
 use App\Http\Requests\PetVetAccess\ChangeVetAccessLevelRequest;
@@ -25,7 +24,6 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\Log;
 
 class PetVetAccessController extends Controller
 {
@@ -150,49 +148,37 @@ class PetVetAccessController extends Controller
     }
 
     /**
-     * Tutor rejeita solicitação pendente.
+     * Tutor rejeita solicitação pendente. O vet é notificado (in-app) da recusa.
      */
-    public function reject(Request $request, int $accessId): JsonResponse
+    public function reject(Request $request, VetAccessGrantService $service, int $accessId): JsonResponse
     {
         $data = $request->validate(['reason' => 'nullable|string|max:500']);
 
-        $user = $request->user();
         $access = PetVetAccess::with('pet')->findOrFail($accessId);
         $this->authorize('respond', $access);
 
-        if ($access->status !== PetVetAccess::STATUS_PENDING) {
-            throw InvalidVetAccessTransitionException::notPending();
-        }
+        $rejected = $service->reject($access, $request->user(), $data['reason'] ?? null);
 
-        $access->reject($data['reason'] ?? null);
-
-        Log::info('PetVetAccess rejected', ['access_id' => $access->id, 'tutor_id' => $user->id]);
-
-        return $this->respondWithAccess($access, 'Solicitação recusada.');
+        return $this->respondWithAccess($rejected, 'Solicitação recusada.');
     }
 
     /**
-     * Tutor revoga acesso previamente aceito.
+     * Tutor revoga acesso previamente aceito. O vet é notificado (e-mail + in-app) — sem isso
+     * ele só descobre a revogação levando um 403 na frente do cliente.
      *
      * Além de marcar `revoked`, invalida tokens ativos do vet na plataforma como defesa em profundidade —
      * na próxima request o vet será forçado a reautenticar (e aí o guard de autorização já bloqueia).
      */
-    public function revoke(Request $request, int $accessId): JsonResponse
+    public function revoke(Request $request, VetAccessGrantService $service, int $accessId): JsonResponse
     {
         $data = $request->validate(['reason' => 'nullable|string|max:500']);
 
-        $user = $request->user();
         $access = PetVetAccess::with('pet', 'veterinarian')->findOrFail($accessId);
         $this->authorize('revoke', $access);
 
-        if ($access->status !== PetVetAccess::STATUS_ACCEPTED) {
-            throw InvalidVetAccessTransitionException::notAccepted();
-        }
+        $revoked = $service->revoke($access, $request->user(), $data['reason'] ?? null);
 
-        $access->revoke($user->id, $data['reason'] ?? null);
-        $this->logRevocation($access, $user->id, $data['reason'] ?? null);
-
-        return $this->respondWithAccess($access, 'Acesso revogado com sucesso.');
+        return $this->respondWithAccess($revoked, 'Acesso revogado com sucesso.');
     }
 
     /**
@@ -261,17 +247,6 @@ class PetVetAccessController extends Controller
     // ────────────────────────────────────────────────────────────────────
     // Internals
     // ────────────────────────────────────────────────────────────────────
-
-    /** Log imutável para auditoria LGPD — quem tirou o acesso de quem, quando e por quê. */
-    private function logRevocation(PetVetAccess $access, int $tutorId, ?string $reason): void
-    {
-        Log::warning('PetVetAccess revoked', [
-            'access_id' => $access->id,
-            'tutor_id' => $tutorId,
-            'vet_id' => $access->veterinarian_id,
-            'reason' => $reason,
-        ]);
-    }
 
     /** Resposta padrão dos endpoints que devolvem um vínculo com as duas partes carregadas. */
     private function respondWithAccess(PetVetAccess $access, string $message): JsonResponse

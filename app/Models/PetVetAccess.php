@@ -48,6 +48,7 @@ class PetVetAccess extends Model
         'granted_by',
         'access_level',
         'requested_access_level',
+        'message',
         'granted_at',
         'revoked_at',
         'superseded_at',

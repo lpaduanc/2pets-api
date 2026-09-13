@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\AppointmentStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -12,9 +13,10 @@ class AppointmentResource extends JsonResource
         return [
             'id' => $this->id,
 
-            // Core fields — appointment_date is stored as full datetime (see BookingService::createBooking)
+            // Core fields — appointment_date holds only the calendar date (time is always 00:00:00);
+            // the real time of day lives in the separate `appointment_time` column (see BookingService::createBooking)
             'appointment_date' => $this->appointment_date?->toISOString(),
-            'appointment_time' => $this->appointment_date?->format('H:i'),
+            'appointment_time' => $this->appointment_time?->format('H:i'),
             'duration' => $this->duration,
             'type' => $this->type,
             'status' => $this->status,
@@ -47,18 +49,14 @@ class AppointmentResource extends JsonResource
         ];
     }
 
+    /**
+     * `AppointmentStatus` é a fonte única dos rótulos — status desconhecido (dado legado ou
+     * inconsistente) ainda assim mostra algo em vez de quebrar a resposta.
+     */
     private function getStatusLabel(): string
     {
-        return match ($this->status) {
-            'pending' => 'Aguardando confirmacao',
-            'scheduled' => 'Agendado',
-            'confirmed' => 'Confirmado',
-            'in_progress' => 'Em andamento',
-            'completed' => 'Concluido',
-            'cancelled' => 'Cancelado',
-            'no_show' => 'Nao compareceu',
-            default => ucfirst($this->status ?? ''),
-        };
+        return AppointmentStatus::tryFrom($this->status ?? '')?->label()
+            ?? ucfirst($this->status ?? '');
     }
 
     private function getTypeLabel(): string

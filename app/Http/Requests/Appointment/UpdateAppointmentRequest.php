@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Appointment;
 
+use App\Enums\AppointmentStatus;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateAppointmentRequest extends FormRequest
 {
@@ -18,11 +20,27 @@ class UpdateAppointmentRequest extends FormRequest
             'appointment_time' => ['sometimes', 'date_format:H:i'],
             'duration' => ['nullable', 'integer', 'min:15', 'max:480'],
             'type' => ['sometimes', 'in:consultation,surgery,vaccination,exam,emergency,grooming,checkup'],
-            'status' => ['sometimes', 'in:scheduled,confirmed,in_progress,completed,cancelled,no_show'],
+            'status' => ['sometimes', Rule::in($this->settableStatusValues())],
             'reason' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'price' => ['nullable', 'numeric', 'min:0', 'max:99999.99'],
         ];
+    }
+
+    /**
+     * `pending` fica de fora: só `BookingService` grava esse status (agendamento do tutor
+     * aguardando confirmação) — o profissional nunca define uma consulta como `pending` por
+     * aqui. A máquina de estados em si (o que é alcançável a partir do status atual) é
+     * responsabilidade de `AppointmentStatusTransitionService`, não desta validação de formato.
+     *
+     * @return list<string>
+     */
+    private function settableStatusValues(): array
+    {
+        return array_values(array_diff(
+            array_column(AppointmentStatus::cases(), 'value'),
+            [AppointmentStatus::PENDING->value]
+        ));
     }
 
     public function messages(): array

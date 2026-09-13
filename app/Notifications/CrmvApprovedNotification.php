@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -38,7 +39,7 @@ class CrmvApprovedNotification extends Notification
             'type' => 'crmv_approved',
             'title' => 'CRMV Verificado!',
             'message' => "Seu CRMV {$this->crmvNumber}/{$this->crmvState} foi verificado com sucesso.",
-            'action_url' => '/professional/dashboard',
+            'action_url' => FrontendRoute::PROFESSIONAL_DASHBOARD,
         ];
     }
 }

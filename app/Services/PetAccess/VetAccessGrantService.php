@@ -31,6 +31,10 @@ use Illuminate\Support\Facades\Log;
  */
 final class VetAccessGrantService
 {
+    public function __construct(
+        private readonly VetAccessDecisionNotifier $notifier,
+    ) {}
+
     /**
      * Aceite: o nível vem do tutor, nunca de `requested_access_level`.
      *
@@ -43,7 +47,7 @@ final class VetAccessGrantService
             throw InvalidVetAccessTransitionException::notPending();
         }
 
-        return DB::transaction(function () use ($pending, $grantedLevel, $tutor): PetVetAccess {
+        $accepted = DB::transaction(function () use ($pending, $grantedLevel, $tutor): PetVetAccess {
             $previous = $this->findGrantedAccess($pending);
             $previous?->supersede($pending);
 
@@ -53,6 +57,56 @@ final class VetAccessGrantService
 
             return $pending;
         });
+
+        $this->notifier->approved($accepted, $tutor, $grantedLevel);
+
+        return $accepted;
+    }
+
+    /**
+     * Tutor recusa uma solicitação pendente.
+     */
+    public function reject(PetVetAccess $pending, User $tutor, ?string $reason): PetVetAccess
+    {
+        if ($pending->status !== PetVetAccess::STATUS_PENDING) {
+            throw InvalidVetAccessTransitionException::notPending();
+        }
+
+        $pending->reject($reason);
+
+        Log::info('PetVetAccess rejected', [
+            'access_id' => $pending->id,
+            'tutor_id' => $tutor->id,
+            'vet_id' => $pending->veterinarian_id,
+        ]);
+
+        $this->notifier->rejected($pending, $tutor, $reason);
+
+        return $pending;
+    }
+
+    /**
+     * Tutor revoga um acesso já concedido. Além de marcar `revoked`, avisa o vet — sem isso
+     * ele só descobre levando um 403 na frente do cliente.
+     */
+    public function revoke(PetVetAccess $granted, User $tutor, ?string $reason): PetVetAccess
+    {
+        if ($granted->status !== PetVetAccess::STATUS_ACCEPTED) {
+            throw InvalidVetAccessTransitionException::notAccepted();
+        }
+
+        $granted->revoke($tutor->id, $reason);
+
+        Log::warning('PetVetAccess revoked', [
+            'access_id' => $granted->id,
+            'tutor_id' => $tutor->id,
+            'vet_id' => $granted->veterinarian_id,
+            'reason' => $reason,
+        ]);
+
+        $this->notifier->revoked($granted, $tutor, $reason);
+
+        return $granted;
     }
 
     /**

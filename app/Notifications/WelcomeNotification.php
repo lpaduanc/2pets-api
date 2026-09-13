@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -34,7 +35,7 @@ class WelcomeNotification extends Notification
             'type' => 'welcome',
             'title' => 'Bem-vindo ao 2pets!',
             'message' => "Ola {$this->userName}, sua conta foi criada com sucesso!",
-            'action_url' => '/tutor/pets/add',
+            'action_url' => FrontendRoute::TUTOR_PETS_ADD,
         ];
     }
 }

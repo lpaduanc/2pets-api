@@ -22,6 +22,13 @@ class UserResource extends JsonResource
             'profile_completed' => $this->profile_completed,
             'registration_status' => $this->registration_status,
             'is_suspended' => $this->is_suspended,
+            'is_deactivated' => $this->resource->isDeactivated(),
+            'deactivated_at' => $this->deactivated_at?->toISOString(),
+            'deactivation_reason' => $this->when(
+                $this->shouldShowSensitiveData($request),
+                fn () => $this->deactivation_reason?->value
+            ),
+            'deactivation_note' => $this->when($this->shouldShowSensitiveData($request), $this->deactivation_note),
 
             // Personal data
             'cpf' => $this->when($this->shouldShowSensitiveData($request), $this->cpf),
@@ -59,6 +66,26 @@ class UserResource extends JsonResource
             // Relationships (only when loaded)
             'professional' => new ProfessionalResource($this->whenLoaded('professional')),
             'company' => $this->whenLoaded('company'),
+
+            // Organizações às quais o usuário está ativamente vinculado (split Pessoa/Organização)
+            // — sempre array, nunca objeto único: a mesma pessoa pode ter vínculo com N
+            // organizações. Vazio de verdade para tutor e vet volante.
+            //
+            // A versão anterior só preenchia quando a relação já estivesse carregada e devolvia
+            // `[]` caso contrário. Isso MENTIA: "não carreguei" saía indistinguível de "não
+            // pertence a nenhuma". Só `GET /user` fazia o eager load, então o payload de
+            // `POST /login` dizia que o dono de clínica não tinha organização alguma — e o app,
+            // que guarda o usuário do login, mandava completar um cadastro já completo.
+            //
+            // `loadMissing` resolve na origem: carrega uma vez se faltar, não recarrega se já
+            // veio. Seguro aqui porque `UserResource` nunca é usado como coleção (todos os 16
+            // call sites são de usuário único), então não há N+1 a temer — e nenhum call site
+            // futuro precisa lembrar de nada.
+            'organizations' => UserOrganizationResource::collection(
+                $this->resource
+                    ->loadMissing('activeOrganizationMemberships.organization')
+                    ->primaryMembershipPerOrganization()
+            ),
             'pets_count' => $this->when($this->pets_count !== null, $this->pets_count),
 
             // Timestamps
@@ -74,7 +101,7 @@ class UserResource extends JsonResource
     private function shouldShowSensitiveData(Request $request): bool
     {
         $authUser = $request->user();
-        if (!$authUser) {
+        if (! $authUser) {
             return false;
         }
 

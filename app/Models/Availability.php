@@ -28,5 +28,9 @@ class Availability extends Model
     {
         return $this->belongsTo(User::class, 'professional_id');
     }
-}
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+}

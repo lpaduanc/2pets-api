@@ -10,6 +10,7 @@ use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\User;
 use App\Notifications\PetVetAccessRequested;
+use App\Services\CrmvValidationService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -26,6 +27,10 @@ use Throwable;
  */
 final class VetAccessRequestService
 {
+    public function __construct(
+        private readonly CrmvValidationService $crmvValidationService,
+    ) {}
+
     public function request(User $vet, VetAccessRequestData $data): PetVetAccess
     {
         try {
@@ -42,7 +47,7 @@ final class VetAccessRequestService
 
         $this->guardAgainstRedundantRequest($pet->id, $vet->id, $data->requestedAccessLevel);
 
-        $access = $this->createPendingAccess($pet, $vet, $tutor, $data->requestedAccessLevel);
+        $access = $this->createPendingAccess($pet, $vet, $tutor, $data);
 
         $this->notifyTutor($access, $pet, $tutor, $vet);
 
@@ -61,14 +66,15 @@ final class VetAccessRequestService
      * `access_level` nasce NULO de propósito: nível concedido é decisão do tutor no aceite, e
      * o que o vet indicou fica separado em `requested_access_level`.
      */
-    private function createPendingAccess(Pet $pet, User $vet, User $tutor, VetAccessLevel $requested): PetVetAccess
+    private function createPendingAccess(Pet $pet, User $vet, User $tutor, VetAccessRequestData $data): PetVetAccess
     {
         return PetVetAccess::create([
             'pet_id' => $pet->id,
             'veterinarian_id' => $vet->id,
             'granted_by' => $tutor->id,
             'access_level' => null,
-            'requested_access_level' => $requested,
+            'requested_access_level' => $data->requestedAccessLevel,
+            'message' => $data->message,
             'status' => PetVetAccess::STATUS_PENDING,
             'requested_at' => now(),
             'is_active' => false,
@@ -182,6 +188,6 @@ final class VetAccessRequestService
             return null;
         }
 
-        return $professional->crmv.'/'.($professional->crmv_state ?? 'BR');
+        return $this->crmvValidationService->displayLabel($professional->crmv, $professional->crmv_state);
     }
 }

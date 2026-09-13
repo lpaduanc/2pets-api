@@ -232,8 +232,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'vaccinations.view.any', 'vaccinations.create', 'vaccinations.update',
             'prescriptions.view.any', 'prescriptions.create', 'prescriptions.update',
             'exams.view.any', 'exams.create', 'exams.update',
-            'hospitalizations.view.any', 'hospitalizations.create', 'hospitalizations.update',
-            'surgeries.view.any', 'surgeries.create', 'surgeries.update',
+            'hospitalizations.view.any', 'hospitalizations.create', 'hospitalizations.update', 'hospitalizations.discharge',
+            'surgeries.view.any', 'surgeries.create', 'surgeries.update', 'surgeries.cancel',
             'services.view', 'services.create', 'services.update', 'services.delete',
             'invoices.view.any', 'invoices.create', 'invoices.update',
             'reviews.view', 'reviews.respond',
@@ -250,17 +250,33 @@ class RolesAndPermissionsSeeder extends Seeder
         ]);
 
         // 3. Clinic Owner
+        //
+        // Dono de clínica é papel ADMINISTRATIVO, não clínico. Criar prontuário, receita,
+        // vacina, exame, internação e cirurgia é ato privativo de médico-veterinário pessoa
+        // física com CRMV ativo — Lei 5.517/1968 art. 1º, Res. CFMV 1.318/2020 (prescrição) e
+        // Res. CFMV 1.321/2020 alterada pela 1.653/2025 (cada evolução do prontuário exige nome
+        // e CRMV do autor). Uma conta `clinic_owner` pode não ter CRMV nenhum: conceder `*.create`
+        // aqui autorizaria um CNPJ a assinar ato clínico.
+        //
+        // O dono que TAMBÉM clinica recebe essas permissões pelo papel de veterinário
+        // (`vet_freelancer`/`clinic_vet`) acumulado, nunca por ser dono. Ver a decisão completa
+        // em `docs/rbac-clinica-autoria-e-staff.md`.
         $clinicOwner = Role::findOrCreate('clinic_owner', 'web');
         $clinicOwner->syncPermissions([
             'users.view', 'users.update',
             'pets.view.any', 'pets.create', 'pets.update.any',
             'appointments.view.any', 'appointments.create', 'appointments.update.any', 'appointments.cancel.any',
-            'medical-records.view.any', 'medical-records.create', 'medical-records.update.any', 'medical-records.delete',
-            'vaccinations.view.any', 'vaccinations.create', 'vaccinations.update', 'vaccinations.delete',
-            'prescriptions.view.any', 'prescriptions.create', 'prescriptions.update', 'prescriptions.delete',
-            'exams.view.any', 'exams.create', 'exams.update', 'exams.delete',
-            'hospitalizations.view.any', 'hospitalizations.create', 'hospitalizations.update', 'hospitalizations.discharge',
-            'surgeries.view.any', 'surgeries.create', 'surgeries.update', 'surgeries.cancel',
+            // Dado clínico é LEITURA para o dono. Editar também é ato clínico — a Res. CFMV
+            // 1.321/2020 (alterada pela 1.653/2025) exige nome e CRMV do responsável em CADA
+            // evolução, então não existe edição anônima ou assinada por CNPJ. E apagar é pior:
+            // prontuário tem guarda obrigatória, não se apaga na operação do dia a dia.
+            // `*.delete` e `medical-records.update.any` ficam só com `super_admin`, de propósito.
+            'medical-records.view.any',
+            'vaccinations.view.any',
+            'prescriptions.view.any',
+            'exams.view.any',
+            'hospitalizations.view.any',
+            'surgeries.view.any',
             'services.view', 'services.create', 'services.update', 'services.delete',
             'inventory.view', 'inventory.create', 'inventory.update', 'inventory.delete',
             'invoices.view.any', 'invoices.create', 'invoices.update', 'invoices.delete',
@@ -288,8 +304,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'vaccinations.view.any', 'vaccinations.create', 'vaccinations.update',
             'prescriptions.view.any', 'prescriptions.create', 'prescriptions.update',
             'exams.view.any', 'exams.create', 'exams.update',
-            'hospitalizations.view.any', 'hospitalizations.create', 'hospitalizations.update',
-            'surgeries.view.any', 'surgeries.create', 'surgeries.update',
+            'hospitalizations.view.any', 'hospitalizations.create', 'hospitalizations.update', 'hospitalizations.discharge',
+            'surgeries.view.any', 'surgeries.create', 'surgeries.update', 'surgeries.cancel',
             'services.view',
             'invoices.view.any', 'invoices.create',
             'reviews.view', 'reviews.respond',

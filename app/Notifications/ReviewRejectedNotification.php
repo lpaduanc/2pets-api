@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -36,7 +37,7 @@ class ReviewRejectedNotification extends Notification
             'type' => 'review_rejected',
             'title' => 'Avaliacao nao aprovada',
             'message' => "Sua avaliacao para {$this->professionalName} nao foi aprovada.",
-            'action_url' => '/tutor/dashboard',
+            'action_url' => FrontendRoute::TUTOR_DASHBOARD,
         ];
     }
 }

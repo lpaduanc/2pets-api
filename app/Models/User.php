@@ -4,12 +4,21 @@ namespace App\Models;
 
 use App\DataTransferObjects\Cnpj;
 use App\DataTransferObjects\Cpf;
+use App\Enums\AccountStatus;
+use App\Enums\DeactivationReason;
 use App\Models\Concerns\HasGeoPoint;
+use App\Notifications\Contracts\BypassesDeactivationGate;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\Log;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -60,7 +69,7 @@ class User extends Authenticatable implements HasMedia
         'employee_count',
         'additional_notes',
         'birth_date',
-        'email_verified',
+        'email_verified_at',
         'email_verification_token',
         'email_verification_sent_at',
         'profile_completed',
@@ -69,6 +78,12 @@ class User extends Authenticatable implements HasMedia
         'reviewed_by',
         'reviewed_at',
         'is_suspended',
+        // Desativação voluntária (não confundir com `is_suspended`, punitiva)
+        'deactivated_at',
+        'deactivation_reason',
+        'deactivation_note',
+        'deactivated_by',
+        'reactivated_at',
         'stripe_customer_id',
         'stripe_subscription_id',
         // LGPD fields
@@ -101,10 +116,12 @@ class User extends Authenticatable implements HasMedia
             'email_verification_sent_at' => 'datetime',
             'birth_date' => 'date',
             'password' => 'hashed',
-            'email_verified' => 'boolean',
             'profile_completed' => 'boolean',
             'is_suspended' => 'boolean',
             'reviewed_at' => 'datetime',
+            'deactivated_at' => 'datetime',
+            'deactivation_reason' => DeactivationReason::class,
+            'reactivated_at' => 'datetime',
             // LGPD casts
             'terms_accepted_at' => 'datetime',
             'privacy_accepted_at' => 'datetime',
@@ -136,7 +153,59 @@ class User extends Authenticatable implements HasMedia
         );
     }
 
+    /**
+     * Deriva de `email_verified_at`, nunca de uma coluna própria. Antes desta mudança, o
+     * schema tinha DUAS fontes de verdade para o mesmo fato (`email_verified` boolean +
+     * `email_verified_at` timestamp) que podiam divergir — o login OAuth do Google
+     * (`AuthController::handleGoogleCallback()`) só setava `email_verified_at`, então um
+     * usuário que entrava com o Google ficava para sempre bloqueado no `if (! $user->email_verified)`
+     * do login por e-mail/senha. `email_verified_at` é o padrão do próprio Laravel
+     * (`MustVerifyEmail`) e a única gravação que sempre acontece em qualquer fluxo de
+     * verificação (token por e-mail ou OAuth) — a coluna `email_verified` continua existindo
+     * no schema por ora (evita quebrar leitura direta via `DB::table('users')`/relatório), mas
+     * nenhum código de aplicação grava nela: este accessor sempre ganha de qualquer valor
+     * salvo ali.
+     */
+    protected function emailVerified(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): bool => $this->email_verified_at !== null,
+        );
+    }
+
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // Visibilidade pública de profissional
+    // ------------------------------------------------------------------
+
+    /**
+     * Único lugar que define "este profissional aparece para o público".
+     *
+     * Estes quatro filtros são o predicado dos índices parciais
+     * `idx_users_visible_professional_location` (GIST) e `idx_users_visible_professional_name`
+     * (BTREE), criados em `2026_09_06_000001_add_search_performance_indexes_to_users_table`.
+     * O Postgres só usa um índice parcial quando consegue provar que o WHERE da query implica
+     * o predicado do índice — e quando não consegue, ele **não avisa**: a busca simplesmente
+     * volta a varrer ~200 mil linhas via `idx_users_location` em vez de ~35 mil aqui.
+     *
+     * Antes deste scope a mesma condição estava copiada em três lugares
+     * (`ProfessionalSearchService::buildBaseQuery()`, `Public\ProfessionalController::show()`,
+     * `Public\SearchController::featured()`) mais o predicado do índice — quatro cópias que
+     * precisavam mudar juntas, sem nada que acusasse quando não mudassem.
+     *
+     * ⚠️ Alterar qualquer filtro daqui EXIGE migration nova recriando os dois índices com o
+     * mesmo predicado. `ProfessionalVisibilityIndexTest` falha se os dois saírem de sincronia.
+     */
+    public function scopeVisibleProfessional(Builder $query): Builder
+    {
+        return $query
+            ->where('role', 'professional')
+            ->where('profile_completed', true)
+            ->where('registration_status', 'approved')
+            ->where('is_suspended', false)
+            ->whereNull('deactivated_at');
+    }
+
     // Role helpers
     // ------------------------------------------------------------------
 
@@ -153,6 +222,48 @@ class User extends Authenticatable implements HasMedia
     }
 
     // ------------------------------------------------------------------
+    // Desativação voluntária de conta (não confundir com `is_suspended`, punitiva, nem
+    // com `deleted_at`, que só existe após anonimização LGPD)
+    // ------------------------------------------------------------------
+
+    public function isDeactivated(): bool
+    {
+        return $this->deactivated_at !== null;
+    }
+
+    public function accountStatus(): AccountStatus
+    {
+        return AccountStatus::fromUser($this);
+    }
+
+    /**
+     * Portão único para TODA notificação enviada via `notify()` — cobre tanto
+     * `NotificationService` (que chama `$user->notify(new InAppNotification(...))` no fim de
+     * `sendNotification()`) quanto os disparos diretos dos Console Commands de lembrete
+     * (`SendHealthReminders`, `SendScheduledNotifications`), sem precisar repetir a checagem em
+     * cada call site — e sem risco de um novo lembrete esquecer de checar.
+     *
+     * Comunicação operacional (lembrete de vacina, consulta, mensagem) para assim que a conta é
+     * desativada. A campanha de reativação é a exceção deliberada: uma Notification que
+     * implemente `BypassesDeactivationGate` continua sendo entregue — hoje nenhuma implementa.
+     *
+     * @param  Notification  $instance
+     */
+    public function notify($instance): void
+    {
+        if ($this->isDeactivated() && ! $instance instanceof BypassesDeactivationGate) {
+            Log::info('Notification suppressed: recipient account is deactivated', [
+                'user_id' => $this->id,
+                'notification' => $instance::class,
+            ]);
+
+            return;
+        }
+
+        parent::notify($instance);
+    }
+
+    // ------------------------------------------------------------------
     // Activity Log (spatie/laravel-activitylog)
     // ------------------------------------------------------------------
 
@@ -162,6 +273,7 @@ class User extends Authenticatable implements HasMedia
             ->logOnly([
                 'name', 'email', 'phone', 'role', 'user_type',
                 'registration_status', 'is_suspended', 'profile_completed',
+                'deactivated_at', 'deactivation_reason',
             ])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();
@@ -204,6 +316,11 @@ class User extends Authenticatable implements HasMedia
         return $this->hasMany(Document::class);
     }
 
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
     public function professionalAsTechnicalResponsible()
     {
         return $this->hasMany(Professional::class, 'technical_responsible_id');
@@ -232,5 +349,59 @@ class User extends Authenticatable implements HasMedia
     public function reviews()
     {
         return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Organizações (empresas) às quais esta pessoa está vinculada via `organization_members`,
+     * em qualquer papel (`owner`, `veterinarian`, `assistant`...). Fase 1 do split
+     * Pessoa/Organização — uma pessoa pode ter vínculo com N organizações.
+     */
+    public function organizations(): BelongsToMany
+    {
+        return $this->belongsToMany(Organization::class, 'organization_members')
+            ->withPivot(['role', 'is_active'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Subconjunto de `organizations()` em que esta pessoa é `owner` — quem cadastrou o
+     * negócio ou assumiu a titularidade dele.
+     */
+    public function ownedOrganizations(): BelongsToMany
+    {
+        return $this->organizations()->wherePivot('role', OrganizationMember::ROLE_OWNER);
+    }
+
+    /**
+     * Vínculos ATIVOS desta pessoa com organizações — usado por `UserResource`/`GET /user`
+     * pra expor `organizations` sem N+1 (eager load `activeOrganizationMemberships.organization`
+     * em `AuthController::user()`). Tutor e vet volante nunca têm nenhum: a coleção vem vazia.
+     */
+    public function activeOrganizationMemberships(): HasMany
+    {
+        return $this->hasMany(OrganizationMember::class)->where('is_active', true);
+    }
+
+    /**
+     * Um vínculo por ORGANIZAÇÃO, e não um por linha de `organization_members`.
+     *
+     * A mesma pessoa pode ter mais de um vínculo com a MESMA organização — o caso real é o
+     * representante que também é responsável técnico: ele recebe `owner` (posse do negócio) e
+     * `veterinarian` (habilitação clínica, que é o que concede `clinic_vet`). São duas linhas
+     * porque são dois fatos distintos, e `UserRoleReconciler` depende das duas.
+     *
+     * Mas `GET /user` responde "de quais organizações eu faço parte" — ali a organização tem que
+     * aparecer UMA vez, senão o seletor de organização do app mostra a mesma clínica duplicada.
+     * Quando há mais de um vínculo, `owner` prevalece, por ser o que descreve a relação da
+     * pessoa com o negócio.
+     *
+     * @return EloquentCollection<int, OrganizationMember>
+     */
+    public function primaryMembershipPerOrganization(): EloquentCollection
+    {
+        return $this->activeOrganizationMemberships
+            ->sortBy(fn (OrganizationMember $member): int => $member->role === OrganizationMember::ROLE_OWNER ? 0 : 1)
+            ->unique('organization_id')
+            ->values();
     }
 }

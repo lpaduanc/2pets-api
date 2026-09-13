@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Exam\AddExamResultsRequest;
 use App\Models\Exam;
 use App\Models\ExamImage;
 use App\Services\Medical\ExamService;
@@ -58,21 +59,12 @@ class ExamController extends Controller
         ], 201);
     }
 
-    public function addResults(Request $request, int $examId): JsonResponse
+    public function addResults(AddExamResultsRequest $request, int $examId): JsonResponse
     {
-        $validated = $request->validate([
-            'results' => 'required|array',
-            'results.*.parameter' => 'required|string',
-            'results.*.value' => 'required|string',
-            'results.*.unit' => 'nullable|string',
-            'results.*.reference_range' => 'nullable|string',
-            'results.*.status' => 'nullable|in:normal,high,low,critical',
-        ]);
-
         $exam = Exam::findOrFail($examId);
         $this->resolvePetForWrite($request, (int) $exam->pet_id);
 
-        $this->examService->addResults($exam, $validated['results']);
+        $this->examService->addResults($exam, $request->validated('results'));
 
         return response()->json(['message' => 'Results added successfully']);
     }

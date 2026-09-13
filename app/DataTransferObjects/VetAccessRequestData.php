@@ -24,6 +24,7 @@ final readonly class VetAccessRequestData
         public ?Cpf $tutorCpf,
         public array $petData,
         public VetAccessLevel $requestedAccessLevel,
+        public ?string $message,
     ) {}
 
     /**
@@ -38,6 +39,7 @@ final readonly class VetAccessRequestData
             requestedAccessLevel: VetAccessLevel::tryFrom(
                 (string) ($validated['requested_access_level'] ?? '')
             ) ?? VetAccessLevel::READ,
+            message: $validated['message'] ?? null,
         );
     }
 

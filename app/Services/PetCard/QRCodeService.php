@@ -14,9 +14,18 @@ final class QRCodeService
         return "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$encodedData}";
     }
 
+    /**
+     * The scanned URL must open the frontend screen that renders the pet
+     * card, never this API — the API only returns JSON, so scanning the old
+     * URL (this app's own domain, `/pet-card/{publicId}`, a route that does
+     * not even exist here) always landed on a 404/JSON dump instead of the
+     * card someone who found a lost pet needs to see.
+     */
     public function generatePetCardUrl(string $publicId): string
     {
-        return url("/pet-card/{$publicId}");
+        $frontendUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
+
+        return "{$frontendUrl}/pet-card/{$publicId}";
     }
 
     public function generateQRCodeSvg(string $data, int $size = 200): string

@@ -34,6 +34,9 @@ class PetVetAccessResource extends JsonResource
             // é o que o tutor lê para decidir.
             'access_level' => $this->access_level,
             'requested_access_level' => $this->requested_access_level,
+            // Justificativa que o vet escreveu ao pedir acesso — a decisão de privacidade mais
+            // sensível do produto depende de o tutor conseguir ler o "por quê" do pedido.
+            'message' => $this->message,
             // `status` e as datas do handshake faltavam no payload, embora o app filtre por
             // elas (`activeAccessesForPet`/`historyAccessesForPet` no vet-access-store) e a
             // resposta 409 precise delas para dizer se o vínculo está pendente ou concedido.

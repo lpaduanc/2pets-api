@@ -16,25 +16,25 @@ enum ServiceCategory: string
     case DENTAL = 'dental';
     case NUTRITION = 'nutrition';
     case BEHAVIORAL = 'behavioral';
+    case HOSPITALIZATION = 'hospitalization';
+    case REHABILITATION = 'rehabilitation';
     case OTHER = 'other';
 
+    /**
+     * Resolvido via `lang/{locale}/registration.php` (`service_category.*`) — pt-BR é o
+     * default de `App::getLocale()`; só a rota do schema de cadastro troca o locale por
+     * request (ver `App\Http\Middleware\SetLocaleFromAcceptLanguage`). Consumidores fora do
+     * schema (ex.: mensagem de dupla trava em `ServiceEquipmentDependency`, busca pública)
+     * continuam recebendo pt-BR de propósito — ver relato da tarefa de i18n do cadastro.
+     */
     public function label(): string
     {
-        return match ($this) {
-            self::CONSULTATION => 'Consulta',
-            self::EMERGENCY => 'Emergência',
-            self::SURGERY => 'Cirurgia',
-            self::VACCINATION => 'Vacinação',
-            self::GROOMING => 'Banho e Tosa',
-            self::TRAINING => 'Adestramento',
-            self::BOARDING => 'Hospedagem',
-            self::LABORATORY => 'Exames Laboratoriais',
-            self::IMAGING => 'Exames de Imagem',
-            self::DENTAL => 'Odontologia',
-            self::NUTRITION => 'Nutrição',
-            self::BEHAVIORAL => 'Comportamental',
-            self::OTHER => 'Outro',
-        };
+        return __('registration.service_category.'.$this->value);
+    }
+
+    /** @return list<string> */
+    public static function values(): array
+    {
+        return array_column(self::cases(), 'value');
     }
 }
-

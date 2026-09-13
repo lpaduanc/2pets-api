@@ -51,6 +51,11 @@ class Review extends Model
         return $this->belongsTo(User::class, 'professional_id');
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');

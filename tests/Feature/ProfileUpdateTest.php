@@ -31,7 +31,7 @@ class ProfileUpdateTest extends TestCase
     private const PROFILE_STRUCTURE = [
         'id', 'name', 'email', 'role', 'user_type', 'phone', 'cpf',
         'birth_date', 'gender', 'occupation', 'profile_completed',
-        'registration_status', 'email_verified', 'pets_count', 'created_at',
+        'registration_status', 'email_verified', 'pets_count', 'avatar_url', 'created_at',
         'address' => ['street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip_code'],
         'professional', 'company',
     ];
@@ -328,8 +328,10 @@ class ProfileUpdateTest extends TestCase
 
         Sanctum::actingAs($user);
 
+        // CPF com dígitos verificadores válidos: a fixture anterior (`123.456.789-00`) não era um
+        // CPF real e só passava porque a regra era `digits:11` pura.
         $response = $this->putJson('/api/profile', [
-            'cpf' => '123.456.789-00',
+            'cpf' => '390.533.447-05',
             'birth_date' => '1990-01-31',
             'gender' => 'female',
             'occupation' => 'Veterinária',
@@ -338,10 +340,30 @@ class ProfileUpdateTest extends TestCase
         $response->assertOk();
 
         $user->refresh();
-        $this->assertSame('12345678900', $user->cpf);
+        $this->assertSame('39053344705', $user->cpf);
         $this->assertSame('1990-01-31', $user->birth_date->format('Y-m-d'));
         $this->assertSame('female', $user->gender);
         $this->assertSame('Veterinária', $user->occupation);
+    }
+
+    /**
+     * Regressão: editar perfil validava CPF só por `digits:11`, enquanto os três fluxos de
+     * cadastro exigiam os dígitos verificadores. Um CNPJ colado num campo de máscara curta chega
+     * truncado em 11 algarismos e passava — foi como uma conta de clínica em dev acabou com
+     * `cpf = 48328865000`, que são os 11 primeiros dígitos do CNPJ dela.
+     */
+    public function test_update_rejects_a_cnpj_truncated_into_the_cpf_field(): void
+    {
+        $user = User::factory()->tutor()->create();
+
+        Sanctum::actingAs($user);
+
+        $response = $this->putJson('/api/profile', [
+            'cpf' => '48328865000',
+        ]);
+
+        $response->assertStatus(422)->assertJsonFragment(['cpf' => ['CPF inválido']]);
+        $this->assertNotSame('48328865000', $user->fresh()->cpf);
     }
 
     public function test_update_rejects_cpf_already_used_by_another_user(): void
@@ -546,5 +568,106 @@ class ProfileUpdateTest extends TestCase
             array_keys($getResponse->json('professional')),
             array_keys($putResponse->json('professional'))
         );
+    }
+
+    /**
+     * Pendência registrada na Onda 3 do plano de correção do cadastro: os 18 campos de
+     * "Diferenciais e Facilidades" + `species_served`/`sizes_served` podiam ser preenchidos no
+     * cadastro mas não podiam ser editados depois — `UpdateProfileRequest` não tinha regra
+     * nenhuma para eles. Fechado na Onda 4 reaproveitando `HasProfessionalCapabilityRules`.
+     */
+    public function test_update_persists_capability_fields_allowed_for_the_professional_type(): void
+    {
+        $professional = Professional::factory()->petshop()->create();
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => [
+                'parking_available' => true,
+                'accepts_credit_card' => true,
+                'delivery_available' => true,
+                'species_served' => ['dog', 'cat'],
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('professional.parking_available', true)
+            ->assertJsonPath('professional.species_served', ['dog', 'cat']);
+
+        $professional->refresh();
+        $this->assertTrue($professional->parking_available);
+        $this->assertTrue($professional->accepts_credit_card);
+        $this->assertTrue($professional->delivery_available);
+        $this->assertSame(['dog', 'cat'], $professional->species_served);
+    }
+
+    public function test_update_rejects_capability_field_not_allowed_for_the_professional_type(): void
+    {
+        // Vet volante não tem prédio — `parking_available` é proibido para o tipo (ver
+        // `ProfessionalCapabilityDefinitions`), mesma dupla trava do cadastro.
+        $professional = Professional::factory()->veterinarian()->create();
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => ['parking_available' => true],
+        ]);
+
+        $response->assertStatus(422)->assertJsonFragment([
+            'professional.parking_available' => ['O campo "Estacionamento" não é permitido para o tipo de cadastro selecionado.'],
+        ]);
+
+        $this->assertNull($professional->refresh()->parking_available);
+    }
+
+    /**
+     * Bug real reportado em produção: o formulário sempre serializa o campo escondido
+     * (`false`, não omite a chave) — `prohibited` do Laravel rejeitava `false` como se
+     * fosse uma tentativa de burlar a trava. `false` precisa passar (a UI já escondeu o
+     * campo certo) e a coluna continua sem ser gravada, porque não se aplica ao tipo.
+     */
+    public function test_update_accepts_false_for_a_capability_field_not_allowed_and_does_not_persist_it(): void
+    {
+        $professional = Professional::factory()->veterinarian()->create();
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => ['parking_available' => false],
+        ]);
+
+        $response->assertOk();
+        $this->assertNull($professional->refresh()->parking_available);
+    }
+
+    /**
+     * A neutralização de um campo não aplicável (ver teste acima) não pode se generalizar
+     * para "todo PATCH reseta os 20 campos de capacidade": um PATCH que nem menciona
+     * `accepts_credit_card` tem que preservar o valor já salvo dele.
+     */
+    public function test_update_of_an_unrelated_field_does_not_reset_previously_saved_capability_fields(): void
+    {
+        $professional = Professional::factory()->petshop()->create(['accepts_credit_card' => true]);
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => ['business_name' => 'Novo Nome'],
+        ]);
+
+        $response->assertOk();
+        $this->assertTrue($professional->refresh()->accepts_credit_card);
+    }
+
+    public function test_update_without_capability_fields_does_not_require_them(): void
+    {
+        // Patch parcial: editar só `business_name` não deve exigir `species_served` de novo,
+        // mesmo sendo `required` na conclusão de cadastro para `petshop`.
+        $professional = Professional::factory()->petshop()->create(['species_served' => null]);
+        Sanctum::actingAs($professional->user);
+
+        $response = $this->putJson('/api/profile', [
+            'professional' => ['business_name' => 'Novo Nome'],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('Novo Nome', $professional->refresh()->business_name);
     }
 }

@@ -36,6 +36,11 @@ class Product extends Model
         return $this->belongsTo(User::class, 'professional_id');
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class);
@@ -53,7 +58,7 @@ class Product extends Model
 
     public function isInStock(): bool
     {
-        if (!$this->track_inventory) {
+        if (! $this->track_inventory) {
             return true;
         }
 
@@ -62,7 +67,7 @@ class Product extends Model
 
     public function hasStock(int $quantity): bool
     {
-        if (!$this->track_inventory) {
+        if (! $this->track_inventory) {
             return true;
         }
 
@@ -71,7 +76,7 @@ class Product extends Model
 
     public function decrementStock(int $quantity): void
     {
-        if (!$this->track_inventory) {
+        if (! $this->track_inventory) {
             return;
         }
 
@@ -80,11 +85,10 @@ class Product extends Model
 
     public function incrementStock(int $quantity): void
     {
-        if (!$this->track_inventory) {
+        if (! $this->track_inventory) {
             return;
         }
 
         $this->increment('stock_quantity', $quantity);
     }
 }
-

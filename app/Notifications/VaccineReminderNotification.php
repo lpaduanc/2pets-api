@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -40,7 +41,7 @@ class VaccineReminderNotification extends Notification
             'type' => 'vaccine_reminder',
             'title' => "Vacina de {$this->petName} vencendo!",
             'message' => "A vacina {$this->vaccineName} vence em {$this->daysUntil} dias ({$this->dueDate}).",
-            'action_url' => '/tutor/health',
+            'action_url' => FrontendRoute::TUTOR_HEALTH,
         ];
     }
 }

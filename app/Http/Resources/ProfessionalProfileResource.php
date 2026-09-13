@@ -29,6 +29,33 @@ class ProfessionalProfileResource extends JsonResource
             'services_offered' => $this->services_offered ?? [],
             'service_radius_km' => $this->service_radius_km,
             'description' => $this->description,
+            // Onda 3 da segmentação de cadastro (docs/segmentacao-cadastro-profissional.md):
+            // estes campos existiam na coluna desde a Onda 2 (`equipment`/`certifications`) ou
+            // nascem agora (os demais), mas nenhum aparecia aqui — reabrir o perfil não
+            // devolvia o que tinha sido salvo. `equipment`/`certifications` são achado de
+            // carona (gap já existia antes desta onda, mesma classe de bug).
+            'equipment' => $this->equipment ?? [],
+            'certifications' => $this->certifications ?? [],
+            'species_served' => $this->species_served ?? [],
+            'sizes_served' => $this->sizes_served ?? [],
+            'parking_available' => $this->parking_available,
+            'wheelchair_accessible' => $this->wheelchair_accessible,
+            'accepts_credit_card' => $this->accepts_credit_card,
+            'accepts_pet_insurance' => $this->accepts_pet_insurance,
+            'home_visit_available' => $this->home_visit_available,
+            'online_consultation' => $this->online_consultation,
+            'emergency_available' => $this->emergency_available,
+            'emergency_24h' => $this->emergency_24h,
+            'delivery_available' => $this->delivery_available,
+            'online_ordering' => $this->online_ordering,
+            'cage_free_option' => $this->cage_free_option,
+            'webcam_access' => $this->webcam_access,
+            'special_diet_accommodation' => $this->special_diet_accommodation,
+            'mobile_service' => $this->mobile_service,
+            'group_sessions_available' => $this->group_sessions_available,
+            'exam_rooms_count' => $this->exam_rooms_count,
+            'training_methodology' => $this->training_methodology,
+            'languages_spoken' => $this->languages_spoken ?? [],
             'university' => $this->university,
             'graduation_year' => $this->graduation_year,
             'experience_years' => $this->experience_years,

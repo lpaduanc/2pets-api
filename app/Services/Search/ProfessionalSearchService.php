@@ -163,10 +163,7 @@ final class ProfessionalSearchService
     private function buildBaseQuery(SearchFiltersDTO $filters): Builder
     {
         $query = User::query()
-            ->where('role', 'professional')
-            ->where('profile_completed', true)
-            ->where('registration_status', 'approved')
-            ->where('is_suspended', false)
+            ->visibleProfessional()
             ->with(['professional', 'professional.services']);
 
         $this->applyDistanceSelect($query, $filters);
@@ -475,9 +472,12 @@ final class ProfessionalSearchService
      */
     private function professionalPriceStatsQuery(): QueryBuilder
     {
+        // Raw query builder on `services` doesn't get Eloquent's soft-delete global scope for
+        // free — without this, a deleted service's price still counts toward MIN/MAX sorting.
         return DB::table('services')
             ->selectRaw('MIN(services.price) AS min_price, MAX(services.price) AS max_price')
             ->whereColumn('services.professional_id', 'users.id')
-            ->where('services.active', true);
+            ->where('services.active', true)
+            ->whereNull('services.deleted_at');
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -36,7 +37,7 @@ class DewormingReminderNotification extends Notification
             'type' => 'deworming_reminder',
             'title' => "Vermifugo de {$this->petName}",
             'message' => "O vermifugo esta proximo! Data prevista: {$this->dueDate}.",
-            'action_url' => '/tutor/health',
+            'action_url' => FrontendRoute::TUTOR_HEALTH,
         ];
     }
 }

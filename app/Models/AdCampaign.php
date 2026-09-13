@@ -36,6 +36,11 @@ class AdCampaign extends Model
         return $this->belongsTo(User::class, 'professional_id');
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function impressions(): HasMany
     {
         return $this->hasMany(AdImpression::class);
@@ -74,11 +79,12 @@ class AdCampaign extends Model
 
     public function getTotalBudget(): float
     {
-        if (!$this->end_date) {
+        if (! $this->end_date) {
             return PHP_FLOAT_MAX;
         }
 
         $days = $this->start_date->diffInDays($this->end_date) + 1;
+
         return $this->daily_budget * $days;
     }
 
@@ -90,4 +96,3 @@ class AdCampaign extends Model
         return $impressionCount > 0 ? ($clickCount / $impressionCount) * 100 : 0;
     }
 }
-

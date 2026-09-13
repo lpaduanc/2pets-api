@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\AppointmentStatus;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Appointment\StoreAppointmentRequest;
 use App\Http\Requests\Appointment\UpdateAppointmentRequest;
 use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
+use App\Services\Appointment\AppointmentStatusTransitionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -21,6 +23,10 @@ class AppointmentController extends Controller
      * professional's whole agenda.
      */
     private const DEFAULT_PER_PAGE = 200;
+
+    public function __construct(
+        private readonly AppointmentStatusTransitionService $statusTransitionService,
+    ) {}
 
     public function index(Request $request)
     {
@@ -55,7 +61,7 @@ class AppointmentController extends Controller
     {
         $data = $request->validated();
         $data['professional_id'] = $request->user()->id;
-        $data['status'] = 'scheduled';
+        $data['status'] = AppointmentStatus::SCHEDULED->value;
 
         $appointment = Appointment::create($data);
 
@@ -77,8 +83,13 @@ class AppointmentController extends Controller
     public function update(UpdateAppointmentRequest $request, $id)
     {
         $appointment = Appointment::where('professional_id', $request->user()->id)->findOrFail($id);
+        $data = $request->validated();
 
-        $appointment->update($request->validated());
+        if (array_key_exists('status', $data)) {
+            $data = $this->statusTransitionService->prepareTransition($appointment, $data);
+        }
+
+        $appointment->update($data);
 
         return (new AppointmentResource($appointment->load(['client', 'pet'])))
             ->additional(['message' => 'Consulta atualizada com sucesso!']);

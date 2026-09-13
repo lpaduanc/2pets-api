@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\ProfessionalType;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Mail\ResetPasswordMail;
 use App\Models\User;
+use App\Services\Organization\UserRoleReconciler;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +18,10 @@ use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly UserRoleReconciler $roleReconciler,
+    ) {}
+
     public function register(RegisterRequest $request)
     {
         $validatedData = $request->validated();
@@ -39,7 +43,8 @@ class AuthController extends Controller
             'user_type' => $validatedData['user_type'],
             'role' => $role,
             'password' => bcrypt($validatedData['password']),
-            'email_verified' => false,
+            // Sem `email_verified_at`: `User::$emailVerified` (accessor) deriva `false` até a
+            // verificação de e-mail gravar o timestamp — ver `EmailVerificationController::verify()`.
             'profile_completed' => false,
         ];
 
@@ -57,20 +62,14 @@ class AuthController extends Controller
         $user = User::create($userData);
 
         // Autorização é decidida pelo papel Spatie; a taxonomia canônica de tipo de negócio
-        // dita qual papel. O match antigo cobria só 4 dos 9 valores possíveis de `user_type` —
-        // laboratory, pet_hotel, grooming e training ficavam SEM papel nenhum, e a conta
-        // nascia invisível para todo endpoint com `hasAnyRole()`.
-        $spatieRole = $validatedData['user_type'] === 'tutor'
-            ? 'tutor'
-            : ProfessionalType::tryFrom($validatedData['user_type'])?->defaultRoleName();
-
-        if ($spatieRole) {
-            try {
-                $user->assignRole($spatieRole);
-            } catch (\Exception $e) {
-                // Role might not exist yet if seeder hasn't run — graceful fallback
-                \Illuminate\Support\Facades\Log::warning('Could not assign spatie role: '.$e->getMessage());
-            }
+        // dita qual papel. Pessoa recém-cadastrada não tem vínculo organizacional, então o
+        // reconciliador só aplica a Fonte A (`user_type`) — mesmo resultado do `assignRole`
+        // avulso que existia aqui, mas já pronto para revogar se o vínculo for perdido depois.
+        try {
+            $this->roleReconciler->reconcile($user);
+        } catch (\Exception $e) {
+            // Role might not exist yet if seeder hasn't run — graceful fallback
+            \Illuminate\Support\Facades\Log::warning('Could not assign spatie role: '.$e->getMessage());
         }
 
         // Send verification email (except for pending company registrations)
@@ -104,6 +103,25 @@ class AuthController extends Controller
         }
 
         $user = User::where('email', $request->email)->firstOrFail();
+
+        // Desativação voluntária (AccountDeactivationService): a mensagem convida a
+        // reativar em vez de recusar seco. Suspensão (punitiva) tem prioridade quando as
+        // duas coexistem — quem foi suspenso não pode se autorreativar por aqui, então a
+        // resposta já aponta para o suporte em vez de para o endpoint de reativação.
+        if ($user->isDeactivated()) {
+            if ($user->is_suspended) {
+                return response()->json([
+                    'message' => 'Sua conta foi suspensa. Entre em contato com o suporte para mais informações.',
+                    'account_suspended' => true,
+                ], 403);
+            }
+
+            return response()->json([
+                'message' => 'Sua conta está desativada. Você pode reativá-la a qualquer momento.',
+                'account_deactivated' => true,
+                'can_reactivate' => true,
+            ], 403);
+        }
 
         // Check registration status for companies
         if ($user->role === 'company' && $user->registration_status === 'pending') {
@@ -166,7 +184,7 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        $user = $request->user()->load(['roles', 'professional', 'media']);
+        $user = $request->user()->load(['roles', 'professional', 'media', 'activeOrganizationMemberships.organization']);
 
         return new UserResource($user);
     }

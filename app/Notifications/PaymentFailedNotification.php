@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -36,7 +37,7 @@ class PaymentFailedNotification extends Notification
             'type' => 'payment_failed',
             'title' => 'Falha no pagamento',
             'message' => 'Nao foi possivel processar o pagamento de R$ '.number_format($this->amount, 2, ',', '.').'.',
-            'action_url' => '/tutor/wallet',
+            'action_url' => FrontendRoute::TUTOR_WALLET,
         ];
     }
 }

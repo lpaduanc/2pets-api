@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -38,7 +39,7 @@ class PaymentConfirmedNotification extends Notification
             'type' => 'payment_confirmed',
             'title' => 'Pagamento confirmado!',
             'message' => 'Pagamento de R$ '.number_format($this->amount, 2, ',', '.').' confirmado.',
-            'action_url' => '/tutor/appointments',
+            'action_url' => FrontendRoute::TUTOR_APPOINTMENTS,
         ];
     }
 }

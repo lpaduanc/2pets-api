@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\User;
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -39,18 +40,27 @@ class PetVetAccessRequested extends Notification implements ShouldQueue
 
     public function toMail($notifiable): MailMessage
     {
-        $crmvLine = $this->crmv ? " (CRMV {$this->crmv})" : '';
+        // $this->crmv já vem no formato canônico com o prefixo embutido (ex.: "CRMV/SP
+        // 45871", via CrmvValidationService::displayLabel) — prefixar "CRMV" de novo aqui
+        // duplicava o rótulo ("CRMV CRMV/SP 45871/SP").
+        $crmvLine = $this->crmv ? " ({$this->crmv})" : '';
         $requestedAt = $this->access->requested_at?->format('d/m/Y H:i') ?? now()->format('d/m/Y H:i');
 
         $requested = $this->access->requested_access_level;
 
-        return (new MailMessage)
+        $mail = (new MailMessage)
             ->subject("Novo pedido de acesso veterinário a {$this->pet->name} — 2pets")
             ->greeting("Olá, {$notifiable->name}!")
             ->line("O(a) veterinário(a) **{$this->vet->name}**{$crmvLine} solicitou acesso ao prontuário de **{$this->pet->name}** em {$requestedAt}.")
-            ->line("Nível indicado pelo profissional: **{$requested?->label()}** — {$requested?->description()}")
+            ->line("Nível indicado pelo profissional: **{$requested?->label()}** — {$requested?->description()}");
+
+        if ($this->access->message !== null) {
+            $mail->line("Mensagem do profissional: \"{$this->access->message}\"");
+        }
+
+        return $mail
             ->line('Quem decide o nível é você, na hora de aprovar, e pode alterá-lo depois. Só após sua aprovação os dados clínicos do seu pet serão compartilhados; você pode revogar o acesso a qualquer momento.')
-            ->action('Ver solicitação', url('/app/vets/solicitacoes'))
+            ->action('Ver solicitação', FrontendRoute::absolute(FrontendRoute::TUTOR_VET_ACCESS_REQUESTS))
             ->line('Se você não reconhece este pedido, clique em recusar.');
     }
 
@@ -60,7 +70,7 @@ class PetVetAccessRequested extends Notification implements ShouldQueue
             'type' => 'pet_vet_access_requested',
             'title' => "Pedido de acesso a {$this->pet->name}",
             'message' => "{$this->vet->name} solicitou acesso aos dados do seu pet.",
-            'action_url' => '/app/vets/solicitacoes',
+            'action_url' => FrontendRoute::TUTOR_VET_ACCESS_REQUESTS,
             'data' => [
                 'access_id' => $this->access->id,
                 'pet_id' => $this->pet->id,
@@ -69,6 +79,7 @@ class PetVetAccessRequested extends Notification implements ShouldQueue
                 'vet_name' => $this->vet->name,
                 'crmv' => $this->crmv,
                 'requested_access_level' => $this->access->requested_access_level?->value,
+                'message' => $this->access->message,
                 'requested_at' => $this->access->requested_at?->toISOString(),
             ],
         ];

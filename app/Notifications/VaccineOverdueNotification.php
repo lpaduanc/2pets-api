@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -38,7 +39,7 @@ class VaccineOverdueNotification extends Notification
             'type' => 'vaccine_overdue',
             'title' => "URGENTE: Vacina de {$this->petName} vencida!",
             'message' => "A vacina {$this->vaccineName} esta vencida desde {$this->dueDate}.",
-            'action_url' => '/tutor/health',
+            'action_url' => FrontendRoute::TUTOR_HEALTH,
         ];
     }
 }

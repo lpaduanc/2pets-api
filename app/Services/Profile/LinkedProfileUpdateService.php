@@ -3,6 +3,8 @@
 namespace App\Services\Profile;
 
 use App\Models\User;
+use App\Support\Registration\ProfessionalCapabilityFieldExtractor;
+use App\Support\Registration\ProfessionalCapabilityRegistry;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -42,7 +44,24 @@ final class LinkedProfileUpdateService
             ]);
         }
 
-        $user->professional->update($data);
+        $user->professional->update($this->withCapabilityFieldsScrubbed($user, $data));
+    }
+
+    /**
+     * Segunda camada de defesa (a mesma de `RegistrationCompletionService`, ver
+     * `ProfessionalCapabilityFieldExtractor::scrubForPatch()`): a validação aceita
+     * `false`/`0`/vazio num campo de capacidade não aplicável ao tipo (de propósito, ver
+     * `App\Rules\ProhibitedCapabilityValue`), mas a coluna correspondente nunca deve ser
+     * escrita para esse tipo — neutraliza só as chaves que este PATCH realmente enviou.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function withCapabilityFieldsScrubbed(User $user, array $data): array
+    {
+        $capabilities = ProfessionalCapabilityRegistry::for($user->professional->professional_type);
+
+        return ProfessionalCapabilityFieldExtractor::scrubForPatch($data, $capabilities);
     }
 
     /**

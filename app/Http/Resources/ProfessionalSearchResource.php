@@ -24,10 +24,19 @@ class ProfessionalSearchResource extends JsonResource
             'state' => $this->state,
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
-            'distance_km' => $this->distance_km ? round($this->distance_km, 2) : null,
+            // Zero falsy: `? :` descartava distância 0 (profissional na coordenada exata
+            // da busca) como se não desse para calcular. `isset` distingue "não calculado"
+            // (NULL vindo de `NULL::double precision AS distance_km`, busca sem lat/lng) de
+            // "calculado, deu zero" — mesmo padrão de `ProfessionalResource::distance_km`.
+            'distance_km' => $this->when(
+                isset($this->distance_km),
+                fn () => round($this->distance_km, 2)
+            ),
             'average_rating' => (float) ($professional?->average_rating ?? 0),
             'reviews_count' => (int) ($professional?->total_reviews ?? 0),
-            'starting_price' => $minPrice ? (float) $minPrice : null,
+            // Mesmo problema do zero falsy: um serviço gratuito (R$ 0,00) virava "sem preço
+            // informado" em vez de "grátis".
+            'starting_price' => $minPrice !== null ? (float) $minPrice : null,
             // Badge "verificado" só após aprovação manual do CRMV pelo admin (CLAUDE.md §2).
             // Ter CRMV no cadastro não basta — tem que estar aprovado.
             'verified' => (bool) ($professional?->is_crmv_verified ?? false),

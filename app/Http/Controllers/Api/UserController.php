@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\User\UpdateAvatarRequest;
 use App\Http\Requests\User\UpdateProfileRequest;
 use App\Http\Resources\UserProfileResource;
+use App\Services\Profile\ProfileAvatarService;
 use App\Services\ProfileUpdateService;
 use Illuminate\Http\Request;
 
@@ -12,6 +14,7 @@ class UserController extends Controller
 {
     public function __construct(
         private readonly ProfileUpdateService $profileUpdateService,
+        private readonly ProfileAvatarService $profileAvatarService,
     ) {}
 
     /**
@@ -24,7 +27,7 @@ class UserController extends Controller
     public function profile(Request $request)
     {
         $user = $request->user()
-            ->load(['professional', 'company'])
+            ->load(['professional', 'company', 'media'])
             ->loadCount('pets');
 
         return new UserProfileResource($user);
@@ -44,7 +47,40 @@ class UserController extends Controller
             $request->validated()
         );
 
-        return new UserProfileResource($user->loadCount('pets'));
+        return new UserProfileResource($user->load('media')->loadCount('pets'));
+    }
+
+    /**
+     * Replace the authenticated user's profile photo.
+     *
+     * Multipart, e por isso POST e não PUT: o PHP não faz o parse de corpo
+     * multipart em PUT, então o arquivo chegaria vazio do outro lado.
+     *
+     * Responde com o mesmo `UserProfileResource` do GET/PUT — a tela de perfil
+     * reatribui a resposta ao estado e a foto nova aparece sem refetch.
+     */
+    public function updateAvatar(UpdateAvatarRequest $request)
+    {
+        $user = $this->profileAvatarService->update(
+            $request->user(),
+            $request->file('avatar')
+        );
+
+        return new UserProfileResource(
+            $user->load(['professional', 'company'])->loadCount('pets')
+        );
+    }
+
+    /**
+     * Remove the authenticated user's profile photo.
+     */
+    public function destroyAvatar(Request $request)
+    {
+        $user = $this->profileAvatarService->remove($request->user());
+
+        return new UserProfileResource(
+            $user->load(['professional', 'company'])->loadCount('pets')
+        );
     }
 
     /**

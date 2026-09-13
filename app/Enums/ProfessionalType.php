@@ -19,17 +19,15 @@ enum ProfessionalType: string
     case GROOMING = 'grooming';
     case TRAINING = 'training';
 
+    /**
+     * Resolvido via `lang/{locale}/registration.php` (`professional_type.*`) — pt-BR é o
+     * default de `App::getLocale()`; só a rota do schema de cadastro troca o locale por
+     * request (ver `App\Http\Middleware\SetLocaleFromAcceptLanguage`), então todo outro
+     * consumidor deste método (busca pública, recursos de agenda, etc.) continua em pt-BR.
+     */
     public function label(): string
     {
-        return match ($this) {
-            self::VET => 'Veterinário Volante',
-            self::CLINIC => 'Clínica Veterinária',
-            self::LABORATORY => 'Laboratório',
-            self::PETSHOP => 'Pet Shop',
-            self::PET_HOTEL => 'Creche e Hotel',
-            self::GROOMING => 'Banho e Tosa',
-            self::TRAINING => 'Adestramento',
-        };
+        return __('registration.professional_type.'.$this->value);
     }
 
     /**

@@ -14,7 +14,7 @@ class CrmvValidationService
         $state = strtoupper(trim($state));
 
         // Basic validation: must contain numbers
-        if (!preg_match('/\d+/', $crmv)) {
+        if (! preg_match('/\d+/', $crmv)) {
             return false;
         }
 
@@ -25,7 +25,7 @@ class CrmvValidationService
 
         // Check for standard format: CRMV/XX 12345 or CRMV-XX 12345
         // Allow optional spaces
-        $pattern = '/^CRMV[\/-]' . $state . '\s*\d{4,6}$/i';
+        $pattern = '/^CRMV[\/-]'.$state.'\s*\d{4,6}$/i';
 
         // Also allow just the number part if it matches the state prefix elsewhere or implied
         // But strictly speaking, we want to validate the full string if provided
@@ -42,6 +42,28 @@ class CrmvValidationService
         $number = preg_replace('/[^0-9]/', '', $crmv);
         $state = strtoupper($state);
 
-        return 'CRMV/' . $state . ' ' . $number;
+        return 'CRMV/'.$state.' '.$number;
+    }
+
+    /**
+     * Rótulo pronto para exibição, aceitando tanto o formato canônico já gravado por
+     * `format()` ("CRMV/SP 12345") quanto registros legados anteriores a essa normalização
+     * (dígitos crus ou "12345-SP" em seeeders/contas antigas). Reformatar um valor já
+     * canônico duplicaria o prefixo e a UF — bug real visto em produção: "CRMV/SP 45871/SP".
+     */
+    public function displayLabel(string $crmv, ?string $state): string
+    {
+        $trimmed = trim($crmv);
+
+        if ($this->isCanonicalFormat($trimmed)) {
+            return $trimmed;
+        }
+
+        return $this->format($trimmed, $state ?? 'BR');
+    }
+
+    private function isCanonicalFormat(string $crmv): bool
+    {
+        return preg_match('/^CRMV\/[A-Z]{2}\s\d+$/', $crmv) === 1;
     }
 }

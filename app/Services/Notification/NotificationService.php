@@ -16,6 +16,15 @@ final class NotificationService
         private readonly SmsService $smsService
     ) {}
 
+    /**
+     * Todo `NotificationType` hoje é comunicação operacional (lembrete de consulta, vacina,
+     * pagamento, mensagem...) — nenhum é campanha de marketing. Por isso o portão aqui é
+     * incondicional: conta desativada não recebe nenhum push/e-mail/SMS/WhatsApp/notificação
+     * in-app operacional (decisão do dono do produto, 2026-09-13 — ver
+     * `AccountDeactivationService`). Quando existir um `NotificationType` de campanha de
+     * reativação, ele não deve passar por `sendNotification()` — usa `$user->notify()`
+     * diretamente com uma Notification que implemente `BypassesDeactivationGate`.
+     */
     public function sendNotification(
         User $user,
         NotificationType $type,
@@ -23,6 +32,15 @@ final class NotificationService
         string $body,
         array $data = []
     ): void {
+        if ($user->isDeactivated()) {
+            Log::info('Operational notification suppressed: recipient account is deactivated', [
+                'user_id' => $user->id,
+                'type' => $type->value,
+            ]);
+
+            return;
+        }
+
         $channels = $this->getEnabledChannels($user, $type);
 
         foreach ($channels as $channel) {

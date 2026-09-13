@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\VetAccessLevel;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
+use App\Models\Professional;
 use App\Models\User;
 use App\Notifications\PetVetAccessRequested;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -469,6 +470,82 @@ class VetAccessTest extends TestCase
                     && $notification->vet->id === $this->vet->id;
             }
         );
+    }
+
+    /**
+     * Bug real em produção: `professionals.crmv` já é gravado no formato canônico
+     * ("CRMV/SP 45871") por `CrmvValidationService::format()`. Reformatar de novo na
+     * notificação duplicava o prefixo e a UF ("CRMV/SP 45871/SP").
+     */
+    public function test_notification_carries_canonical_crmv_without_duplication(): void
+    {
+        Notification::fake();
+
+        Professional::factory()->for($this->vet, 'user')->create([
+            'crmv' => 'CRMV/SP 45871',
+            'crmv_state' => 'SP',
+        ]);
+
+        Sanctum::actingAs($this->vet);
+
+        $this->postJson('/api/pet-vet-access/request', [
+            'pet_id' => $this->pet->id,
+            'requested_access_level' => 'read',
+        ])->assertStatus(201);
+
+        Notification::assertSentTo(
+            $this->tutor,
+            PetVetAccessRequested::class,
+            fn (PetVetAccessRequested $notification) => $notification->crmv === 'CRMV/SP 45871'
+        );
+    }
+
+    /**
+     * Registro legado anterior à normalização por `CrmvValidationService::format()` (ex.:
+     * seeders antigos gravando só dígitos ou "45871-SP"): o rótulo precisa ficar no formato
+     * canônico em vez de vazar o dado cru sem "CRMV/UF".
+     */
+    public function test_notification_formats_legacy_unformatted_crmv(): void
+    {
+        Notification::fake();
+
+        Professional::factory()->for($this->vet, 'user')->create([
+            'crmv' => '45871-SP',
+            'crmv_state' => 'SP',
+        ]);
+
+        Sanctum::actingAs($this->vet);
+
+        $this->postJson('/api/pet-vet-access/request', [
+            'pet_id' => $this->pet->id,
+            'requested_access_level' => 'read',
+        ])->assertStatus(201);
+
+        Notification::assertSentTo(
+            $this->tutor,
+            PetVetAccessRequested::class,
+            fn (PetVetAccessRequested $notification) => $notification->crmv === 'CRMV/SP 45871'
+        );
+    }
+
+    public function test_requesting_access_persists_and_exposes_message(): void
+    {
+        Sanctum::actingAs($this->vet);
+
+        $response = $this->postJson('/api/pet-vet-access/request', [
+            'pet_id' => $this->pet->id,
+            'requested_access_level' => 'read',
+            'message' => 'Preciso ver o histórico de vacinas antes da consulta de amanhã.',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.message', 'Preciso ver o histórico de vacinas antes da consulta de amanhã.');
+
+        $this->assertDatabaseHas('pet_vet_accesses', [
+            'pet_id' => $this->pet->id,
+            'veterinarian_id' => $this->vet->id,
+            'message' => 'Preciso ver o histórico de vacinas antes da consulta de amanhã.',
+        ]);
     }
 
     // ===============================================================

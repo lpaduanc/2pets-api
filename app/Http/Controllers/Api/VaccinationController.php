@@ -4,11 +4,20 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Vaccination\StoreVaccinationRequest;
+use App\Http\Requests\Vaccination\UpdateVaccinationRequest;
 use App\Http\Resources\VaccinationResource;
+use App\Models\Pet;
 use App\Models\Vaccination;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
+/**
+ * Legada: o app usa `PetHealthRecordsController` (`/pets/{pet}/health/vaccinations`), não estas
+ * rotas (`/professional/vaccinations`). Mantida por compatibilidade, mas com a MESMA regra de
+ * autoria de `PetHealthRecordsController::resolveProfessionalId()` — um tutor chamando `store()`
+ * aqui não pode gravar `professional_id` como se um profissional tivesse participado do ato (ver
+ * docs/vinculo-estoque-aplicacao-clinica.md item 0).
+ */
 class VaccinationController extends Controller
 {
     use AuthorizesPetAccess;
@@ -34,28 +43,14 @@ class VaccinationController extends Controller
         return VaccinationResource::collection($vaccinations);
     }
 
-    public function store(Request $request)
+    public function store(StoreVaccinationRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'pet_id' => 'required|exists:pets,id',
-            'vaccine_name' => 'required|string|max:255',
-            'manufacturer' => 'nullable|string|max:255',
-            'batch_number' => 'nullable|string|max:255',
-            'application_date' => 'required|date',
-            'next_dose_date' => 'nullable|date',
-            'dose_number' => 'nullable|integer',
-            'notes' => 'nullable|string',
-            'adverse_reactions' => 'nullable|string',
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-        $data = $validator->validated();
+        $data = $request->validated();
 
         // Vet must have write access to the pet they're vaccinating.
-        $this->resolvePetForWrite($request, (int) $data['pet_id']);
+        $pet = $this->resolvePetForWrite($request, (int) $data['pet_id']);
 
-        $data['professional_id'] = $request->user()->id;
+        $data['professional_id'] = $this->resolveProfessionalId($request, $pet);
         $vaccination = Vaccination::create($data);
 
         return response()->json(['message' => 'Vacinação registrada com sucesso!', 'vaccination' => $vaccination], 201);
@@ -70,23 +65,10 @@ class VaccinationController extends Controller
         return response()->json($vaccination);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateVaccinationRequest $request, $id)
     {
         $vaccination = Vaccination::where('professional_id', $request->user()->id)->findOrFail($id);
-        $validator = Validator::make($request->all(), [
-            'vaccine_name' => 'sometimes|required|string|max:255',
-            'manufacturer' => 'nullable|string|max:255',
-            'batch_number' => 'nullable|string|max:255',
-            'application_date' => 'sometimes|date',
-            'next_dose_date' => 'nullable|date',
-            'dose_number' => 'nullable|integer',
-            'notes' => 'nullable|string',
-            'adverse_reactions' => 'nullable|string',
-        ]);
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-        $vaccination->update($validator->validated());
+        $vaccination->update($request->validated());
 
         return response()->json(['message' => 'Vacinação atualizada com sucesso!', 'vaccination' => $vaccination]);
     }
@@ -112,5 +94,21 @@ class VaccinationController extends Controller
         $upcoming = $query->get();
 
         return response()->json($upcoming);
+    }
+
+    /**
+     * Mesma regra de `PetHealthRecordsController::resolveProfessionalId()`: `null` quando quem
+     * está chamando é o próprio tutor do pet, para não fabricar autoria clínica de alguém que
+     * não participou do ato (migration `2026_09_06_000204_make_professional_id_nullable_on_
+     * vaccinations_and_surgeries`).
+     */
+    private function resolveProfessionalId(Request $request, Pet $pet): ?int
+    {
+        $user = $request->user();
+        if ($user === null || $this->isPetOwner($user, $pet)) {
+            return null;
+        }
+
+        return $user->id;
     }
 }

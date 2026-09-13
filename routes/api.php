@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AiBusinessController;
 use App\Http\Controllers\Api\AiBusinessInsightsController;
 use App\Http\Controllers\Api\AiController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\Api\ProfessionalClientController;
 use App\Http\Controllers\Api\ProfessionalDashboardController;
 use App\Http\Controllers\Api\Public\BookingController;
 use App\Http\Controllers\Api\Public\MasterDataController;
+use App\Http\Controllers\Api\Public\PetCardController as PublicPetCardController;
 use App\Http\Controllers\Api\Public\ProfessionalController;
 use App\Http\Controllers\Api\Public\SearchController;
 use App\Http\Controllers\Api\ReminderController;
@@ -43,6 +45,7 @@ use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\DocumentFileController;
+use App\Http\Controllers\ProfessionalSchemaController;
 use App\Http\Controllers\RegistrationCompletionController;
 use App\Http\Controllers\RegistrationDraftController;
 use App\Http\Middleware\AdminMiddleware;
@@ -69,11 +72,25 @@ Route::middleware('throttle:10,1')->group(function () {
     Route::post('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+
+    // Reativação de conta autodesativada — público porque quem chega aqui está bloqueado
+    // do /login normal (sem token Sanctum). Mesmas credenciais do login.
+    Route::post('/account/reactivate', [AccountController::class, 'reactivate']);
 });
 
-Route::post('/verify-email/{token}', [\App\Http\Controllers\EmailVerificationController::class, 'verify']);
+// Token de 64 caracteres não é força-bruteável em 10 tentativas/min, mas o endpoint não tinha
+// NENHUM throttle antes (achado da auditoria de cadastro, P2) — defesa em profundidade, mesmo
+// padrão dos outros endpoints públicos de auth abaixo.
+Route::post('/verify-email/{token}', [\App\Http\Controllers\EmailVerificationController::class, 'verify'])
+    ->middleware('throttle:10,1');
 Route::post('/resend-verification', [\App\Http\Controllers\EmailVerificationController::class, 'resend'])
     ->middleware('throttle:5,1');
+
+// Organization invitations — public view of a token, before the invited person logs in.
+// Accept requires auth (see the authenticated block below) since it creates the membership
+// under the calling user's own account.
+Route::get('/organization-invitations/{token}', [\App\Http\Controllers\Api\OrganizationInvitationController::class, 'show'])
+    ->middleware('throttle:30,1');
 
 // Public Search & Discovery — throttled (30 requests/min)
 // Feature flags — public read-only map for frontend to hide UI of disabled features
@@ -87,7 +104,7 @@ Route::prefix('public')->middleware('throttle:30,1')->group(function () {
     Route::get('/categories', [SearchController::class, 'categories']);
     Route::get('/featured', [SearchController::class, 'featured']);
     Route::get('/professionals/{id}', [ProfessionalController::class, 'show']);
-    Route::get('/pet-card/{publicId}', [PetCardController::class, 'show']);
+    Route::get('/pet-card/{publicId}', [PublicPetCardController::class, 'show']);
     Route::get('/breeds', [BreedController::class, 'index']);
 
     // Master data endpoints
@@ -127,6 +144,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::post('/register/complete-tutor', [RegistrationCompletionController::class, 'completeTutor']);
     Route::post('/register/complete-professional', [RegistrationCompletionController::class, 'completeProfessional']);
     Route::post('/register/complete-company', [RegistrationCompletionController::class, 'completeCompany']);
+    Route::get('/register/professional-schema', ProfessionalSchemaController::class)->middleware('locale');
 
     // Registration Draft Auto-Save
     Route::post('/register/draft/professional', [RegistrationDraftController::class, 'saveProfessionalDraft']);
@@ -148,6 +166,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     // User profile routes
     Route::get('/profile', [UserController::class, 'profile']);
     Route::put('/profile', [UserController::class, 'updateProfile']);
+    // Foto de perfil: POST (nao PUT) porque o corpo e multipart — o PHP nao faz
+    // o parse de multipart em PUT e o arquivo chegaria vazio.
+    Route::post('/profile/avatar', [UserController::class, 'updateAvatar']);
+    Route::delete('/profile/avatar', [UserController::class, 'destroyAvatar']);
 
     // Dashboard stats for tutor
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
@@ -208,6 +230,22 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('/my-accesses', [PetVetAccessController::class, 'myAccesses']);
         Route::get('/pet/{petId}', [PetVetAccessController::class, 'petAccesses']);
     });
+
+    // Organization member management — só o owner ativo da organização gerencia
+    // (App\Policies\OrganizationPolicy::manageMembers). Member/invitation escopados à
+    // organização da URL dentro do controller (App\Http\Controllers\Concerns\ResolvesOrganizationChildren).
+    Route::prefix('organizations/{organization}')->group(function () {
+        Route::get('/members', [\App\Http\Controllers\Api\OrganizationMemberController::class, 'index']);
+        Route::patch('/members/{member}', [\App\Http\Controllers\Api\OrganizationMemberController::class, 'update']);
+        Route::delete('/members/{member}', [\App\Http\Controllers\Api\OrganizationMemberController::class, 'destroy']);
+
+        Route::post('/invitations', [\App\Http\Controllers\Api\OrganizationInvitationController::class, 'store']);
+        Route::get('/invitations', [\App\Http\Controllers\Api\OrganizationInvitationController::class, 'index']);
+        Route::delete('/invitations/{invitation}', [\App\Http\Controllers\Api\OrganizationInvitationController::class, 'destroy']);
+    });
+
+    // Accept requires auth: the membership is created under the calling user's own account.
+    Route::post('/organization-invitations/{token}/accept', [\App\Http\Controllers\Api\OrganizationInvitationController::class, 'accept']);
 
     // Tutor Appointments
     Route::get('/appointments', function (Request $request) {
@@ -402,6 +440,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::put('/consent', [LgpdController::class, 'updateConsent']);
     });
 
+    // Desativação voluntária da própria conta (não confundir com o /lgpd/delete-account
+    // acima — aqui nada é apagado ou anonimizado, ver AccountDeactivationService).
+    Route::post('/account/deactivate', [AccountController::class, 'deactivate']);
+
     // Video Consultations (V3 — gated)
     Route::prefix('video-consultations')->middleware('feature:video_consultations')->group(function () {
         Route::post('/', [VideoConsultationController::class, 'create']);
@@ -433,6 +475,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::put('/users/{id}', [AdminController::class, 'updateUser']);
         Route::post('/users/{id}/suspend', [AdminController::class, 'suspendUser']);
         Route::post('/users/{id}/activate', [AdminController::class, 'activateUser']);
+        Route::post('/users/{id}/deactivate', [AdminController::class, 'deactivateUser']);
+        Route::post('/users/{id}/reactivate', [AdminController::class, 'reactivateUser']);
         Route::delete('/users/{id}', [AdminController::class, 'deleteUser']);
     });
 });

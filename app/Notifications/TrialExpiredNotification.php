@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -34,7 +35,7 @@ class TrialExpiredNotification extends Notification
             'type' => 'trial_expired',
             'title' => 'Trial expirado',
             'message' => "Seu periodo de teste do plano {$this->planName} expirou. Assine para continuar.",
-            'action_url' => '/tutor/subscription',
+            'action_url' => FrontendRoute::TUTOR_SUBSCRIPTION,
         ];
     }
 }

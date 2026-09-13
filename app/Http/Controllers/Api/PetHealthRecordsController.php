@@ -2,16 +2,23 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\InventoryMovementType;
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
 use App\Models\Exam;
+use App\Models\Inventory;
 use App\Models\Pet;
 use App\Models\PetDeworming;
 use App\Models\PetMedication;
 use App\Models\Surgery;
+use App\Models\User;
 use App\Models\Vaccination;
 use App\Notifications\PetUpdatedByVet;
+use App\Services\Inventory\ClinicalStockDeductionService;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -39,6 +46,10 @@ class PetHealthRecordsController extends Controller
 {
     use AuthorizesPetAccess;
 
+    public function __construct(
+        private readonly ClinicalStockDeductionService $stockDeductionService,
+    ) {}
+
     private static function types(): array
     {
         return [
@@ -50,6 +61,7 @@ class PetHealthRecordsController extends Controller
                     'next_dose_date' => ['nullable', 'date', 'after_or_equal:application_date'],
                     'manufacturer' => ['nullable', 'string', 'max:120'],
                     'batch_number' => ['nullable', 'string', 'max:60'],
+                    'expiry_date' => ['nullable', 'date'],
                     'dose_number' => ['nullable', 'integer', 'min:1'],
                     'notes' => ['nullable', 'string', 'max:1000'],
                 ],
@@ -133,8 +145,7 @@ class PetHealthRecordsController extends Controller
         $pet = $this->resolvePetForWrite($request, $petId);
         $config = $this->config($type);
 
-        $rules = $config['fields'];
-        $rules['change_reason'] = ['nullable', 'string', 'max:1000'];
+        $rules = $this->rulesFor($config, $type);
         $data = Validator::make($request->all(), $rules)->validate();
         $changeReason = $data['change_reason'] ?? null;
         unset($data['change_reason']);
@@ -145,7 +156,7 @@ class PetHealthRecordsController extends Controller
             $data['professional_id'] = $this->resolveProfessionalId($request, $pet);
         }
 
-        $record = $config['model']::create($data);
+        $record = $this->createRecord($type, $config, $data, $request->user());
 
         // Attach the change reason to the creation activity (which Spatie's trait
         // logged automatically on the `created` event).
@@ -265,6 +276,115 @@ class PetHealthRecordsController extends Controller
             'data' => $medication->fresh(),
             'message' => 'Medicação desativada com sucesso.',
         ]);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Optional stock deduction — vaccinations/dewormings only.
+    // Ver docs/vinculo-estoque-aplicacao-clinica.md.
+    // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * `vaccinations` e `dewormings` ganham `inventory_id` e `confirm_expired` — os únicos dois
+     * tipos de ato clínico atômico com baixa de estoque opcional (item 7 do parecer: medicação é
+     * regime contínuo, não entra aqui).
+     */
+    private function rulesFor(array $config, string $type): array
+    {
+        $rules = $config['fields'];
+        $rules['change_reason'] = ['nullable', 'string', 'max:1000'];
+
+        if ($this->isStockLinkable($type)) {
+            $rules['inventory_id'] = ['nullable', 'integer', Rule::exists('inventories', 'id')->whereNull('deleted_at')];
+            $rules['confirm_expired'] = ['nullable', 'boolean'];
+        }
+
+        return $rules;
+    }
+
+    private function isStockLinkable(string $type): bool
+    {
+        return in_array($type, ['vaccinations', 'dewormings'], true);
+    }
+
+    /**
+     * Sem `inventory_id`: cria o registro normalmente, sem tocar em `inventories` — esse
+     * continua sendo o caso normal (tutor auto-relato, campanha, vet volante sem controle de
+     * estoque na plataforma). Ver item 2 do parecer.
+     */
+    private function createRecord(string $type, array $config, array $data, User $user): Model
+    {
+        if (! $this->isStockLinkable($type) || empty($data['inventory_id'])) {
+            unset($data['confirm_expired']);
+
+            return $config['model']::create($data);
+        }
+
+        return $this->createRecordWithStockDeduction($type, $config, $data, $user);
+    }
+
+    /**
+     * Lock + valida o item de estoque ANTES de criar o registro clínico: se saldo insuficiente
+     * ou lote vencido sem confirmação, a transação inteira reverte e nada é gravado — nem a
+     * vacinação/vermifugação nem o movimento (critério de aceite do item 1 do parecer). As
+     * exceções de domínio (`InsufficientStockException`/`ExpiredBatchException`) se
+     * autorrenderizam em 422 com `code` distinto — não precisam de catch aqui.
+     */
+    private function createRecordWithStockDeduction(string $type, array $config, array $data, User $user): Model
+    {
+        $applicationDate = Carbon::parse($data[$this->applicationDateField($type)]);
+        $confirmExpired = (bool) ($data['confirm_expired'] ?? false);
+        $inventoryId = (int) $data['inventory_id'];
+
+        return DB::transaction(function () use ($type, $config, $data, $user, $applicationDate, $confirmExpired, $inventoryId): Model {
+            $inventory = $this->stockDeductionService->lockAndValidate($inventoryId, $user, $applicationDate, $confirmExpired);
+
+            $record = $config['model']::create($this->recordDataFor($type, $data, $inventory));
+
+            $this->stockDeductionService->recordDeduction(
+                $inventory,
+                $record,
+                $this->movementTypeFor($type),
+                $user->id,
+                $confirmExpired,
+            );
+
+            return $record;
+        });
+    }
+
+    /**
+     * `expiry_date` (só existe em `vaccinations`) herda do item de estoque quando o profissional
+     * não informou — sugestão, não trava (item 3 do parecer). `batch_number`/`manufacturer` NÃO
+     * são herdados aqui: `inventories` não tem essas colunas hoje, então não há de onde herdar —
+     * divergência da premissa do parecer, reportada separadamente.
+     */
+    private function recordDataFor(string $type, array $data, Inventory $inventory): array
+    {
+        unset($data['confirm_expired']);
+
+        if ($type === 'vaccinations' && empty($data['expiry_date'])) {
+            $data['expiry_date'] = $inventory->expiry_date;
+        }
+
+        return $data;
+    }
+
+    private function applicationDateField(string $type): string
+    {
+        return match ($type) {
+            'vaccinations' => 'application_date',
+            'dewormings' => 'applied_date',
+            default => abort(422, 'Tipo não suporta vínculo de estoque.'),
+        };
+    }
+
+    private function movementTypeFor(string $type): InventoryMovementType
+    {
+        return match ($type) {
+            'vaccinations' => InventoryMovementType::OUT_VACCINATION,
+            'dewormings' => InventoryMovementType::OUT_DEWORMING,
+            default => abort(422, 'Tipo não suporta vínculo de estoque.'),
+        };
     }
 
     // ────────────────────────────────────────────────────────────────────

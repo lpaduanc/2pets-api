@@ -4,11 +4,14 @@ namespace App\Http\Requests\Auth;
 
 use App\DataTransferObjects\Cnpj;
 use App\Enums\ProfessionalType;
+use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class RegisterRequest extends FormRequest
 {
+    use FormatsDuplicateFieldErrors;
+
     /**
      * `user_type` na etapa 1 do cadastro não é só um dos 7 tipos profissionais: também
      * aceita `tutor` (não é profissional) e `company` (lead B2B pendente de qualificação,
@@ -21,6 +24,12 @@ class RegisterRequest extends FormRequest
     public function authorize(): bool
     {
         return true; // Public endpoint
+    }
+
+    /** @return list<string> */
+    protected function duplicateFields(): array
+    {
+        return ['email'];
     }
 
     /** Regra de projeto: documento trafega limpo (so digitos). Ver `DocumentNumber`. */
@@ -41,7 +50,15 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'email' => [
+                'required', 'string', 'email', 'max:255',
+                // Índice único de `users.email` é parcial (`WHERE deleted_at IS NULL`, ver
+                // migration `add_partial_unique_indexes_for_soft_deleted_documents`) — um
+                // e-mail some da checagem assim que o dono é soft-deletado. `withoutTrashed()`
+                // espelha o mesmo predicado, senão a validação bloqueia um e-mail que o banco
+                // já liberou.
+                Rule::unique('users', 'email')->withoutTrashed(),
+            ],
             'phone' => ['required', 'string', 'max:20'],
             'user_type' => ['required', Rule::in([
                 ...self::NON_PROFESSIONAL_USER_TYPES,

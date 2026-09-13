@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Enums\NotificationChannel;
 use App\Enums\NotificationType;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\NotificationResource;
 use App\Models\NotificationPreference;
 use App\Services\Notification\PushNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class NotificationController extends Controller
 {
@@ -16,14 +18,14 @@ class NotificationController extends Controller
         private readonly PushNotificationService $pushService
     ) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): AnonymousResourceCollection
     {
         $notifications = $request->user()
             ->notifications()
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
-        return response()->json($notifications);
+        return NotificationResource::collection($notifications);
     }
 
     public function unread(Request $request): JsonResponse
@@ -141,4 +143,3 @@ class NotificationController extends Controller
         return response()->json(['message' => 'Device unregistered successfully']);
     }
 }
-

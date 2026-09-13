@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\DeactivationReason;
 use App\Enums\PaymentStatus;
 use App\Http\Resources\DocumentResource;
 use App\Http\Resources\UserResource;
@@ -12,13 +13,20 @@ use App\Models\Payment;
 use App\Models\Professional;
 use App\Models\Review;
 use App\Models\User;
+use App\Services\Account\AccountDeactivationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
+    public function __construct(
+        private readonly AccountDeactivationService $deactivationService,
+    ) {}
+
     /**
      * All counters below read from `users`, so they are collected in a single
      * `FILTER`-based aggregate instead of one query per counter.
@@ -34,6 +42,7 @@ class AdminController extends Controller
         COUNT(*) FILTER (WHERE created_at >= ?) AS pending_last_day,
         COUNT(*) FILTER (WHERE created_at >= ?) AS recent_registrations,
         COUNT(*) FILTER (WHERE is_suspended = true) AS suspended,
+        COUNT(*) FILTER (WHERE deactivated_at IS NOT NULL) AS deactivated,
         COUNT(*) FILTER (WHERE role = 'company' AND registration_status = 'pending') AS pending_company_approvals
     SQL;
 
@@ -81,6 +90,7 @@ class AdminController extends Controller
                 ],
                 'recent_registrations' => $users['recent_registrations'],
                 'suspended_users' => $users['suspended'],
+                'deactivated_users' => $users['deactivated'],
                 'registration_trend' => $this->getRegistrationTrend(),
             ];
 
@@ -443,6 +453,19 @@ class AdminController extends Controller
                 'verification_notes' => $validated['notes'],
             ]);
 
+            // Rejeitar o CRMV tem que DERRUBAR o badge, não só marcar o documento.
+            // `verifyDocument()` liga `is_crmv_verified`; sem o espelho aqui, um CRMV aprovado
+            // por engano e depois rejeitado continuava exibindo "verificado" na busca e no perfil
+            // (`ProfessionalSearchResource::verified`) — exatamente o oposto da regra crítica §2
+            // do CLAUDE.md, que condiciona o badge à aprovação manual vigente.
+            if ($document->document_type === 'crmv') {
+                \App\Models\Professional::where('user_id', $document->user_id)->update([
+                    'is_crmv_verified' => false,
+                    'crmv_verified_at' => null,
+                    'crmv_verified_by' => null,
+                ]);
+            }
+
             Log::info('Document rejected', [
                 'admin_id' => $request->user()->id,
                 'document_id' => $document->id,
@@ -494,6 +517,10 @@ class AdminController extends Controller
                 $query->where('is_suspended', $request->boolean('is_suspended'));
             }
 
+            if ($request->has('account_status')) {
+                $this->applyAccountStatusFilter($query, $request->string('account_status')->value());
+            }
+
             if ($request->has('search')) {
                 $search = $request->search;
                 $query->where(function ($q) use ($search) {
@@ -526,6 +553,21 @@ class AdminController extends Controller
                 'message' => 'Erro ao listar usuários',
             ], 500);
         }
+    }
+
+    /**
+     * `?account_status=active|deactivated|suspended` — a mesma prioridade de
+     * `App\Enums\AccountStatus::fromUser()` (suspensão vence desativação), só que expressa
+     * como filtro de query em vez de comparação em memória.
+     */
+    private function applyAccountStatusFilter(Builder $query, ?string $status): void
+    {
+        match ($status) {
+            'suspended' => $query->where('is_suspended', true),
+            'deactivated' => $query->where('is_suspended', false)->whereNotNull('deactivated_at'),
+            'active' => $query->where('is_suspended', false)->whereNull('deactivated_at'),
+            default => null,
+        };
     }
 
     /**
@@ -684,6 +726,58 @@ class AdminController extends Controller
                 'message' => 'Erro ao reativar usuário',
             ], 500);
         }
+    }
+
+    /**
+     * Desativa a conta em nome do usuário (ex.: pedido por telefone/e-mail ao suporte). Usa o
+     * mesmo `AccountDeactivationService` do autosserviço — `deactivated_by` grava o admin, não
+     * o próprio usuário, então o painel consegue distinguir "saiu sozinho" de "admin desativou
+     * por ela". Nenhum dado é apagado ou alterado além do estado da conta.
+     */
+    public function deactivateUser(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'reason' => ['required', Rule::enum(DeactivationReason::class)],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        // `AccountAlreadyDeactivatedException` sabe renderizar a própria resposta (422) —
+        // deixa passar direto para o handler global em vez de virar o 500 genérico abaixo.
+        $user = User::findOrFail($id);
+
+        $this->deactivationService->deactivate(
+            $user,
+            DeactivationReason::from($validated['reason']),
+            $validated['note'] ?? null,
+            $request->user(),
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Usuário desativado',
+            'user' => (new UserResource($user->fresh()->load('media')))->resolve($request),
+        ]);
+    }
+
+    /**
+     * Reativa uma conta autodesativada pelo painel — ex.: a pessoa pediu por telefone em vez
+     * de usar o fluxo de e-mail/senha do `AccountController::reactivate`. Bloqueada para
+     * contas também suspensas (`AccountSuspendedException`): suspensão só sai por
+     * `activateUser`, nunca por aqui.
+     */
+    public function reactivateUser(Request $request, $id)
+    {
+        // `AccountNotDeactivatedException`/`AccountSuspendedException` sabem renderizar a
+        // própria resposta — deixa passar direto para o handler global.
+        $user = User::findOrFail($id);
+
+        $this->deactivationService->reactivate($user);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Usuário reativado',
+            'user' => (new UserResource($user->fresh()->load('media')))->resolve($request),
+        ]);
     }
 
     /**

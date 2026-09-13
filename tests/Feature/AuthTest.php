@@ -163,7 +163,10 @@ class AuthTest extends TestCase
         ]);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['email']);
+            ->assertJsonValidationErrors(['email'])
+            ->assertJsonPath('duplicate.fields', ['email'])
+            ->assertJsonPath('duplicate.action', 'login')
+            ->assertJsonFragment(['email' => ['Este e-mail ja esta cadastrado.']]);
     }
 
     // ---------------------------------------------------------------
@@ -172,13 +175,14 @@ class AuthTest extends TestCase
 
     public function test_suspended_user_cannot_login(): void
     {
-        // The login controller checks email_verified first, then profile_completed.
-        // A suspended user with email_verified=false gets blocked at email verification step.
-        // For this test we verify a user that is not email-verified is blocked from logging in.
+        // The login controller checks email_verified (derived from email_verified_at) first,
+        // then profile_completed. A suspended user with a null email_verified_at gets blocked
+        // at the email verification step. For this test we verify a user that is not
+        // email-verified is blocked from logging in.
         $user = User::factory()->tutor()->create([
             'email' => 'suspended@test.com',
             'password' => Hash::make('secret1234'),
-            'email_verified' => false,
+            'email_verified_at' => null,
             'is_suspended' => true,
         ]);
 
@@ -197,7 +201,6 @@ class AuthTest extends TestCase
         $user = User::factory()->company()->create([
             'email' => 'company@test.com',
             'password' => Hash::make('secret1234'),
-            'email_verified' => true,
             'registration_status' => 'pending',
         ]);
 

@@ -9,6 +9,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * `documents.file_type` é `varchar(10)` e guarda EXTENSÃO curta (`pdf`, `jpg`...), nunca o MIME
+ * type completo — é o que `FileUploadService::upload()` grava de verdade
+ * (`strtolower($extension)`), o único write path de produção. Os fixtures deste arquivo
+ * escreviam `'application/pdf'` (15 chars) direto via `Document::create()`, violando o próprio
+ * contrato da coluna — bug do teste, não do schema. Corrigido para `'pdf'`.
+ */
 class CrmvVerificationTest extends TestCase
 {
     use RefreshDatabase;
@@ -29,7 +36,7 @@ class CrmvVerificationTest extends TestCase
             'document_type' => 'crmv',
             'file_name' => 'crmv.pdf',
             'file_path' => 'uploads/crmv.pdf',
-            'file_type' => 'application/pdf',
+            'file_type' => 'pdf',
             'file_size' => 1024,
             'original_name' => 'original.pdf',
             'verification_status' => 'pending',
@@ -69,7 +76,7 @@ class CrmvVerificationTest extends TestCase
             'document_type' => 'rg',
             'file_name' => 'rg.pdf',
             'file_path' => 'uploads/rg.pdf',
-            'file_type' => 'application/pdf',
+            'file_type' => 'pdf',
             'file_size' => 1024,
             'original_name' => 'original.pdf',
             'verification_status' => 'pending',

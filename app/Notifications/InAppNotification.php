@@ -27,9 +27,12 @@ class InAppNotification extends Notification
         return [
             'type' => $this->type->value,
             'title' => $this->title,
-            'body' => $this->body,
+            // Every other Notification class in the app writes the payload under `message`
+            // (see `NotificationResource`) — this used to write `body`, which the Resource
+            // never read, so `SendAppointmentNotification`/`SendReviewNotification` reached
+            // the API with an empty message.
+            'message' => $this->body,
             'data' => $this->data,
         ];
     }
 }
-

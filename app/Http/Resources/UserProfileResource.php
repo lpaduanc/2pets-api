@@ -39,11 +39,25 @@ class UserProfileResource extends JsonResource
             'registration_status' => $this->registration_status,
             'email_verified' => $this->email_verified,
             'pets_count' => $this->pets_count ?? 0,
+            'avatar_url' => $this->avatarUrl(),
             'created_at' => $this->created_at?->toIso8601String(),
             'address' => $this->addressPayload(),
             'professional' => $this->professionalPayload(),
             'company' => $this->companyPayload(),
         ];
+    }
+
+    /**
+     * `getFirstMediaUrl()` devolve string vazia quando nao ha foto; o frontend
+     * espera `null` para cair no placeholder de iniciais do AppPhoto.
+     *
+     * O controller carrega `media` antes de instanciar este resource — sem isso
+     * a chamada dispara uma query extra por request (nunca N+1: este resource
+     * so e usado para um usuario de cada vez).
+     */
+    private function avatarUrl(): ?string
+    {
+        return $this->getFirstMediaUrl('avatar') ?: null;
     }
 
     /**

@@ -12,16 +12,13 @@ enum PetSpecies: string
     case FISH = 'fish';
     case OTHER = 'other';
 
+    /**
+     * Resolvido via `lang/{locale}/registration.php` (`pet_species.*`) — hoje só chamado
+     * pelo schema de cadastro (`ProfessionalSchemaBuilder`), nenhum outro consumidor deste
+     * enum usa `label()` (confirmado em 2026-09-13).
+     */
     public function label(): string
     {
-        return match ($this) {
-            self::DOG => 'Cão',
-            self::CAT => 'Gato',
-            self::BIRD => 'Ave',
-            self::REPTILE => 'Réptil',
-            self::RODENT => 'Roedor',
-            self::FISH => 'Peixe',
-            self::OTHER => 'Outro',
-        };
+        return __('registration.pet_species.'.$this->value);
     }
 }

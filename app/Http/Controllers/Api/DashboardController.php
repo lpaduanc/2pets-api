@@ -118,8 +118,10 @@ class DashboardController extends Controller
     {
         $alerts = [];
 
-        // Upcoming vaccines (next 7 days)
+        // Upcoming vaccines (next 7 days) — same append-only reasoning as the
+        // overdue block below: a superseded dose must not surface an alert.
         $upcomingVaccines = Vaccination::whereHas('pet', fn ($q) => $q->where('user_id', $userId))
+            ->latestPerType()
             ->whereNotNull('next_dose_date')
             ->whereBetween('next_dose_date', [now(), now()->addDays(7)])
             ->with('pet:id,name')
@@ -136,8 +138,10 @@ class DashboardController extends Controller
             ];
         }
 
-        // Overdue vaccines
+        // Overdue vaccines — only the latest dose of each type counts, since
+        // vaccination history is append-only (see Vaccination::scopeLatestPerType).
         $overdueVaccines = Vaccination::whereHas('pet', fn ($q) => $q->where('user_id', $userId))
+            ->latestPerType()
             ->whereNotNull('next_dose_date')
             ->where('next_dose_date', '<', now())
             ->with('pet:id,name')
@@ -235,6 +239,7 @@ class DashboardController extends Controller
         }
 
         $row = Vaccination::whereIn('pet_id', $petIds)
+            ->latestPerType()
             ->whereNotNull('next_dose_date')
             ->selectRaw('COUNT(*) AS total, COUNT(*) FILTER (WHERE next_dose_date >= ?) AS up_to_date', [now()])
             ->first();

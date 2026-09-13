@@ -32,6 +32,11 @@ class Cart extends Model
         return $this->belongsTo(User::class, 'professional_id');
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(CartItem::class);
@@ -56,4 +61,3 @@ class Cart extends Model
         $this->recalculate();
     }
 }
-

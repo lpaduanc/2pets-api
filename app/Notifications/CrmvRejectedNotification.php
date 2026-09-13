@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -38,7 +39,7 @@ class CrmvRejectedNotification extends Notification
             'type' => 'crmv_rejected',
             'title' => 'CRMV nao verificado',
             'message' => "Motivo: {$this->rejectionReason}. Reenvie o documento.",
-            'action_url' => '/professional/profile',
+            'action_url' => FrontendRoute::PROFESSIONAL_PROFILE,
         ];
     }
 }

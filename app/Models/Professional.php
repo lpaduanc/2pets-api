@@ -7,10 +7,11 @@ use App\Enums\ProfessionalType;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Professional extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',
@@ -46,6 +47,32 @@ class Professional extends Model
         'average_rating',
         'total_reviews',
         'is_featured',
+        // Espécies/portes atendidos (docs/segmentacao-cadastro-profissional.md §2) — gap que
+        // o CLAUDE.md já prometia ("tipos de animais atendidos") e não existia em lugar nenhum.
+        'species_served',
+        'sizes_served',
+        // Estrutura/comodidade (§4.2) — nunca para `vet`, ver `ProfessionalCapabilityRegistry`.
+        'parking_available',
+        'wheelchair_accessible',
+        // Diferenciais por tipo (§4.3) — os 13 campos que `CompleteProfileProfessional.vue`
+        // já capturava e o backend descartava por não estarem em nenhuma `rules()`.
+        'accepts_credit_card',
+        'accepts_pet_insurance',
+        'home_visit_available',
+        'online_consultation',
+        'emergency_available',
+        'emergency_24h',
+        'delivery_available',
+        'online_ordering',
+        'cage_free_option',
+        'webcam_access',
+        'special_diet_accommodation',
+        'mobile_service',
+        'group_sessions_available',
+        // Campos de enriquecimento com tipo próprio (`ProfessionalAdditionalField`).
+        'exam_rooms_count',
+        'training_methodology',
+        'languages_spoken',
     ];
 
     protected $casts = [
@@ -63,6 +90,25 @@ class Professional extends Model
         'average_rating' => 'decimal:2',
         'total_reviews' => 'integer',
         'is_featured' => 'boolean',
+        'species_served' => 'array',
+        'sizes_served' => 'array',
+        'parking_available' => 'boolean',
+        'wheelchair_accessible' => 'boolean',
+        'accepts_credit_card' => 'boolean',
+        'accepts_pet_insurance' => 'boolean',
+        'home_visit_available' => 'boolean',
+        'online_consultation' => 'boolean',
+        'emergency_available' => 'boolean',
+        'emergency_24h' => 'boolean',
+        'delivery_available' => 'boolean',
+        'online_ordering' => 'boolean',
+        'cage_free_option' => 'boolean',
+        'webcam_access' => 'boolean',
+        'special_diet_accommodation' => 'boolean',
+        'mobile_service' => 'boolean',
+        'group_sessions_available' => 'boolean',
+        'exam_rooms_count' => 'integer',
+        'languages_spoken' => 'array',
     ];
 
     /**

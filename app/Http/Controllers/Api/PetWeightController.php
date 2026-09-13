@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Pet\StorePetWeightRequest;
 use App\Models\PetWeightHistory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,22 +32,18 @@ class PetWeightController extends Controller
         return response()->json($entries);
     }
 
-    public function store(Request $request, int $petId): JsonResponse
+    public function store(StorePetWeightRequest $request, int $petId): JsonResponse
     {
         $pet = $this->resolvePetForWrite($request, $petId);
 
-        $data = $request->validate([
-            'weight_kg' => ['required', 'numeric', 'min:0.01', 'max:200'],
-            'measured_at' => ['required', 'date'],
-            'note' => ['nullable', 'string', 'max:1000'],
-        ]);
+        $data = $request->validated();
 
         $entry = PetWeightHistory::create([
             'pet_id' => $pet->id,
             'measured_by_user_id' => $request->user()->id,
-            'weight' => $data['weight_kg'],
+            'weight' => $data['weight'],
             'measured_at' => $data['measured_at'],
-            'notes' => $data['note'] ?? null,
+            'notes' => $data['notes'] ?? null,
         ]);
 
         return response()->json([
