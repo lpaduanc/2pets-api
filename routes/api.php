@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\Public\BookingController;
 use App\Http\Controllers\Api\Public\MasterDataController;
 use App\Http\Controllers\Api\Public\PetCardController as PublicPetCardController;
 use App\Http\Controllers\Api\Public\ProfessionalController;
+use App\Http\Controllers\Api\Public\ReverseGeocodeController;
 use App\Http\Controllers\Api\Public\SearchController;
 use App\Http\Controllers\Api\ReminderController;
 use App\Http\Controllers\Api\ReportController;
@@ -98,11 +99,27 @@ Route::get('/features', function () {
     return response()->json(config('features'));
 });
 
-Route::prefix('public')->middleware('throttle:30,1')->group(function () {
+// Busca e descoberta ficam FORA do grupo de 30/min abaixo, no limitador nomeado
+// `public-search` (60/min por IP; o número e o porquê estão em
+// `AppServiceProvider::registerRateLimiters()`). Precisa ser um grupo separado, e não um
+// `throttle:` aninhado: middleware de grupo soma, então herdar os 30/min do grupo de baixo
+// manteria o teto antigo valendo e o limite novo não teria efeito nenhum.
+Route::prefix('public')->middleware('throttle:public-search')->group(function () {
     Route::get('/search', [SearchController::class, 'search']);
     Route::get('/nearby', [SearchController::class, 'nearby']);
     Route::get('/categories', [SearchController::class, 'categories']);
     Route::get('/featured', [SearchController::class, 'featured']);
+});
+
+// Reverse geocoding — grupo PRÓPRIO, e não dentro de um dos grupos acima. Middleware de
+// grupo SOMA: aninhar `throttle:reverse-geocode` num grupo que já tem `throttle:30,1`
+// manteria o teto de 30 valendo em paralelo, e o limite apertado (10/min) não teria efeito.
+// Mesma armadilha documentada no grupo da busca.
+Route::prefix('public')->middleware('throttle:reverse-geocode')->group(function () {
+    Route::get('/reverse-geocode', ReverseGeocodeController::class);
+});
+
+Route::prefix('public')->middleware('throttle:30,1')->group(function () {
     Route::get('/professionals/{id}', [ProfessionalController::class, 'show']);
     Route::get('/pet-card/{publicId}', [PublicPetCardController::class, 'show']);
     Route::get('/breeds', [BreedController::class, 'index']);

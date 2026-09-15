@@ -7,6 +7,7 @@ use App\Enums\ProfessionalType;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Professional extends Model
@@ -142,5 +143,23 @@ class Professional extends Model
     public function allServices()
     {
         return $this->hasMany(\App\Models\Service::class, 'professional_id', 'user_id');
+    }
+
+    /**
+     * As especialidades do CATÁLOGO (`specialties`), pela pivô `professional_specialty`.
+     *
+     * ⚠️ Chama-se `catalogSpecialties` e não `specialties` de propósito: `specialties` é uma
+     * COLUNA desta tabela (TEXT com JSON dentro, `casts` para array) e, no Eloquent, atributo
+     * ganha da relação em `$model->specialties`. Duas coisas com o mesmo nome e precedência
+     * silenciosa é a receita para alguém ler o array quando queria as linhas — ou o
+     * contrário — sem erro nenhum aparecer.
+     *
+     * As duas convivem de propósito enquanto a coluna não for removida: a pivô é a fonte com
+     * FK (ninguém grava rótulo inventado), a coluna é a fonte que a busca e três Resources
+     * ainda leem. `App\Observers\ProfessionalSpecialtyObserver` mantém as duas iguais.
+     */
+    public function catalogSpecialties(): BelongsToMany
+    {
+        return $this->belongsToMany(Specialty::class, 'professional_specialty')->withTimestamps();
     }
 }

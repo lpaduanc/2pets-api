@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 final class GeocodingService
 {
     private const CACHE_TTL_DAYS = 30;
+
     private const API_BASE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 
     private string $apiKey;
@@ -16,6 +17,19 @@ final class GeocodingService
     public function __construct()
     {
         $this->apiKey = config('services.google.maps_api_key', '');
+    }
+
+    /**
+     * Se há chave configurada para consultar o Google.
+     *
+     * Público porque quem chama precisa distinguir "não achei o endereço" de "não consigo
+     * consultar" — os dois viram `null` aqui, e o frontend trata cada um de um jeito (ver
+     * `App\Enums\Location\AddressLookupStatus`). Hoje a `GOOGLE_MAPS_API_KEY` está vazia no
+     * `.env`, então este método devolve `false` em desenvolvimento.
+     */
+    public function isConfigured(): bool
+    {
+        return trim($this->apiKey) !== '';
     }
 
     /**
@@ -55,6 +69,13 @@ final class GeocodingService
      */
     public function reverseGeocode(float $lat, float $lng): ?array
     {
+        // Sem chave, NÃO chamar o Google. A requisição voltaria REQUEST_DENIED, e como
+        // `Cache::remember` não trata `null` como acerto de cache, TODA chamada iria para a
+        // rede — latência e log de erro por request, sem chance nenhuma de sucesso.
+        if (! $this->isConfigured()) {
+            return null;
+        }
+
         $cacheKey = $this->buildCacheKey('reverse', "{$lat},{$lng}");
 
         return Cache::store('redis')->remember(
@@ -82,6 +103,7 @@ final class GeocodingService
                     'address' => $address,
                     'status' => $response->status(),
                 ]);
+
                 return null;
             }
 
@@ -92,6 +114,7 @@ final class GeocodingService
                     'address' => $address,
                     'status' => $data['status'] ?? 'UNKNOWN',
                 ]);
+
                 return null;
             }
 
@@ -106,6 +129,7 @@ final class GeocodingService
                 'address' => $address,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -129,6 +153,7 @@ final class GeocodingService
                     'lng' => $lng,
                     'status' => $response->status(),
                 ]);
+
                 return null;
             }
 
@@ -140,6 +165,7 @@ final class GeocodingService
                     'lng' => $lng,
                     'status' => $data['status'] ?? 'UNKNOWN',
                 ]);
+
                 return null;
             }
 
@@ -152,6 +178,7 @@ final class GeocodingService
                 'lng' => $lng,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -167,6 +194,7 @@ final class GeocodingService
             $component = $components->first(
                 fn (array $c) => in_array($type, $c['types'] ?? [])
             );
+
             return $component['long_name'] ?? null;
         };
 
@@ -174,6 +202,7 @@ final class GeocodingService
             $component = $components->first(
                 fn (array $c) => in_array($type, $c['types'] ?? [])
             );
+
             return $component['short_name'] ?? null;
         };
 

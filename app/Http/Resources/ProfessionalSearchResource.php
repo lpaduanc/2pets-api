@@ -73,7 +73,7 @@ class ProfessionalSearchResource extends JsonResource
         ];
     }
 
-    private function formatAddress(): string
+    protected function formatAddress(): string
     {
         $parts = array_filter([
             $this->address,
@@ -84,7 +84,7 @@ class ProfessionalSearchResource extends JsonResource
         return implode(', ', $parts);
     }
 
-    private function isOpenNow(?object $professional): bool
+    protected function isOpenNow(?object $professional): bool
     {
         if (! $professional?->working_days || ! $professional?->opening_hours || ! $professional?->closing_hours) {
             return false;

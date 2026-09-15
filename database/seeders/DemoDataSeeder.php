@@ -8,6 +8,7 @@ use App\Models\PetDeworming;
 use App\Models\Professional;
 use App\Models\User;
 use App\Models\Vaccination;
+use Database\Seeders\Demo\SearchableDemoProfessional;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -20,6 +21,20 @@ class DemoDataSeeder extends Seeder
      */
     public function run(): void
     {
+        // Endereco de demonstracao em SP (regiao beta do MVP). `latitude`/`longitude`
+        // sao obrigatorios: o model User sincroniza a coluna PostGIS `location` a partir
+        // deles a cada save(), e sem `location` o usuario nao existe para `ST_DWithin`.
+        $demoAddress = [
+            'address' => 'Avenida Paulista',
+            'number' => '1578',
+            'neighborhood' => 'Bela Vista',
+            'city' => 'Sao Paulo',
+            'state' => 'SP',
+            'zip_code' => '01310-200',
+            'latitude' => -23.56140000,
+            'longitude' => -46.65590000,
+        ];
+
         // Demo Tutor
         $tutor = User::updateOrCreate(
             ['email' => 'tutor@2pets.com.br'],
@@ -31,6 +46,16 @@ class DemoDataSeeder extends Seeder
                 'phone' => '(11) 99999-1234',
                 'email_verified_at' => now(),
                 'registration_status' => 'completed',
+                // `registration_status` e `profile_completed` sao INDEPENDENTES: o primeiro
+                // e o estagio do cadastro, o segundo e a flag que o app le para decidir se
+                // manda o usuario para `/complete-profile/*` (ver utils/postLoginRoute.js).
+                // Sem esta linha o usuario demo loga e cai direto na tela de completar
+                // cadastro -- exatamente o que ele deveria dispensar.
+                'profile_completed' => true,
+                'birth_date' => '1985-04-12',
+                'gender' => 'male',
+                'occupation' => 'Designer',
+                ...$demoAddress,
             ]
         );
         $tutor->assignRole('tutor');
@@ -47,6 +72,9 @@ class DemoDataSeeder extends Seeder
                 'phone' => '(11) 98765-4321',
                 'email_verified_at' => now(),
                 'registration_status' => 'completed',
+                'profile_completed' => true,
+                'birth_date' => '1988-09-30',
+                ...$demoAddress,
             ]
         );
         $profUser->assignRole('vet_freelancer');
@@ -67,6 +95,10 @@ class DemoDataSeeder extends Seeder
             ]
         );
 
+        // Sem isto a conta de demonstração do profissional existe mas NÃO aparece na busca
+        // pública — ver o docblock de `SearchableDemoProfessional`.
+        (new SearchableDemoProfessional)->provision($profUser, $professional);
+
         // Demo Admin
         $admin = User::updateOrCreate(
             ['email' => 'admin@2pets.com.br'],
@@ -76,6 +108,7 @@ class DemoDataSeeder extends Seeder
                 'role' => 'admin',
                 'email_verified_at' => now(),
                 'registration_status' => 'completed',
+                'profile_completed' => true,
             ]
         );
         $admin->assignRole('admin');

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -58,6 +59,40 @@ class Pet extends Model
         'lost_alert_message',
         'lost_since',
     ];
+
+    /**
+     * A coluna `image_url` guarda CAMINHO RELATIVO ("/storage/pets/x.jpg"), e o
+     * host entra aqui, na leitura, a partir da requisicao atual.
+     *
+     * Antes o controller gravava a URL absoluta ja resolvida
+     * (`Storage::disk('public')->url()` -> `APP_URL`), e isso congelava o host
+     * DENTRO DO DADO. Quem subisse a foto pelo navegador do proprio servidor
+     * gravava "http://localhost:8000/..." — que funciona so ali. No celular,
+     * "localhost" e o proprio aparelho, entao a foto do pet simplesmente nao
+     * carregava no app; em producao apontaria para a maquina errada do mesmo
+     * jeito. Resolvendo na leitura, cada cliente recebe o host pelo qual ELE
+     * alcancou a API, sem nada para manter em sincronia.
+     *
+     * URL absoluta passa intacta: `StorePetRequest` valida `image_url` como
+     * `url`, entao um cliente pode legitimamente apontar para uma imagem
+     * externa, e reescrever isso quebraria o caso.
+     */
+    protected function imageUrl(): Attribute
+    {
+        return Attribute::make(
+            get: function (?string $value): ?string {
+                if ($value === null || $value === '') {
+                    return null;
+                }
+
+                if (Str::startsWith($value, ['http://', 'https://'])) {
+                    return $value;
+                }
+
+                return url(ltrim($value, '/'));
+            },
+        );
+    }
 
     protected $casts = [
         'birth_date' => 'date',

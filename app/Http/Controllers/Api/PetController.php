@@ -296,13 +296,18 @@ class PetController extends Controller
 
     private function storePhoto($file): string
     {
-        // Store in the 'public' disk so Storage::disk('public')->url() returns an absolute URL
-        // using filesystems.disks.public.url (backend origin) — required because the SPA runs
-        // on a different port (9200) than the API (8000) in development.
+        // Guarda o CAMINHO RELATIVO, nunca a URL absoluta.
+        //
+        // Antes daqui saia `Storage::disk('public')->url($path)`, que resolve por
+        // `APP_URL` e gravava "http://localhost:8000/..." no banco. O host ficava
+        // congelado no dado: no celular "localhost" e o proprio aparelho, e a foto
+        // do pet nao carregava no app. O host passou a ser montado na LEITURA,
+        // pelo accessor `imageUrl()` em `App\Models\Pet`, a partir do host da
+        // requisicao — cada cliente recebe o endereco pelo qual ele mesmo chegou.
         $filename = Str::uuid().'.'.$file->getClientOriginalExtension();
         $path = $file->storeAs('pets', $filename, 'public');
 
-        return Storage::disk('public')->url($path);
+        return '/storage/'.$path;
     }
 
     /**

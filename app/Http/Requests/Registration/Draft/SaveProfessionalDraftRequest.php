@@ -4,6 +4,7 @@ namespace App\Http\Requests\Registration\Draft;
 
 use App\DataTransferObjects\Cnpj;
 use App\DataTransferObjects\Cpf;
+use App\Http\Requests\Concerns\CanonicalizesSpecialties;
 use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
 use App\Http\Requests\Registration\Draft\Concerns\HasOptionalAddressRules;
 use App\Rules\ValidCpf;
@@ -23,7 +24,7 @@ use Illuminate\Validation\Rule;
  */
 class SaveProfessionalDraftRequest extends FormRequest
 {
-    use FormatsDuplicateFieldErrors, HasOptionalAddressRules;
+    use CanonicalizesSpecialties, FormatsDuplicateFieldErrors, HasOptionalAddressRules;
 
     public function authorize(): bool
     {
@@ -47,6 +48,8 @@ class SaveProfessionalDraftRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $this->canonicalizeSpecialties();
+
         if ($this->has('cpf')) {
             $this->merge(['cpf' => Cpf::stripMask($this->input('cpf'))]);
         }
@@ -113,7 +116,15 @@ class SaveProfessionalDraftRequest extends FormRequest
             'university' => ['sometimes', 'nullable', 'string'],
             'graduation_year' => ['sometimes', 'nullable', 'integer', 'min:1950', 'max:'.date('Y')],
             'experience_years' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            // Sem `ValidSpecialty` de propósito: o rascunho é autosave, e um 422 aqui não
+            // corrige nada — só faz o usuário perder o que já tinha digitado no formulário
+            // inteiro por causa de um item de uma lista. O catálogo continua fechado onde a
+            // recusa tem consequência útil (conclusão de cadastro e `PUT /api/profile`).
+            // A canonicalização (`prepareForValidation`) continua valendo: o que resolve é
+            // gravado na grafia do catálogo e vira vínculo na pivô; o que não resolve fica
+            // guardado como veio, para o usuário encontrar o formulário como deixou.
             'specialties' => ['sometimes', 'nullable', 'array'],
+            'specialties.*' => ['string'],
             'courses' => ['sometimes', 'nullable', 'array'],
             'service_radius_km' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'opening_hours' => ['sometimes', 'nullable', 'string'],

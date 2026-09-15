@@ -4,11 +4,13 @@ namespace App\Http\Requests\Registration;
 
 use App\DataTransferObjects\Cpf;
 use App\Enums\ProfessionalType;
+use App\Http\Requests\Concerns\CanonicalizesSpecialties;
 use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
 use App\Http\Requests\Registration\Concerns\HasAddressRules;
 use App\Http\Requests\Registration\Concerns\HasProfessionalCapabilityRules;
 use App\Rules\ValidCpf;
 use App\Rules\ValidCrmv;
+use App\Rules\ValidSpecialty;
 use App\Services\CrmvValidationService;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -16,6 +18,7 @@ use Illuminate\Validation\Rule;
 
 class CompleteVetRegistrationRequest extends FormRequest
 {
+    use CanonicalizesSpecialties;
     use FormatsDuplicateFieldErrors, HasAddressRules, HasProfessionalCapabilityRules;
 
     public function authorize(): bool
@@ -41,6 +44,8 @@ class CompleteVetRegistrationRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $this->canonicalizeSpecialties();
+
         if ($this->has('cpf')) {
             $this->merge(['cpf' => Cpf::stripMask($this->input('cpf'))]);
         }
@@ -79,6 +84,7 @@ class CompleteVetRegistrationRequest extends FormRequest
             ],
             'crmv_state' => ['required', 'string', 'size:2'],
             'specialties' => ['nullable', 'array'],
+            'specialties.*' => ['string', app(ValidSpecialty::class)],
             'experience_years' => ['required', 'integer', 'min:0'],
             'service_radius_km' => ['nullable', 'integer', 'min:1'],
             'opening_hours' => ['required', 'string'], // Formato HH:mm

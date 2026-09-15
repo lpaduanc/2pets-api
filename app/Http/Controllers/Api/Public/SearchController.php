@@ -4,11 +4,16 @@ namespace App\Http\Controllers\Api\Public;
 
 use App\DataTransferObjects\SearchFiltersDTO;
 use App\Enums\ProfessionalType;
+use App\Enums\ServiceCategory;
 use App\Http\Controllers\Controller;
-use App\Http\Resources\PublicProfessionalSearchResource;
+use App\Http\Requests\Search\PublicProfessionalSearchRequest;
+use App\Http\Resources\ProfessionalSearchCardResource;
+use App\Http\Resources\ProfessionalSearchCollection;
 use App\Models\User;
 use App\Services\Search\GeoLocationService;
 use App\Services\Search\ProfessionalSearchService;
+use App\Services\Search\SearchConceptPresenter;
+use App\Services\Search\SearchResultMetaBuilder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,22 +24,34 @@ class SearchController extends Controller
     public function __construct(
         private readonly ProfessionalSearchService $searchService,
         private readonly GeoLocationService $geoLocationService,
+        private readonly SearchResultMetaBuilder $searchResultMetaBuilder,
+        private readonly SearchConceptPresenter $searchConceptPresenter,
     ) {}
 
-    public function search(Request $request): AnonymousResourceCollection
+    public function search(PublicProfessionalSearchRequest $request): ProfessionalSearchCollection
     {
-        $validated = $this->validateSearchRequest($request);
+        $filters = SearchFiltersDTO::fromRequest($request->validated());
 
-        $filters = SearchFiltersDTO::fromRequest($validated);
+        // Cursor pagination serve o scroll infinito quando `?cursor=` está presente.
+        return $request->has('cursor')
+            ? $this->cursorResults($filters)
+            : $this->pagedResults($filters);
+    }
 
-        // Use cursor pagination for infinite scroll when ?cursor= is present
-        if ($request->has('cursor')) {
-            $results = $this->searchService->searchCursor($filters);
-        } else {
-            $results = $this->searchService->search($filters);
-        }
+    private function pagedResults(SearchFiltersDTO $filters): ProfessionalSearchCollection
+    {
+        $results = $this->searchService->search($filters);
 
-        return PublicProfessionalSearchResource::collection($results);
+        return ProfessionalSearchCollection::make($results)
+            ->withSearchMeta($this->searchResultMetaBuilder->forPage($filters, $results));
+    }
+
+    private function cursorResults(SearchFiltersDTO $filters): ProfessionalSearchCollection
+    {
+        $results = $this->searchService->searchCursor($filters);
+
+        return ProfessionalSearchCollection::make($results)
+            ->withSearchMeta($this->searchResultMetaBuilder->forCursor($filters));
     }
 
     public function nearby(Request $request): AnonymousResourceCollection
@@ -54,7 +71,7 @@ class SearchController extends Controller
 
         $results = $this->searchService->search($filters);
 
-        return PublicProfessionalSearchResource::collection($results);
+        return ProfessionalSearchCardResource::collection($results);
     }
 
     public function featured(Request $request): AnonymousResourceCollection
@@ -66,7 +83,7 @@ class SearchController extends Controller
 
         $this->applyFeaturedDistance($query, $request);
 
-        return PublicProfessionalSearchResource::collection($query->limit(10)->get());
+        return ProfessionalSearchCardResource::collection($query->limit(10)->get());
     }
 
     /**
@@ -95,30 +112,22 @@ class SearchController extends Controller
         )->orderByRaw('distance_km ASC NULLS LAST');
     }
 
+    /**
+     * Catálogo dos filtros da busca. As três listas são DERIVADAS — enum, enum e catálogo —
+     * e nenhuma delas é redigitada aqui.
+     *
+     * `specialties` entrou porque a UI da busca tinha 8 especialidades chumbadas no
+     * `SearchPage.vue` enquanto a base grava 21: as duas MAIORES ("Diagnóstico por Imagem",
+     * 836 profissionais, e "Patologia Clínica", 829) não eram filtráveis por ninguém. É o
+     * mesmo furo que a espécie tinha (6 opções para 7 valores gravados) — lista de filtro
+     * mantida à mão no frontend perde o passo do catálogo e some com resultado real.
+     */
     public function categories(): JsonResponse
     {
         return response()->json([
             'professional_types' => $this->getProfessionalTypes(),
             'service_categories' => $this->getServiceCategories(),
-        ]);
-    }
-
-    private function validateSearchRequest(Request $request): array
-    {
-        return $request->validate([
-            'latitude' => 'nullable|numeric|between:-90,90',
-            'longitude' => 'nullable|numeric|between:-180,180',
-            'radius_km' => 'nullable|integer|min:1|max:100',
-            'professional_type' => 'nullable|string',
-            'service_category' => 'nullable|string',
-            'min_price' => 'nullable|numeric|min:0',
-            'max_price' => 'nullable|numeric|min:0',
-            'min_rating' => 'nullable|numeric|min:0|max:5',
-            'query' => 'nullable|string|max:255',
-            'sort_by' => 'nullable|string|in:distance,rating,relevance,price_low,price_high',
-            'per_page' => 'nullable|integer|min:1|max:50',
-            'available_now' => 'nullable|boolean',
-            'page' => 'nullable|integer|min:1',
+            'specialties' => $this->searchConceptPresenter->specialtyFilterOptions(),
         ]);
     }
 
@@ -135,19 +144,23 @@ class SearchController extends Controller
         );
     }
 
+    /**
+     * Derivado de `ServiceCategory`, nunca de lista redigitada — as 15 categorias do enum
+     * são agora exatamente as 15 que o CHECK de `services.category` aceita (migration
+     * `2026_09_22_100000`). Antes daquela migration esta lista oferecia 10 opções das quais
+     * 6 eram inalcançáveis: o valor não podia ser gravado, então o filtro sempre voltava
+     * vazio. `OTHER` fica fora por decisão de produto do `pet-business-specialist`
+     * ("filtro que devolve zero resultado sempre é pior que filtro ausente", e nenhum tipo
+     * de profissional tem `OTHER` em `service_categories`).
+     */
     private function getServiceCategories(): array
     {
-        return [
-            ['value' => 'consultation', 'label' => 'Consulta'],
-            ['value' => 'emergency', 'label' => 'Emergência'],
-            ['value' => 'surgery', 'label' => 'Cirurgia'],
-            ['value' => 'vaccination', 'label' => 'Vacinação'],
-            ['value' => 'grooming', 'label' => 'Banho e Tosa'],
-            ['value' => 'training', 'label' => 'Adestramento'],
-            ['value' => 'boarding', 'label' => 'Hospedagem'],
-            ['value' => 'laboratory', 'label' => 'Exames Laboratoriais'],
-            ['value' => 'imaging', 'label' => 'Exames de Imagem'],
-            ['value' => 'dental', 'label' => 'Odontologia'],
-        ];
+        return array_values(array_map(
+            fn (ServiceCategory $category): array => ['value' => $category->value, 'label' => $category->label()],
+            array_filter(
+                ServiceCategory::cases(),
+                fn (ServiceCategory $category): bool => $category !== ServiceCategory::OTHER,
+            ),
+        ));
     }
 }

@@ -33,6 +33,14 @@ final class ProfessionalSearchCache
      */
     private const TTL_SECONDS = 60;
 
+    /**
+     * Total de sugestão envelhece bem: ele só ordena e dimensiona três alternativas, não
+     * decide quem aparece na lista. Dez minutos cortam a recontagem sem risco de mostrar
+     * número absurdo — e o contador de versão continua invalidando na hora em que alguém
+     * escreve.
+     */
+    private const COUNT_TTL_SECONDS = 600;
+
     /** Raio <= 5km: celula de ~1,1km de lado. */
     private const GRID_CELL_SMALL_DEGREES = 0.01;
 
@@ -54,19 +62,74 @@ final class ProfessionalSearchCache
         return Cache::remember($this->buildCacheKey($filters), self::TTL_SECONDS, $resultResolver);
     }
 
+    /**
+     * O total já cacheado, ou `null` quando ainda não foi calculado.
+     *
+     * Existe para o chamador poder colher de graça o que já está no Redis ANTES de decidir
+     * quais contagens cabem no orçamento de latência dele — sem isso, a ordem de cálculo
+     * seria a ordem do vocabulário e uma contagem cara na frente esconderia três baratas
+     * atrás dela.
+     */
+    public function cachedCount(SearchFiltersDTO $filters): ?int
+    {
+        $cached = Cache::get($this->buildCountCacheKey($filters));
+
+        return $cached === null ? null : (int) $cached;
+    }
+
+    /**
+     * Grava o total de uma busca em namespace próprio.
+     *
+     * Separado de `remember()` de propósito: aquela entrada guarda `{ids, total}` e vale
+     * 60 s porque alimenta a LISTA que o usuário vê; um total que só ordena três sugestões
+     * tolera muito mais desatualização, e recontar a cada minuto seria desperdício. As duas
+     * compartilham o contador de versão, então uma escrita relevante invalida as duas.
+     */
+    public function putCount(SearchFiltersDTO $filters, int $total): void
+    {
+        Cache::put($this->buildCountCacheKey($filters), $total, self::COUNT_TTL_SECONDS);
+    }
+
+    private function buildCountCacheKey(SearchFiltersDTO $filters): string
+    {
+        return 'professional_search_count:'.$this->buildCacheKey($filters);
+    }
+
+    /**
+     * INVARIANTE: todo campo de `SearchFiltersDTO` que muda QUEM entra no resultado precisa
+     * entrar nesta chave. Filtro novo esquecido aqui faz duas buscas diferentes colidirem e
+     * uma receber o resultado da outra — erro silencioso, sem exceção e sem log.
+     *
+     * Os únicos campos deliberadamente de fora são `page` e `per_page`: o cache guarda a
+     * lista de ids inteira (até `MAX_CACHED_IDS`) e quem fatia a página é o PHP, então
+     * paginar não muda o conteúdo cacheado. `ProfessionalSearchCacheTest` cobre isso.
+     *
+     * As quatro dimensões multivaloradas entram como LISTA. A forma canônica (deduplicada e
+     * ordenada) é responsabilidade de `SearchFiltersDTO::normalizeFilterList()`, não daqui:
+     * `?type[]=vet&type[]=clinic` e `?type[]=clinic&type[]=vet` são a MESMA busca (OR é
+     * comutativo) e precisam cair na mesma entrada, senão o acerto do cache cai pela metade
+     * a cada valor extra marcado no filtro.
+     */
     private function buildCacheKey(SearchFiltersDTO $filters): string
     {
         $keyData = [
             'lat' => $this->snapToGrid($filters->latitude, $filters->radiusKm),
             'lng' => $this->snapToGrid($filters->longitude, $filters->radiusKm),
             'radius' => $filters->radiusKm,
-            'type' => $filters->professionalType,
-            'category' => $filters->serviceCategory,
+            'type' => $filters->professionalTypes,
+            'category' => $filters->serviceCategories,
             'min_price' => $filters->minPrice,
             'max_price' => $filters->maxPrice,
             'min_rating' => $filters->minRating,
             'query' => $filters->searchQuery,
             'sort' => $filters->sortBy,
+            'specialty' => $filters->specialties,
+            'species' => $filters->species,
+            // `search()` hoje nem chega ao cache quando `available_now` está ligado (o
+            // filtro depende do minuto atual). Entra na chave mesmo assim: se alguém um dia
+            // remover esse desvio, a alternativa é duas buscas diferentes compartilharem
+            // resultado em silêncio — bug de precisão que não dá erro em lugar nenhum.
+            'available_now' => $filters->availableNow,
         ];
 
         $hash = md5(serialize($keyData));

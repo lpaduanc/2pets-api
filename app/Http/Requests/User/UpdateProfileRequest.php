@@ -5,10 +5,12 @@ namespace App\Http\Requests\User;
 use App\DataTransferObjects\Cnpj;
 use App\DataTransferObjects\Cpf;
 use App\Enums\ProfessionalType;
+use App\Http\Requests\Concerns\CanonicalizesSpecialties;
 use App\Http\Requests\Registration\Concerns\HasProfessionalCapabilityRules;
 use App\Models\Professional;
 use App\Models\User;
 use App\Rules\ValidCpf;
+use App\Rules\ValidSpecialty;
 use Closure;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -28,6 +30,7 @@ use Illuminate\Validation\Rule;
  */
 class UpdateProfileRequest extends FormRequest
 {
+    use CanonicalizesSpecialties;
     use HasProfessionalCapabilityRules;
 
     private const GENDERS = ['male', 'female', 'other', 'not_specified'];
@@ -45,6 +48,8 @@ class UpdateProfileRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $this->canonicalizeSpecialties('professional.specialties');
+
         $this->normalizeDocuments();
         $this->normalizeLegacyAddress();
     }
@@ -201,6 +206,7 @@ class UpdateProfileRequest extends FormRequest
             'professional.crmv' => ['sometimes', 'nullable', 'string', 'max:255'],
             'professional.crmv_state' => ['sometimes', 'nullable', 'string', 'max:2'],
             'professional.specialties' => ['sometimes', 'nullable', 'array'],
+            'professional.specialties.*' => ['string', app(ValidSpecialty::class)],
             'professional.services_offered' => ['sometimes', 'nullable', 'array'],
             'professional.service_radius_km' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:200'],
             'professional.description' => ['sometimes', 'nullable', 'string'],

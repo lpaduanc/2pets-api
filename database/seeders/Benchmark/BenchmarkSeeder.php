@@ -352,7 +352,17 @@ class BenchmarkSeeder extends Seeder
         $this->runStep('index: bench_pet_pool', 'CREATE INDEX ON bench_pet_pool (rn);');
     }
 
-    /** 180 mil services, 4 por profissional. Categoria restrita ao CHECK da tabela. */
+    /**
+     * 180 mil services, 4 por profissional. Categoria restrita ao CHECK da tabela — que
+     * desde a migration `2026_09_22_100000` aceita as 15 de `ServiceCategory`. O valor
+     * legado `exam` saiu daqui junto: ele não existe no enum, e mantê-lo faria o seeder de
+     * carga voltar a gerar dado que o resto da aplicação não sabe interpretar.
+     *
+     * ⚠️ Este seeder é de VOLUME, não de coerência: nome, tipo e categoria continuam
+     * sorteados de forma independente, então "Clínica Veterinária X" pode oferecer "Banho e
+     * Tosa". Para dado coerente (avaliar relevância, desenvolver, revisar resultado), use
+     * `Database\Seeders\Dataset\DevelopmentDatasetSeeder`.
+     */
     private function seedServices(): void
     {
         $lastServiceSeq = self::TOTAL_SERVICES - 1;
@@ -375,7 +385,7 @@ class BenchmarkSeeder extends Seeder
             CROSS JOIN LATERAL (
                 SELECT
                     ARRAY['Consulta Geral','Vacinação','Banho e Tosa','Exame de Sangue','Cirurgia','Check-up','Emergência','Odontologia']::text[] AS names,
-                    ARRAY['consultation','surgery','exam','grooming','other']::text[] AS categories,
+                    ARRAY['consultation','surgery','laboratory','grooming','other']::text[] AS categories,
                     ARRAY[15,30,45,60]::int[] AS durations
             ) pools;
             SQL;

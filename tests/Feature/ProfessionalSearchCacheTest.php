@@ -169,4 +169,48 @@ class ProfessionalSearchCacheTest extends TestCase
             [$firstPageIds->first(), $secondPageIds->first()],
         );
     }
+
+    /**
+     * INVARIANTE DA CHAVE DE CACHE: filtro novo que não entra em
+     * `ProfessionalSearchCache::buildCacheKey()` faz duas buscas diferentes colidirem, e a
+     * segunda recebe o resultado da primeira. É um erro de precisão que não levanta exceção
+     * e não aparece em log nenhum — só entrega o profissional errado. Este teste existe para
+     * a próxima pessoa que adicionar um filtro descobrir isso no CI, não em produção.
+     *
+     * @return array<string, array{0: array<string, string>, 1: array<string, string>}>
+     */
+    public static function distinctFilterPairsProvider(): array
+    {
+        return [
+            'especialidade' => [['specialty' => 'Cardiologia'], ['specialty' => 'Ortopedia']],
+            'espécie' => [['species' => 'dog'], ['species' => 'cat']],
+            'termo de busca' => [['query' => 'cardiologia'], ['query' => 'ortopedia']],
+            'tipo de profissional' => [['professional_type' => 'vet'], ['professional_type' => 'petshop']],
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $firstFilters
+     * @param  array<string, string>  $secondFilters
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('distinctFilterPairsProvider')]
+    public function test_different_filters_never_share_a_cache_entry(array $firstFilters, array $secondFilters): void
+    {
+        $cardiologist = $this->createApprovedProfessional(
+            ['name' => 'Ana Cardio'],
+            ['professional_type' => 'vet', 'specialties' => ['Cardiologia'], 'species_served' => ['dog']],
+        );
+        $orthopedist = $this->createApprovedProfessional(
+            ['name' => 'Bruno Orto'],
+            ['professional_type' => 'petshop', 'specialties' => ['Ortopedia'], 'species_served' => ['cat']],
+        );
+
+        $firstIds = collect($this->getJson('/api/public/search?'.http_build_query($firstFilters))->json('data'))->pluck('id');
+        $secondIds = collect($this->getJson('/api/public/search?'.http_build_query($secondFilters))->json('data'))->pluck('id');
+
+        $this->assertTrue($firstIds->contains($cardiologist->id));
+        $this->assertFalse($firstIds->contains($orthopedist->id));
+        $this->assertTrue($secondIds->contains($orthopedist->id));
+        $this->assertFalse($secondIds->contains($cardiologist->id));
+    }
 }
