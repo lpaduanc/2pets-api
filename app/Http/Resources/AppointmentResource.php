@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Enums\AppointmentStatus;
+use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,6 +39,16 @@ class AppointmentResource extends JsonResource
             'professional' => new UserResource($this->whenLoaded('professional')),
             'pet' => new PetResource($this->whenLoaded('pet')),
 
+            // Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.2/
+            // §13.7: serviços contratados (consulta + vacina + banho...). `price` acima já é
+            // o total estimado — soma desta lista quando ela é usada.
+            'services' => AppointmentServiceResource::collection($this->whenLoaded('services')),
+
+            // Fatura `pending` criada automaticamente pelo `start()` (contrato §13.5) — vale
+            // para QUALQUER tipo de agendamento, inclusive `grooming` (não tem MedicalRecord,
+            // mas tem fatura igual). `null` até haver serviço/cobrança lançada (invariante 11).
+            'invoice_id' => $this->whenLoaded('invoice', fn (?Invoice $invoice): ?int => $invoice?->id, null),
+
             // Nested medical data (when loaded)
             'medical_records' => $this->whenLoaded('medicalRecords'),
             'prescriptions' => $this->whenLoaded('prescriptions'),
@@ -69,6 +80,7 @@ class AppointmentResource extends JsonResource
             'emergency' => 'Emergencia',
             'grooming' => 'Banho e Tosa',
             'checkup' => 'Check-up',
+            'hospitalization' => 'Internação',
             default => ucfirst($this->type ?? ''),
         };
     }

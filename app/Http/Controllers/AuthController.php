@@ -8,6 +8,7 @@ use App\Http\Resources\UserResource;
 use App\Mail\ResetPasswordMail;
 use App\Models\User;
 use App\Services\Organization\UserRoleReconciler;
+use App\Services\Registration\RegistrationContinuationTokenService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,7 @@ class AuthController extends Controller
 {
     public function __construct(
         private readonly UserRoleReconciler $roleReconciler,
+        private readonly RegistrationContinuationTokenService $continuationTokenService,
     ) {}
 
     public function register(RegisterRequest $request)
@@ -281,6 +283,23 @@ class AuthController extends Controller
 
             // If using vue3-google-login 'code' flow:
             $googleUser = Socialite::driver('google')->stateless()->userFromToken($request->token);
+
+            // Trava de segurança (docs/atendimento-veterinario/07-contrato-agendamento-pet-novo.md
+            // §2): conta com `password IS NULL` (não reivindicada — nasceu do fluxo de paciente
+            // novo) não pode autenticar por NENHUM caminho, nem provando posse do e-mail via
+            // Google. `updateOrCreate()` abaixo daria login imediato a essa conta sem nunca
+            // mostrar nome/CPF/pet — a mesma tela de continuação que o link de e-mail mostra.
+            // Em vez de logar, emite o mesmo token de continuação e devolve para o frontend
+            // redirecionar para lá.
+            $unclaimed = User::where('email', $googleUser->getEmail())->whereNull('password')->first();
+
+            if ($unclaimed !== null) {
+                return response()->json([
+                    'message' => 'Encontramos um cadastro iniciado para este e-mail. Continue o cadastro para acessar sua conta.',
+                    'requires_registration_continuation' => true,
+                    'continuation_token' => $this->continuationTokenService->issue($unclaimed),
+                ], 409);
+            }
 
             $user = User::updateOrCreate([
                 'email' => $googleUser->getEmail(),

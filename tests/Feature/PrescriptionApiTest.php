@@ -8,18 +8,19 @@ use App\Models\PetVetAccess;
 use App\Models\Prescription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
  * Contrato de `/api/professional/prescriptions` — a tela de prescrições do profissional.
  *
- * O que estes testes travam, e por quê cada um existe:
- *   - `medications` sai como lista de objetos. Já saiu como string (duplo-encode entre o
- *     `json_encode` do controller e o cast `array` do model) e o cliente iterava os caracteres.
+ * Reescrito para o schema de `prescription_items` (contrato
+ * docs/atendimento-veterinario/03-contrato-receituario.md §2), que substitui o antigo array
+ * `prescriptions.medications` (JSON). O que estes testes travam, e por quê cada um existe:
+ *   - `items` sai como lista estruturada, nunca a coluna JSON antiga.
  *   - `prescription_date`/`valid_until` saem em `Y-m-d`. ISO datetime deslocava a data por fuso.
  *   - o gate de privacidade do pet (`PetVetAccess`) continua valendo na escrita.
+ *   - a prescrição só é editável/apagável ENQUANTO não emitida (imutabilidade, contrato §1).
  */
 class PrescriptionApiTest extends TestCase
 {
@@ -48,18 +49,18 @@ class PrescriptionApiTest extends TestCase
         Sanctum::actingAs($this->professional);
     }
 
-    public function test_index_returns_medications_as_a_list_of_objects(): void
+    public function test_index_returns_items_as_a_list_of_objects(): void
     {
         $this->createPrescription();
 
         $response = $this->getJson('/api/professional/prescriptions');
 
         $response->assertOk();
-        $medications = $response->json('data.0.medications');
+        $items = $response->json('data.0.items');
 
-        $this->assertIsArray($medications);
-        $this->assertCount(1, $medications);
-        $this->assertSame('Amoxicilina', $medications[0]['name']);
+        $this->assertIsArray($items);
+        $this->assertCount(1, $items);
+        $this->assertSame('Amoxicilina', $items[0]['commercial_name']);
     }
 
     public function test_index_serializes_calendar_dates_without_time_or_timezone(): void
@@ -98,50 +99,36 @@ class PrescriptionApiTest extends TestCase
             ->assertJsonStructure(['data', 'links', 'meta']);
     }
 
-    public function test_index_recovers_a_legacy_double_encoded_row(): void
-    {
-        $prescription = $this->createPrescription();
-
-        // Reproduz exatamente o que o controller antigo gravava: string JSON dentro de JSON.
-        DB::table('prescriptions')->where('id', $prescription->id)->update([
-            'medications' => json_encode(json_encode([['name' => 'Legado', 'dosage' => '1mg']])),
-        ]);
-
-        $response = $this->getJson('/api/professional/prescriptions');
-
-        $response->assertOk()->assertJsonPath('data.0.medications.0.name', 'Legado');
-    }
-
-    public function test_store_persists_medications_as_a_json_array_not_a_string(): void
+    public function test_store_persists_a_structured_item_list(): void
     {
         $response = $this->postJson('/api/professional/prescriptions', $this->validPayload());
 
-        $response->assertCreated()->assertJsonPath('data.medications.0.name', 'Dipirona');
+        $response->assertCreated()->assertJsonPath('data.items.0.commercial_name', 'Dipirona');
 
-        $stored = DB::table('prescriptions')->value('medications');
-
-        $this->assertIsArray(json_decode($stored, true), 'A coluna guardou string em vez de array.');
+        $this->assertDatabaseHas('prescription_items', [
+            'commercial_name' => 'Dipirona',
+        ]);
     }
 
-    public function test_store_rejects_a_medication_without_a_name_and_keys_the_error_by_index(): void
+    public function test_store_rejects_an_item_without_a_name_and_keys_the_error_by_index(): void
     {
         $payload = $this->validPayload([
-            'medications' => [
-                ['name' => 'Dipirona', 'dosage' => '500mg', 'frequency' => '8/8h'],
-                ['dosage' => '250mg', 'frequency' => '12/12h'],
+            'items' => [
+                ['commercial_name' => 'Dipirona', 'dose_value' => 500, 'dose_unit' => 'mg'],
+                ['dose_value' => 250, 'dose_unit' => 'mg'],
             ],
         ]);
 
         $this->postJson('/api/professional/prescriptions', $payload)
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['medications.1.name']);
+            ->assertJsonValidationErrors(['items.1.commercial_name']);
     }
 
-    public function test_store_rejects_an_empty_medication_list(): void
+    public function test_store_rejects_an_empty_item_list(): void
     {
-        $this->postJson('/api/professional/prescriptions', $this->validPayload(['medications' => []]))
+        $this->postJson('/api/professional/prescriptions', $this->validPayload(['items' => []]))
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['medications']);
+            ->assertJsonValidationErrors(['items']);
     }
 
     public function test_store_rejects_a_validity_date_before_the_prescription_date(): void
@@ -154,6 +141,16 @@ class PrescriptionApiTest extends TestCase
         $this->postJson('/api/professional/prescriptions', $payload)
             ->assertStatus(422)
             ->assertJsonValidationErrors(['valid_until']);
+    }
+
+    public function test_store_requires_a_standalone_reason_when_there_is_no_medical_record(): void
+    {
+        $payload = $this->validPayload();
+        unset($payload['standalone_reason']);
+
+        $this->postJson('/api/professional/prescriptions', $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['standalone_reason']);
     }
 
     public function test_store_is_blocked_when_the_tutor_never_granted_access_to_the_pet(): void
@@ -174,17 +171,75 @@ class PrescriptionApiTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_update_keeps_medications_as_an_array(): void
+    public function test_update_replaces_the_item_list(): void
     {
         $prescription = $this->createPrescription();
 
         $this->putJson("/api/professional/prescriptions/{$prescription->id}", [
-            'medications' => [['name' => 'Meloxicam', 'dosage' => '2mg', 'frequency' => '24/24h']],
-        ])->assertOk()->assertJsonPath('data.medications.0.name', 'Meloxicam');
+            'items' => [['commercial_name' => 'Meloxicam', 'dose_value' => 2, 'dose_unit' => 'mg']],
+        ])->assertOk()->assertJsonPath('data.items.0.commercial_name', 'Meloxicam');
 
-        $stored = DB::table('prescriptions')->where('id', $prescription->id)->value('medications');
+        $this->assertDatabaseCount('prescription_items', 1);
+        $this->assertDatabaseHas('prescription_items', ['commercial_name' => 'Meloxicam']);
+    }
 
-        $this->assertIsArray(json_decode($stored, true));
+    public function test_update_is_rejected_once_the_prescription_has_been_issued(): void
+    {
+        $prescription = $this->createPrescription(['standalone_reason' => 'remote_orientation']);
+        $this->postJson("/api/professional/prescriptions/{$prescription->id}/issue")->assertOk();
+
+        $this->putJson("/api/professional/prescriptions/{$prescription->id}", [
+            'items' => [['commercial_name' => 'Meloxicam', 'dose_value' => 2, 'dose_unit' => 'mg']],
+        ])->assertStatus(422);
+    }
+
+    public function test_destroy_is_rejected_once_the_prescription_has_been_issued(): void
+    {
+        $prescription = $this->createPrescription(['standalone_reason' => 'remote_orientation']);
+        $this->postJson("/api/professional/prescriptions/{$prescription->id}/issue")->assertOk();
+
+        $this->deleteJson("/api/professional/prescriptions/{$prescription->id}")->assertStatus(422);
+    }
+
+    public function test_issue_is_rejected_for_a_prescription_linked_to_a_medical_record(): void
+    {
+        $medicalRecord = \App\Models\MedicalRecord::create([
+            'pet_id' => $this->pet->id,
+            'professional_id' => $this->professional->id,
+            'record_date' => now()->toDateString(),
+            'status' => 'draft',
+        ]);
+        $prescription = $this->createPrescription(['medical_record_id' => $medicalRecord->id]);
+
+        $this->postJson("/api/professional/prescriptions/{$prescription->id}/issue")->assertStatus(422);
+    }
+
+    public function test_issue_stamps_issued_at_and_becomes_immutable(): void
+    {
+        $prescription = $this->createPrescription(['standalone_reason' => 'remote_orientation']);
+
+        $response = $this->postJson("/api/professional/prescriptions/{$prescription->id}/issue");
+
+        $response->assertOk()->assertJsonPath('data.is_editable', false);
+        $this->assertNotNull($prescription->fresh()->issued_at);
+    }
+
+    public function test_cancel_requires_a_reason_and_only_applies_to_an_issued_prescription(): void
+    {
+        $prescription = $this->createPrescription(['standalone_reason' => 'remote_orientation']);
+
+        $this->postJson("/api/professional/prescriptions/{$prescription->id}/cancel", [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['reason']);
+
+        $this->postJson("/api/professional/prescriptions/{$prescription->id}/cancel", ['reason' => 'Erro de dose'])
+            ->assertStatus(422);
+
+        $this->postJson("/api/professional/prescriptions/{$prescription->id}/issue")->assertOk();
+
+        $this->postJson("/api/professional/prescriptions/{$prescription->id}/cancel", ['reason' => 'Erro de dose'])
+            ->assertOk()
+            ->assertJsonPath('data.canceled_reason', 'Erro de dose');
     }
 
     public function test_status_filter_separates_valid_from_expired_prescriptions(): void
@@ -251,6 +306,15 @@ class PrescriptionApiTest extends TestCase
         $this->getJson("/api/reports/prescription/{$prescription->id}/pdf")->assertStatus(403);
     }
 
+    public function test_prescription_pdf_is_denied_to_the_tutor_before_the_prescription_is_issued(): void
+    {
+        $prescription = $this->createPrescription();
+
+        Sanctum::actingAs($this->tutor);
+
+        $this->getJson("/api/reports/prescription/{$prescription->id}/pdf")->assertStatus(404);
+    }
+
     private function grantAccess(VetAccessLevel $level): void
     {
         PetVetAccess::updateOrCreate(
@@ -271,17 +335,22 @@ class PrescriptionApiTest extends TestCase
      */
     private function createPrescription(array $overrides = []): Prescription
     {
-        return Prescription::create(array_merge([
+        $prescription = Prescription::create(array_merge([
             'pet_id' => $this->pet->id,
             'professional_id' => $this->professional->id,
             'prescription_date' => now()->toDateString(),
-            'medications' => [[
-                'name' => 'Amoxicilina',
-                'dosage' => '250mg',
-                'frequency' => '12/12h',
-                'duration' => '7 dias',
-            ]],
         ], $overrides));
+
+        $prescription->items()->create([
+            'position' => 1,
+            'commercial_name' => 'Amoxicilina',
+            'dose_value' => 250,
+            'dose_unit' => 'mg',
+            'frequency' => 'bid',
+            'duration_text' => '7 dias',
+        ]);
+
+        return $prescription;
     }
 
     /**
@@ -293,11 +362,13 @@ class PrescriptionApiTest extends TestCase
         return array_merge([
             'pet_id' => $this->pet->id,
             'prescription_date' => now()->toDateString(),
-            'medications' => [[
-                'name' => 'Dipirona',
-                'dosage' => '500mg',
-                'frequency' => '8/8h',
-                'duration' => '5 dias',
+            'standalone_reason' => 'remote_orientation',
+            'items' => [[
+                'commercial_name' => 'Dipirona',
+                'dose_value' => 500,
+                'dose_unit' => 'mg',
+                'frequency' => 'tid',
+                'duration_text' => '5 dias',
             ]],
         ], $overrides);
     }

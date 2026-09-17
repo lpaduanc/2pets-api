@@ -8,6 +8,7 @@ enum PaymentMethod: string
     case CREDIT_CARD = 'credit_card';
     case DEBIT_CARD = 'debit_card';
     case BOLETO = 'boleto';
+    case CASH = 'cash';
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum PaymentMethod: string
             self::CREDIT_CARD => 'Cartão de Crédito',
             self::DEBIT_CARD => 'Cartão de Débito',
             self::BOLETO => 'Boleto Bancário',
+            self::CASH => 'Dinheiro',
         };
     }
 
@@ -23,5 +25,10 @@ enum PaymentMethod: string
     {
         return $this === self::CREDIT_CARD;
     }
-}
 
+    /** @return list<string> */
+    public static function values(): array
+    {
+        return array_column(self::cases(), 'value');
+    }
+}

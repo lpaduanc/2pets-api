@@ -136,7 +136,8 @@ class ProfessionalPanelTest extends TestCase
         $response = $this->postJson('/api/professional/prescriptions', [
             'pet_id' => $this->pet->id,
             'prescription_date' => now()->toDateString(),
-            'medications' => [['name' => 'Med A', 'dosage' => '10mg', 'frequency' => 'Daily', 'duration' => '7 days']],
+            'standalone_reason' => 'remote_orientation',
+            'items' => [['commercial_name' => 'Med A', 'dose_value' => 10, 'dose_unit' => 'mg', 'frequency' => 'sid', 'duration_text' => '7 days']],
         ]);
 
         $response->assertStatus(201);

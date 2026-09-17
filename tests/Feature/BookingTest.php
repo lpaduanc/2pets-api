@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Events\AppointmentBooked;
 use App\Events\AppointmentCancelled;
-use App\Events\AppointmentRescheduled;
 use App\Models\Appointment;
 use App\Models\Availability;
 use App\Models\Pet;
@@ -21,8 +20,11 @@ class BookingTest extends TestCase
     use RefreshDatabase;
 
     private User $tutor;
+
     private User $professionalUser;
+
     private Pet $pet;
+
     private Service $service;
 
     protected function setUp(): void
@@ -109,6 +111,108 @@ class BookingTest extends TestCase
         ]);
 
         $response->assertStatus(401);
+    }
+
+    /**
+     * Achado ao migrar docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md:
+     * `BookingService::createBooking()` nunca preenchia `type`, então todo agendamento do
+     * tutor caía no DEFAULT da coluna (`consultation`) — um exame de imagem virava "consulta"
+     * para `MedicalRecordEncounterResolver`. `type` agora vem de `Service::category`.
+     */
+    public function test_booking_records_the_services_category_as_the_appointment_type(): void
+    {
+        Sanctum::actingAs($this->tutor);
+
+        $imagingService = Service::create([
+            'professional_id' => $this->professionalUser->id,
+            'name' => 'Ultrassom abdominal',
+            'category' => 'imaging',
+            'duration' => 30,
+            'price' => 220.00,
+            'active' => true,
+        ]);
+
+        $appointmentDate = now()->addDay()->setTime(10, 0)->toDateTimeString();
+
+        $response = $this->postJson('/api/public/booking', [
+            'professional_id' => $this->professionalUser->id,
+            'service_id' => $imagingService->id,
+            'pet_id' => $this->pet->id,
+            'appointment_date' => $appointmentDate,
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('appointments', [
+            'service_id' => $imagingService->id,
+            'type' => 'imaging',
+        ]);
+    }
+
+    /**
+     * Regra do dono do produto: internação é sempre iniciada pelo vet, nunca autoagendada
+     * pelo tutor. Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md
+     * §4: `hospitalization`/`boarding` são reserva por diária, não por slot de horário — a
+     * trava vive em `BookingService::assertServiceIsTutorBookable`, único caminho de escrita
+     * de agendamento do tutor.
+     */
+    public function test_tutor_cannot_self_book_hospitalization_service(): void
+    {
+        Sanctum::actingAs($this->tutor);
+
+        $hospitalizationService = Service::create([
+            'professional_id' => $this->professionalUser->id,
+            'name' => 'Internação clínica',
+            'category' => 'hospitalization',
+            'duration' => 30,
+            'price' => 500.00,
+            'active' => true,
+        ]);
+
+        $appointmentDate = now()->addDay()->setTime(10, 0)->toDateTimeString();
+
+        $response = $this->postJson('/api/public/booking', [
+            'professional_id' => $this->professionalUser->id,
+            'service_id' => $hospitalizationService->id,
+            'pet_id' => $this->pet->id,
+            'appointment_date' => $appointmentDate,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseMissing('appointments', [
+            'service_id' => $hospitalizationService->id,
+        ]);
+    }
+
+    /**
+     * Mesma trava do teste acima, para `boarding` (hospedagem) — doc 10 §4 trata as duas
+     * categorias juntas: nenhuma usa o seletor de horário do tutor, só o CTA "Solicitar".
+     */
+    public function test_tutor_cannot_self_book_boarding_service(): void
+    {
+        Sanctum::actingAs($this->tutor);
+
+        $boardingService = Service::create([
+            'professional_id' => $this->professionalUser->id,
+            'name' => 'Hospedagem (diária)',
+            'category' => 'boarding',
+            'duration' => 30,
+            'price' => 90.00,
+            'active' => true,
+        ]);
+
+        $appointmentDate = now()->addDay()->setTime(10, 0)->toDateTimeString();
+
+        $response = $this->postJson('/api/public/booking', [
+            'professional_id' => $this->professionalUser->id,
+            'service_id' => $boardingService->id,
+            'pet_id' => $this->pet->id,
+            'appointment_date' => $appointmentDate,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseMissing('appointments', [
+            'service_id' => $boardingService->id,
+        ]);
     }
 
     public function test_cannot_book_in_the_past(): void

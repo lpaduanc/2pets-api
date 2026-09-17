@@ -143,6 +143,84 @@ class RegistrationCompletionTest extends TestCase
         $response->assertOk();
     }
 
+    /**
+     * Caminho manual de reivindicação — contrato
+     * `docs/atendimento-veterinario/07-contrato-agendamento-pet-novo.md` §6/§7.1.
+     *
+     * Quem se autocadastra e digita um CPF que já pertence a uma conta NÃO reivindicada
+     * (nascida do fluxo de paciente novo) precisa continuar aquele cadastro — nunca ver "CPF já
+     * cadastrado", e a conta nova (casca) nunca deve sobreviver com histórico próprio.
+     */
+    public function test_self_registered_shell_merges_into_unclaimed_account_with_same_cpf(): void
+    {
+        $unclaimed = User::create([
+            'name' => 'Fernanda Souza',
+            'cpf' => '39053344705',
+            'email' => null,
+            'password' => null,
+            'user_type' => 'tutor',
+            'role' => 'tutor',
+            'registration_status' => 'pending',
+            'profile_completed' => false,
+        ]);
+        $pet = \App\Models\Pet::factory()->create(['user_id' => $unclaimed->id, 'name' => 'Mia']);
+
+        $shell = User::factory()->create([
+            'user_type' => 'tutor',
+            'cpf' => null,
+            'email' => 'fernanda.self@exemplo.com',
+        ]);
+        Sanctum::actingAs($shell);
+
+        $response = $this->postJson('/api/register/complete-tutor', [
+            'cpf' => '390.533.447-05',
+            'birth_date' => '1990-01-01',
+            'address' => 'Rua das Flores',
+            'number' => '100',
+            'neighborhood' => 'Centro',
+            'city' => 'São Paulo',
+            'state' => 'SP',
+            'zip_code' => '01000-000',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('user.id', $unclaimed->id)
+            ->assertJsonPath('user.email', 'fernanda.self@exemplo.com');
+        $this->assertNotNull($response->json('access_token'));
+
+        $merged = $unclaimed->fresh();
+        $this->assertNotNull($merged->password);
+        $this->assertSame('approved', $merged->registration_status);
+        $this->assertTrue((bool) $merged->profile_completed);
+
+        $this->assertSoftDeleted('users', ['id' => $shell->id]);
+        $this->assertSame($unclaimed->id, $pet->fresh()->user_id);
+        $this->assertSame(1, User::where('cpf', '39053344705')->count());
+    }
+
+    /**
+     * Sem colisão, `access_token` continua ausente/null — o contrato exige o campo sempre
+     * presente na resposta, mas só preenchido quando a fusão realmente acontece.
+     */
+    public function test_complete_tutor_response_has_null_access_token_when_no_claim_happens(): void
+    {
+        $user = User::factory()->create(['user_type' => 'tutor', 'cpf' => null]);
+        Sanctum::actingAs($user);
+
+        $response = $this->postJson('/api/register/complete-tutor', [
+            'cpf' => '390.533.447-05',
+            'birth_date' => '1990-01-01',
+            'address' => 'Rua das Flores',
+            'number' => '100',
+            'neighborhood' => 'Centro',
+            'city' => 'São Paulo',
+            'state' => 'SP',
+            'zip_code' => '01000-000',
+        ]);
+
+        $response->assertOk()->assertJsonPath('access_token', null);
+    }
+
     public function test_vet_completes_registration_successfully(): void
     {
         $user = User::factory()->create(['user_type' => 'vet', 'cpf' => null]);

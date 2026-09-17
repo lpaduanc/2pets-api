@@ -12,6 +12,7 @@ class Service extends Model
 
     protected $fillable = [
         'professional_id',
+        'organization_id',
         'name',
         'description',
         'category',

@@ -10,23 +10,37 @@ use App\Http\Requests\Registration\CompleteVetRegistrationRequest;
 use App\Http\Resources\OrganizationSummaryResource;
 use App\Models\User;
 use App\Services\Registration\RegistrationCompletionService;
+use App\Services\Registration\TutorAccountClaimService;
 use Illuminate\Http\Request;
 
 class RegistrationCompletionController extends Controller
 {
-    public function __construct(private readonly RegistrationCompletionService $registrationCompletionService) {}
+    public function __construct(
+        private readonly RegistrationCompletionService $registrationCompletionService,
+        private readonly TutorAccountClaimService $tutorAccountClaimService,
+    ) {}
 
+    /**
+     * Caminho manual de reivindicação (contrato §6): se o CPF informado já pertence a uma
+     * conta não reivindicada, `TutorAccountClaimService` funde a conta-casca (autocadastro
+     * recém-criado) nela ANTES de aplicar os dados do formulário — dali em diante o resto do
+     * fluxo roda exatamente igual, só que sobre a conta com o histórico de verdade.
+     */
     public function completeTutor(CompleteTutorRegistrationRequest $request)
     {
+        $validated = $request->validated();
+        $claim = $this->tutorAccountClaimService->resolve($request->user(), $validated['cpf']);
+
         $user = $this->registrationCompletionService->completeTutor(
-            $request->user(),
-            $request->validated(),
+            $claim->user,
+            $validated,
             $request->file('avatar'),
         );
 
         return response()->json([
             'message' => 'Profile completed successfully!',
             'user' => $user,
+            'access_token' => $claim->newAccessToken,
         ]);
     }
 

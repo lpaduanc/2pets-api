@@ -42,10 +42,19 @@ class ReportController extends Controller
         // está ativo fora de produção e o acesso lazy aqui derrubava o download com exceção.
         $prescription = Prescription::with('pet')->findOrFail($prescriptionId);
 
-        // Verify access
         $user = $request->user();
-        if ($prescription->professional_id !== $user->id && $prescription->pet?->user_id !== $user->id) {
+        $isAuthor = $prescription->professional_id === $user->id;
+        $isTutor = $prescription->pet?->user_id === $user->id;
+
+        if (! $isAuthor && ! $isTutor) {
             abort(403, 'Unauthorized');
+        }
+
+        // Contrato §6: prescrição não emitida nunca aparece para o tutor — mesma regra do
+        // rascunho de prontuário. O autor pode baixar a própria pré-visualização a qualquer
+        // momento.
+        if ($isTutor && ! $isAuthor && ! $prescription->isIssued()) {
+            abort(404);
         }
 
         return $this->prescriptionPdfService->generate($prescription);

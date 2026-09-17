@@ -148,50 +148,60 @@ class MedicalDataSeeder extends Seeder
             'dose_number' => 1,
         ]);
 
-        // Create Prescriptions
-        Prescription::create([
+        // Create Prescriptions — `items` é `hasMany(PrescriptionItem)`, não mais coluna JSON
+        // (contrato docs/atendimento-veterinario/03-contrato-receituario.md §2).
+        $prescription1 = Prescription::create([
             'pet_id' => $max->id,
             'professional_id' => $professional->id,
             'prescription_date' => Carbon::today()->subDays(30),
             'valid_until' => Carbon::today()->addDays(30),
-            'medications' => [
-                [
-                    'name' => 'Amoxicilina + Clavulanato',
-                    'dosage' => '250mg',
-                    'frequency' => '2x ao dia (12/12h)',
-                    'duration' => '7 dias',
-                    'instructions' => 'Administrar com alimento. Completar todo o tratamento.',
-                ],
-                [
-                    'name' => 'Metoclopramida',
-                    'dosage' => '5mg',
-                    'frequency' => '2x ao dia (12/12h)',
-                    'duration' => '3 dias',
-                    'instructions' => 'Administrar 30 minutos antes das refeições.',
-                ],
-            ],
             'general_instructions' => 'Manter medicação em temperatura ambiente. Observar sinais de melhora em 48h.',
             'warnings' => 'Se não houver melhora em 48h ou piorar, retornar imediatamente.',
             'is_controlled' => false,
         ]);
+        $prescription1->items()->createMany([
+            [
+                'position' => 1,
+                'commercial_name' => 'Amoxicilina + Clavulanato',
+                'dose_value' => 250,
+                'dose_unit' => 'mg',
+                'route' => 'oral',
+                'frequency' => 'bid',
+                'duration_text' => '7 dias',
+                'instructions_for_tutor' => 'Administrar com alimento. Completar todo o tratamento.',
+            ],
+            [
+                'position' => 2,
+                'commercial_name' => 'Metoclopramida',
+                'dose_value' => 5,
+                'dose_unit' => 'mg',
+                'route' => 'oral',
+                'frequency' => 'bid',
+                'duration_text' => '3 dias',
+                'instructions_for_tutor' => 'Administrar 30 minutos antes das refeições.',
+            ],
+        ]);
 
-        Prescription::create([
+        $prescription2 = Prescription::create([
             'pet_id' => $bella->id,
             'professional_id' => $professional->id,
             'appointment_id' => $appointment1->id,
             'prescription_date' => Carbon::today(),
             'valid_until' => Carbon::today()->addMonths(3),
-            'medications' => [
-                [
-                    'name' => 'Simparic (Sarolaner)',
-                    'dosage' => '40mg',
-                    'frequency' => '1x ao mês',
-                    'duration' => '3 meses',
-                    'instructions' => 'Administrar 1 comprimido por mês para controle de pulgas e carrapatos.',
-                ],
-            ],
             'general_instructions' => 'Antipulgas de uso mensal. Administrar sempre no mesmo dia do mês.',
             'is_controlled' => false,
+        ]);
+        $prescription2->items()->create([
+            'position' => 1,
+            'commercial_name' => 'Simparic (Sarolaner)',
+            'dose_value' => 40,
+            'dose_unit' => 'mg',
+            'pharmaceutical_form' => 'chewable',
+            'route' => 'oral',
+            'frequency' => 'other',
+            'frequency_notes' => '1x ao mês',
+            'duration_text' => '3 meses',
+            'instructions_for_tutor' => 'Administrar 1 comprimido por mês para controle de pulgas e carrapatos.',
         ]);
 
         // Create Services

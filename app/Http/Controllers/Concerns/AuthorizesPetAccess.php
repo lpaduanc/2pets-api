@@ -6,7 +6,9 @@ use App\Enums\VetAccessLevel;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\User;
+use App\Support\PetIdentityMinimizer;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
@@ -122,5 +124,55 @@ trait AuthorizesPetAccess
         }
 
         abort(403, 'Somente o tutor ou um veterinário com acesso completo pode alterar os dados deste pet.');
+    }
+
+    /**
+     * Invariante de privacidade docs/atendimento-veterinario/08-consulta-autorizada-por-agendamento.md
+     * §B: quem só chegou ao pet por AGENDAMENTO (sem `PetVetAccess`) nunca recebe o cadastro
+     * clínico completo embutido numa resposta — só a identidade mínima.
+     *
+     * Falha para o lado seguro: sem usuário autenticado, devolve minimizado.
+     */
+    protected function minimizePetUnlessFullAccess(?User $user, ?Pet $pet): ?Pet
+    {
+        if ($pet === null) {
+            return null;
+        }
+
+        if ($user !== null && ($this->isPetOwner($user, $pet) || $this->hasActiveVetAccess($user->id, $pet->id))) {
+            return $pet;
+        }
+
+        return PetIdentityMinimizer::minimize($pet);
+    }
+
+    /**
+     * Variante em lote da checagem acima, para uma coleção de registros que carregam `pet_id`/
+     * `pet` (ex.: `MedicalRecord`) — uma única query de `PetVetAccess`, nunca uma por linha.
+     *
+     * @param  Collection<int, object>  $records  cada item precisa expor `pet_id` e `pet`
+     */
+    protected function minimizeUngrantedPetsOn(User $professional, Collection $records): void
+    {
+        $petIds = $records->pluck('pet_id')->filter()->unique()->values();
+
+        $grantedPetIds = PetVetAccess::query()
+            ->where('veterinarian_id', $professional->id)
+            ->whereIn('pet_id', $petIds)
+            ->active()
+            ->pluck('pet_id')
+            ->all();
+
+        $records->each(function (object $record) use ($professional, $grantedPetIds): void {
+            $pet = $record->pet ?? null;
+            if ($pet === null) {
+                return;
+            }
+
+            $hasFullAccess = in_array($record->pet_id, $grantedPetIds, true) || $this->isPetOwner($professional, $pet);
+            if (! $hasFullAccess) {
+                $record->setRelation('pet', PetIdentityMinimizer::minimize($pet));
+            }
+        });
     }
 }

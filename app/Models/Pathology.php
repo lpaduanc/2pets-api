@@ -14,6 +14,11 @@ class Pathology extends Model
         'description',
         'species',
         'category',
+        'is_chronic',
+    ];
+
+    protected $casts = [
+        'is_chronic' => 'boolean',
     ];
 
     // ──────────────────────────────────────────────
@@ -24,7 +29,7 @@ class Pathology extends Model
     {
         return $query->where(function ($q) use ($species) {
             $q->where('species', $species)
-              ->orWhereNull('species');
+                ->orWhereNull('species');
         });
     }
 

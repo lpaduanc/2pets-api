@@ -2,10 +2,16 @@
 
 namespace App\Http\Requests\MedicalRecord;
 
+use App\Http\Requests\MedicalRecord\Concerns\HasStructuredConsultationRules;
+use App\Models\Pet;
+use App\Rules\ValidChiefComplaint;
+use App\Rules\ValidPhysicalExam;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreMedicalRecordRequest extends FormRequest
 {
+    use HasStructuredConsultationRules;
+
     public function authorize(): bool
     {
         // Authorization is enforced in the controller via MedicalRecordPolicy::create($pet),
@@ -16,13 +22,21 @@ class StoreMedicalRecordRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...$this->structuredConsultationRules(),
             'pet_id' => 'required|exists:pets,id',
             'appointment_id' => 'nullable|exists:appointments,id',
             'record_date' => 'required|date',
+            'chief_complaint' => ['nullable', 'string', new ValidChiefComplaint($this->petSpecies())],
+            'chief_complaint_notes' => 'nullable|string|max:2000',
             'weight' => 'nullable|numeric|min:0|max:999.99',
             'temperature' => 'nullable|numeric|min:20|max:50',
             'heart_rate' => 'nullable|integer|min:0|max:500',
             'respiratory_rate' => 'nullable|integer|min:0|max:200',
+            'physical_exam' => ['nullable', 'array', new ValidPhysicalExam],
+            'capillary_refill_time' => ['nullable', 'string', 'in:'.implode(',', config('clinical-parameters.capillary_refill_time'))],
+            'hydration_status' => ['nullable', 'string', 'in:'.implode(',', config('clinical-parameters.hydration_status'))],
+            'body_condition_score' => ['nullable', 'integer', 'between:1,9'],
+            'pain_score' => ['nullable', 'integer', 'between:0,4'],
             'subjective' => 'nullable|string|max:5000',
             'objective' => 'nullable|string|max:5000',
             'assessment' => 'nullable|string|max:5000',
@@ -31,9 +45,18 @@ class StoreMedicalRecordRequest extends FormRequest
             'symptoms.*' => 'string|max:200',
             'diagnosis' => 'nullable|string|max:2000',
             'treatment_plan' => 'nullable|string|max:5000',
-            'prescriptions' => 'nullable|array|max:20',
+            // `prescriptions` NÃO é mais aceito aqui de propósito — contrato
+            // docs/atendimento-veterinario/03-contrato-receituario.md §2: a partir desta
+            // fatia, prescrição é sempre `Prescription` (tabela própria), nunca texto livre.
             'notes' => 'nullable|string|max:5000',
+            'summary_for_tutor' => 'nullable|string|max:3000',
+            'previous_record_id' => 'nullable|exists:medical_records,id',
         ];
+    }
+
+    private function petSpecies(): ?string
+    {
+        return Pet::find($this->input('pet_id'))?->species;
     }
 
     public function bodyParameters(): array

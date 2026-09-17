@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Appointment;
 
 use App\Enums\AppointmentStatus;
+use App\Enums\ServiceCategory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,11 +20,21 @@ class UpdateAppointmentRequest extends FormRequest
             'appointment_date' => ['sometimes', 'date'],
             'appointment_time' => ['sometimes', 'date_format:H:i'],
             'duration' => ['nullable', 'integer', 'min:15', 'max:480'],
-            'type' => ['sometimes', 'in:consultation,surgery,vaccination,exam,emergency,grooming,checkup'],
+            // Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md §3.
+            'type' => ['sometimes', Rule::enum(ServiceCategory::class)],
             'status' => ['sometimes', Rule::in($this->settableStatusValues())],
             'reason' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'price' => ['nullable', 'numeric', 'min:0', 'max:99999.99'],
+            // Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md
+            // §13.2/§13.7: substitui a pivô inteira quando enviado (`AppointmentServicesWriter::sync`).
+            'services' => ['nullable', 'array', 'min:1'],
+            'services.*.service_id' => [
+                'required_with:services', 'integer',
+                Rule::exists('services', 'id')->where('professional_id', $this->user()->id),
+            ],
+            'services.*.quantity' => ['nullable', 'numeric', 'min:0.01'],
+            'services.*.unit_price' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 
@@ -47,7 +58,7 @@ class UpdateAppointmentRequest extends FormRequest
     {
         return [
             'appointment_time.date_format' => 'O horario deve estar no formato HH:mm.',
-            'type.in' => 'Tipo de consulta invalido.',
+            'type.enum' => 'Tipo de consulta invalido.',
             'status.in' => 'Status invalido.',
             'duration.min' => 'A duracao minima e de 15 minutos.',
             'price.min' => 'O preco deve ser um valor positivo.',

@@ -28,7 +28,7 @@ final class ExamService
         ?string $notes = null,
         ?int $appointmentId = null
     ): Exam {
-        return Exam::create([
+        $exam = Exam::create([
             'pet_id' => $pet->id,
             'professional_id' => $professional->id,
             'appointment_id' => $appointmentId,
@@ -37,6 +37,12 @@ final class ExamService
             'exam_date' => $examDate,
             'notes' => $notes,
         ]);
+
+        // `status` não é passado no INSERT (o valor vem do DEFAULT `'requested'` da coluna,
+        // ver migration `2026_04_23_000003`) — sem `refresh()`, a instância recém-criada
+        // devolve `status: null` em vez do valor real, porque o Eloquent não busca de volta
+        // colunas com DEFAULT do banco depois do INSERT.
+        return $exam->refresh();
     }
 
     /**

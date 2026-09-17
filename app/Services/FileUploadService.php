@@ -103,6 +103,39 @@ class FileUploadService
     }
 
     /**
+     * Upload de um anexo de prontuário (imagem ou PDF) para o disco PRIVADO.
+     *
+     * Mesmas regras de `uploadForExam`: MIME real inspecionado, scan de malware (no-op
+     * fora de CLAMAV_ENABLED), nunca disco público. Prontuário é dado sensível (LGPD art.
+     * 5º, II) — download só por rota autorizada (ver `ConsultationController::downloadAttachment`).
+     *
+     * Returns the relative storage path (persisted em `medical_record_attachments.path`).
+     */
+    public function uploadForMedicalRecordAttachment(UploadedFile $file, int $medicalRecordId, int $uploaderId): string
+    {
+        $this->validate($file);
+        $this->assertRealMimeTypeAllowed($file);
+        $this->scanForMalware($file);
+
+        $extension = strtolower($file->getClientOriginalExtension());
+        $filename = Str::uuid().'.'.$extension;
+
+        $path = $file->storeAs(
+            "medical-records/{$medicalRecordId}/{$uploaderId}",
+            $filename,
+            $this->privateDisk()
+        );
+
+        if ($path === false || $path === null) {
+            throw ValidationException::withMessages([
+                'file' => 'Falha ao salvar o arquivo. Tente novamente.',
+            ]);
+        }
+
+        return $path;
+    }
+
+    /**
      * Disk onde arquivos privados ficam. Em ordem de prioridade:
      *   1. PRIVATE_STORAGE_DISK (override explícito do operador).
      *   2. `s3` — apenas se o pacote league/flysystem-aws-s3-v3 estiver instalado

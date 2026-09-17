@@ -46,9 +46,20 @@ class CompleteTutorRegistrationRequest extends FormRequest
             ...$this->addressRules(),
             'cpf' => [
                 'bail', 'required', 'digits:'.Cpf::DIGIT_COUNT, app(ValidCpf::class),
+                // Contrato docs/atendimento-veterinario/07-contrato-agendamento-pet-novo.md §6:
+                // uma conta NÃO reivindicada (`password IS NULL`, `registration_status =
+                // pending` — nascida do fluxo de paciente novo) não conta como duplicata aqui.
+                // Quem se autocadastra e digita esse CPF precisa CONTINUAR aquele cadastro
+                // (`TutorAccountClaimService`, chamado pelo controller), nunca ver "CPF já
+                // cadastrado". Uma conta de verdade com esse CPF (senha definida OU já aprovada)
+                // continua bloqueando normalmente.
                 Rule::unique('users', 'cpf')
                     ->ignore($this->user()?->id)
-                    ->withoutTrashed(),
+                    ->withoutTrashed()
+                    ->where(function ($query) {
+                        $query->whereNotNull('password')
+                            ->orWhere('registration_status', '!=', 'pending');
+                    }),
             ],
             'birth_date' => ['required', 'date'],
             'gender' => ['nullable', 'string', 'in:'.implode(',', self::GENDERS)],

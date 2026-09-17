@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Appointment extends Model
@@ -78,6 +80,31 @@ class Appointment extends Model
     public function vaccinations()
     {
         return $this->hasMany(Vaccination::class);
+    }
+
+    /**
+     * Serviços contratados neste agendamento (contrato
+     * docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.2) — substitui
+     * `service_id` (FK única, deprecada) quando o agendamento tem mais de um item.
+     */
+    public function services(): HasMany
+    {
+        return $this->hasMany(AppointmentService::class);
+    }
+
+    /**
+     * Linhas de cobrança lançadas durante o atendimento (contrato §13.3) — a "comanda"
+     * em aberto enquanto o atendimento está `in_progress` e a fatura não foi paga.
+     */
+    public function charges(): HasMany
+    {
+        return $this->hasMany(AppointmentCharge::class);
+    }
+
+    /** Fatura gerada automaticamente ao iniciar o atendimento (contrato §13.5). */
+    public function invoice(): HasOne
+    {
+        return $this->hasOne(Invoice::class);
     }
 
     /**

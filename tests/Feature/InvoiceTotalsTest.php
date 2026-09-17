@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Enums\VetAccessLevel;
 use App\Models\Invoice;
+use App\Models\Pet;
+use App\Models\PetVetAccess;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -22,6 +25,22 @@ class InvoiceTotalsTest extends TestCase
 
         $this->professional = User::factory()->professional()->create();
         $this->client = User::factory()->tutor()->create();
+
+        // Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §12.4:
+        // `POST /invoices` manual agora exige que `client_id` seja um cliente real deste
+        // profissional (`ProfessionalClientsQuery`) — sem isso, todo `postJson` abaixo
+        // devolveria 422 em `client_id`.
+        $pet = Pet::factory()->create(['user_id' => $this->client->id]);
+        PetVetAccess::create([
+            'pet_id' => $pet->id,
+            'veterinarian_id' => $this->professional->id,
+            'granted_by' => $this->client->id,
+            'access_level' => VetAccessLevel::WRITE,
+            'status' => PetVetAccess::STATUS_ACCEPTED,
+            'is_active' => true,
+            'granted_at' => now(),
+            'responded_at' => now(),
+        ]);
     }
 
     /**
@@ -104,6 +123,7 @@ class InvoiceTotalsTest extends TestCase
     {
         Sanctum::actingAs($this->professional);
 
+        // Contrato §4/§11 item 4: `update` só é permitido enquanto `status = draft`.
         $invoice = Invoice::create([
             'professional_id' => $this->professional->id,
             'client_id' => $this->client->id,
@@ -117,7 +137,7 @@ class InvoiceTotalsTest extends TestCase
             'discount' => 0,
             'tax' => 0,
             'total' => 100,
-            'status' => 'pending',
+            'status' => 'draft',
         ]);
 
         $response = $this->putJson("/api/professional/invoices/{$invoice->id}", [
@@ -132,5 +152,38 @@ class InvoiceTotalsTest extends TestCase
             'discount' => 10.00,
             'total' => 90.00,
         ]);
+    }
+
+    /**
+     * Bug: `InvoiceResource` expunha só o objeto `client` aninhado (via `whenLoaded`),
+     * nunca o `client_id` cru. O formulário de edição do app lê `invoice.client_id`
+     * para pré-selecionar o cliente no select; sem o campo, o select abria vazio e a
+     * própria validação do formulário barrava o reenvio — editar qualquer fatura
+     * existente ficava impossível.
+     */
+    public function test_show_exposes_client_id_and_professional_id_as_raw_foreign_keys(): void
+    {
+        Sanctum::actingAs($this->professional);
+
+        $invoice = Invoice::create([
+            'professional_id' => $this->professional->id,
+            'client_id' => $this->client->id,
+            'invoice_number' => 'INV-TEST0002',
+            'issue_date' => now()->toDateString(),
+            'due_date' => now()->addDays(7)->toDateString(),
+            'items' => [
+                ['description' => 'Consulta', 'quantity' => 1, 'unit_price' => 100, 'total' => 100],
+            ],
+            'subtotal' => 100,
+            'discount' => 0,
+            'tax' => 0,
+            'total' => 100,
+            'status' => 'draft',
+        ]);
+
+        $response = $this->getJson("/api/professional/invoices/{$invoice->id}");
+
+        $response->assertOk()->assertJsonPath('data.client_id', $this->client->id)
+            ->assertJsonPath('data.professional_id', $this->professional->id);
     }
 }

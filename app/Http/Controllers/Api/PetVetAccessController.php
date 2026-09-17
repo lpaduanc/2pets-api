@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\DataTransferObjects\VetAccessRequestData;
+use App\Enums\MedicalRecordStatus;
 use App\Enums\VetAccessLevel;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PetVetAccess\AcceptVetAccessRequest;
@@ -12,6 +13,7 @@ use App\Http\Requests\PetVetAccess\RequestVetAccessRequest;
 use App\Http\Resources\PetPatientResource;
 use App\Http\Resources\PetVetAccessResource;
 use App\Models\Appointment;
+use App\Models\MedicalRecord;
 use App\Models\Pet;
 use App\Models\PetDeworming;
 use App\Models\PetVetAccess;
@@ -308,13 +310,21 @@ class PetVetAccessController extends Controller
             ->get(['pet_id', 'product_name', 'next_date'])
             ->groupBy('pet_id');
 
-        $accesses->getCollection()->transform(function (PetVetAccess $access) use ($lastVisits, $upcomingVaccines, $upcomingDewormings) {
+        $petIdsWithFinalizedRecord = $this->finalizedRecordPetIds($petIds);
+
+        $accesses->getCollection()->transform(function (PetVetAccess $access) use ($lastVisits, $upcomingVaccines, $upcomingDewormings, $petIdsWithFinalizedRecord) {
             $petId = $access->pet_id;
 
             $access->setAttribute(
                 'last_visit_at',
                 isset($lastVisits[$petId]) ? \Carbon\Carbon::parse($lastVisits[$petId]) : null
             );
+
+            // "Ainda não passou em consulta" é uma pergunta sobre o PET, não sobre o vínculo
+            // com ESTE profissional — `last_visit_at` (acima) é o oposto disso de propósito e
+            // não deve virar a fonte desse selo (ver docs/atendimento-veterinario/
+            // 07-contrato-agendamento-pet-novo.md §2).
+            $access->setAttribute('has_finalized_record', $petIdsWithFinalizedRecord->contains($petId));
 
             // Pick the soonest pending event across vaccines + dewormings.
             $candidates = [];
@@ -351,5 +361,22 @@ class PetVetAccessController extends Controller
         });
 
         return PetPatientResource::collection($accesses);
+    }
+
+    /**
+     * Pets, dentre os informados, com AO MENOS UM `medical_record` finalizado — global ao pet,
+     * nunca escopado a este profissional (regra do dono do produto: "o prontuário pertence
+     * sempre ao pet"). Uma query, independente do número de pets na página.
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $petIds
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    private function finalizedRecordPetIds($petIds)
+    {
+        return MedicalRecord::query()
+            ->whereIn('pet_id', $petIds)
+            ->where('status', MedicalRecordStatus::FINALIZED)
+            ->distinct()
+            ->pluck('pet_id');
     }
 }

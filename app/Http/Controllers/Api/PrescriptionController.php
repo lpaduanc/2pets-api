@@ -7,11 +7,14 @@ use App\Enums\PrescriptionStatusFilter;
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Prescription\CancelPrescriptionRequest;
 use App\Http\Requests\Prescription\StorePrescriptionRequest;
 use App\Http\Requests\Prescription\UpdatePrescriptionRequest;
 use App\Http\Resources\PrescriptionResource;
 use App\Models\Prescription;
+use App\Services\Medical\PrescriptionLifecycleService;
 use App\Services\Medical\PrescriptionSearchFilter;
+use App\Services\Medical\PrescriptionWriteService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,7 +27,11 @@ class PrescriptionController extends Controller
     /** Covers the prescription history screen and the selects fed from it. */
     private const DEFAULT_PER_PAGE = 100;
 
-    public function __construct(private readonly PrescriptionSearchFilter $searchFilter) {}
+    public function __construct(
+        private readonly PrescriptionSearchFilter $searchFilter,
+        private readonly PrescriptionWriteService $writeService,
+        private readonly PrescriptionLifecycleService $lifecycleService,
+    ) {}
 
     /**
      * Filtros opcionais: `pet_id`, `status` (all|valid|expired), `search` e `sort`
@@ -58,9 +65,7 @@ class PrescriptionController extends Controller
 
         $data['professional_id'] = $request->user()->id;
 
-        // Sem `json_encode` aqui: o cast `array` do model já serializa. Encodar antes gravava
-        // uma string JSON dentro do JSON, e o cliente iterava os caracteres da string.
-        $prescription = Prescription::create($data);
+        $prescription = $this->writeService->create($data);
 
         return $this->respondWithPrescription($prescription, 'Prescrição criada com sucesso!', 201);
     }
@@ -72,19 +77,41 @@ class PrescriptionController extends Controller
         return new PrescriptionResource($prescription->load(Prescription::RESOURCE_RELATIONS));
     }
 
+    /** Recusa (422) quando a prescrição já foi emitida — corrigir é cancelar e reemitir. */
     public function update(UpdatePrescriptionRequest $request, int $id): JsonResponse
     {
         $prescription = $this->ownedPrescription($request, $id);
-        $prescription->update($request->validated());
+        $this->writeService->update($prescription, $request->validated());
 
         return $this->respondWithPrescription($prescription, 'Prescrição atualizada com sucesso!');
     }
 
+    /** Recusa (422) quando a prescrição já foi emitida — só rascunho pode ser apagado. */
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $this->ownedPrescription($request, $id)->delete();
+        $this->writeService->delete($this->ownedPrescription($request, $id));
 
         return response()->json(['message' => 'Prescrição removida com sucesso!']);
+    }
+
+    /** `POST prescriptions/{id}/issue` — só para prescrição standalone (sem `medical_record_id`). */
+    public function issue(Request $request, int $id): JsonResponse
+    {
+        $prescription = $this->lifecycleService->issue($this->ownedPrescription($request, $id));
+
+        return $this->respondWithPrescription($prescription, 'Prescrição emitida com sucesso!');
+    }
+
+    /** `POST prescriptions/{id}/cancel` — só para prescrição já emitida. */
+    public function cancel(CancelPrescriptionRequest $request, int $id): JsonResponse
+    {
+        $prescription = $this->lifecycleService->cancel(
+            $this->ownedPrescription($request, $id),
+            $request->user(),
+            $request->validated('reason')
+        );
+
+        return $this->respondWithPrescription($prescription, 'Prescrição cancelada com sucesso!');
     }
 
     /** Receitas ainda em vigor — sem prazo ou com validade a partir de hoje. */

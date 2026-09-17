@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Exam\AddExamResultsRequest;
+use App\Http\Requests\Exam\StoreExamRequest;
 use App\Models\Exam;
 use App\Models\ExamImage;
+use App\Services\Hospitalization\HospitalizationExamService;
 use App\Services\Medical\ExamService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -18,7 +21,8 @@ class ExamController extends Controller
     use AuthorizesPetAccess;
 
     public function __construct(
-        private readonly ExamService $examService
+        private readonly ExamService $examService,
+        private readonly HospitalizationExamService $hospitalizationExamService,
     ) {}
 
     public function index(Request $request, int $petId): JsonResponse
@@ -30,28 +34,26 @@ class ExamController extends Controller
         return response()->json(['data' => $exams]);
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Pet com internação ativa (contrato docs/atendimento-veterinario/
+     * 11-internacao-no-fluxo-de-faturamento.md §2.2): o exame entra na comanda da própria
+     * internação em vez de aceitar `appointment_id` do payload — decisão do
+     * `HospitalizationExamService`, não deste controller.
+     */
+    public function store(StoreExamRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'pet_id' => 'required|integer|exists:pets,id',
-            'exam_type' => 'required|string',
-            'exam_name' => 'required|string|max:255',
-            'exam_date' => 'required|date',
-            'notes' => 'nullable|string',
-            'appointment_id' => 'nullable|exists:appointments,id',
-        ]);
-
+        $validated = $request->validated();
         $pet = $this->resolvePetForWrite($request, (int) $validated['pet_id']);
 
-        $exam = $this->examService->createExam(
-            $pet,
-            $request->user(),
-            $validated['exam_type'],
-            $validated['exam_name'],
-            \Carbon\Carbon::parse($validated['exam_date']),
-            $validated['notes'] ?? null,
-            $validated['appointment_id'] ?? null
-        );
+        $exam = $this->hospitalizationExamService->createExam($pet, $request->user(), [
+            'exam_type' => $validated['exam_type'],
+            'exam_name' => $validated['exam_name'],
+            'exam_date' => Carbon::parse($validated['exam_date']),
+            'notes' => $validated['notes'] ?? null,
+            'appointment_id' => $validated['appointment_id'] ?? null,
+            'service_id' => $validated['service_id'] ?? null,
+            'unit_price' => $validated['unit_price'] ?? null,
+        ]);
 
         return response()->json([
             'message' => 'Exam created successfully',

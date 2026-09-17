@@ -4,6 +4,7 @@ namespace App\Services\Booking;
 
 use App\DataTransferObjects\BookingRequestDTO;
 use App\Enums\BookingSource;
+use App\Enums\ServiceCategory;
 use App\Events\AppointmentBooked;
 use App\Events\AppointmentCancelled;
 use App\Events\AppointmentConfirmed;
@@ -20,9 +21,10 @@ final class BookingService
 
     public function createBooking(BookingRequestDTO $dto): Appointment
     {
-        $this->validateBookingRequest($dto);
-
         $service = Service::findOrFail($dto->serviceId);
+
+        $this->assertServiceIsTutorBookable($service);
+        $this->validateBookingRequest($dto);
 
         $appointment = Appointment::create([
             'professional_id' => $dto->professionalId,
@@ -31,6 +33,12 @@ final class BookingService
             'service_id' => $dto->serviceId,
             'appointment_date' => $dto->appointmentDate,
             'duration' => $service->duration,
+            // Achado ao migrar docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md:
+            // este `create()` nunca preenchia `type`, então TODO agendamento feito pelo tutor
+            // caía no DEFAULT da coluna (`consultation`), não importa o serviço escolhido —
+            // um exame de imagem virava "consulta" para `MedicalRecordEncounterResolver`.
+            // `services.category` é a mesma taxonomia de `appointments.type` desde a fusão.
+            'type' => $service->category,
             'status' => 'pending',
             'booking_source' => BookingSource::CLIENT->value,
             'requires_confirmation' => true,
@@ -92,6 +100,25 @@ final class BookingService
         return $appointment;
     }
 
+    /**
+     * Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md §4:
+     * `boarding`/`hospitalization` não usam o seletor de horário — o tutor só solicita,
+     * o profissional confirma. Regra de negócio, não formato de request: fica aqui porque
+     * `createBooking()` é o único caminho de escrita de agendamento do tutor
+     * (`Api\Public\BookingController::book`) — travar só na validação HTTP deixaria a porta
+     * aberta para qualquer outro controller que venha a chamar este service direto.
+     */
+    private function assertServiceIsTutorBookable(Service $service): void
+    {
+        $category = ServiceCategory::from($service->category);
+
+        if (! $category->isSelfBookableByTutor()) {
+            throw new \InvalidArgumentException(
+                'Este serviço não pode ser agendado diretamente pelo tutor. Entre em contato para solicitar — o profissional confirma a reserva.'
+            );
+        }
+    }
+
     private function validateBookingRequest(BookingRequestDTO $dto): void
     {
         if ($dto->appointmentDate->isPast()) {
@@ -108,7 +135,7 @@ final class BookingService
             return $slot->startTime->equalTo($dto->appointmentDate);
         });
 
-        if (!$isSlotAvailable) {
+        if (! $isSlotAvailable) {
             throw new \InvalidArgumentException('Selected time slot is not available');
         }
     }

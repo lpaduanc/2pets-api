@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\MedicalRecordStatus;
 use App\Exceptions\Professional\ClientNotManuallyLinkedException;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Professional\StoreProfessionalClientRequest;
 use App\Http\Resources\UserResource;
+use App\Models\MedicalRecord;
+use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\ProfessionalClient;
 use App\Models\User;
 use App\Services\Professional\ClientProvisioningService;
-use Illuminate\Database\Eloquent\Builder;
+use App\Services\Professional\ProfessionalClientsQuery;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Auth;
@@ -28,6 +31,7 @@ class ProfessionalClientController extends Controller
 
     public function __construct(
         private readonly ClientProvisioningService $clientProvisioningService,
+        private readonly ProfessionalClientsQuery $clientsQuery,
     ) {}
 
     /**
@@ -50,10 +54,32 @@ class ProfessionalClientController extends Controller
     {
         $professionalId = $request->user()->id;
 
-        $query = $this->clientsQuery($professionalId)->with('pets');
+        $query = $this->clientsQuery->query($professionalId)->with('pets');
 
         if ($request->boolean('active_only')) {
             $query->whereNull('deactivated_at');
+        }
+
+        // Busca por nome OU CPF, para o profissional achar o tutor no agendamento sem
+        // precisar rolar a lista inteira.
+        //
+        // ESCOPO DELIBERADO: filtra DENTRO de `clientsQuery($professionalId)`, ou seja, só
+        // entre os clientes do próprio profissional. Nunca uma busca global de tutores —
+        // busca aberta por nome vaza dado pessoal, e por CPF vira enumeração de cadastro
+        // (o mesmo padrão de risco apontado na revisão de segurança do fluxo de paciente
+        // novo). Tutor que ainda não é cliente entra pelo caminho de paciente novo.
+        if (filled($term = $request->query('q'))) {
+            $digits = preg_replace('/\D/', '', (string) $term);
+
+            $query->where(function ($scoped) use ($term, $digits) {
+                $scoped->where('name', 'ILIKE', '%'.$term.'%');
+
+                // Só compara CPF quando o termo tem dígito suficiente para ser um CPF
+                // parcial — senão "Ana" viraria busca de CPF e traria ruído.
+                if (strlen($digits) >= 3) {
+                    $scoped->orWhereRaw("regexp_replace(COALESCE(cpf, ''), '\\D', '', 'g') LIKE ?", ['%'.$digits.'%']);
+                }
+            });
         }
 
         $clients = $query
@@ -81,7 +107,7 @@ class ProfessionalClientController extends Controller
      */
     public function show(string $id)
     {
-        $client = $this->clientsQuery(Auth::id())
+        $client = $this->clientsQuery->query(Auth::id())
             ->where('id', $id)
             ->with('pets')
             ->firstOrFail();
@@ -94,7 +120,7 @@ class ProfessionalClientController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $client = $this->clientsQuery(Auth::id())->where('id', $id)->firstOrFail();
+        $client = $this->clientsQuery->query(Auth::id())->where('id', $id)->firstOrFail();
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -144,7 +170,7 @@ class ProfessionalClientController extends Controller
     {
         $professionalId = Auth::id();
 
-        $client = $this->clientsQuery($professionalId)->where('id', $id)->firstOrFail();
+        $client = $this->clientsQuery->query($professionalId)->where('id', $id)->firstOrFail();
 
         // Scope to pets the professional actually has a grant for (or any pet of
         // this tutor when the relationship is via appointment/invoice history).
@@ -164,49 +190,16 @@ class ProfessionalClientController extends Controller
             })
             ->get();
 
-        return response()->json($pets);
-    }
-
-    /**
-     * Query base de "quem é cliente deste profissional" — compartilhada por index/show/update/
-     * pets para as quatro fontes de derivação nunca ficarem dessincronizadas entre si de novo
-     * (o bug original: `destroy` nem sequer olhava PetVetAccess, `show`/`update`/`pets` não
-     * enxergavam vínculo manual). Um usuário que se encaixa em mais de uma fonte aparece uma
-     * única vez — é um único `WHERE ... OR ...`, não uma união de listas.
-     */
-    private function clientsQuery(int $professionalId): Builder
-    {
-        return User::where('id', '!=', $professionalId)
-            ->where(function ($query) use ($professionalId) {
-                $query->whereHas('appointmentsAsClient', function ($q) use ($professionalId) {
-                    $q->where('professional_id', $professionalId);
-                })
-                    ->orWhereHas('invoicesAsClient', function ($q) use ($professionalId) {
-                        $q->where('professional_id', $professionalId);
-                    })
-                    ->orWhereIn('id', $this->tutorIdsWithActiveGrantTo($professionalId))
-                    ->orWhereIn('id', $this->manuallyLinkedClientIds($professionalId));
-            });
-    }
-
-    /**
-     * Subquery-style helper returning tutor IDs whose pets have an active grant for this professional.
-     */
-    private function tutorIdsWithActiveGrantTo(int $professionalId)
-    {
-        return PetVetAccess::query()
-            ->where('veterinarian_id', $professionalId)
-            ->active()
-            ->join('pets', 'pets.id', '=', 'pet_vet_accesses.pet_id')
+        $petIdsWithFinalizedRecord = MedicalRecord::query()
+            ->whereIn('pet_id', $pets->pluck('id'))
+            ->where('status', MedicalRecordStatus::FINALIZED)
             ->distinct()
-            ->pluck('pets.user_id');
-    }
+            ->pluck('pet_id');
 
-    /** IDs de cliente com vínculo manual vivo (`professional_clients`, ver `store`). */
-    private function manuallyLinkedClientIds(int $professionalId)
-    {
-        return ProfessionalClient::query()
-            ->where('professional_id', $professionalId)
-            ->pluck('client_id');
+        $pets->each(function (Pet $pet) use ($petIdsWithFinalizedRecord) {
+            $pet->setAttribute('has_finalized_record', $petIdsWithFinalizedRecord->contains($pet->id));
+        });
+
+        return response()->json($pets);
     }
 }

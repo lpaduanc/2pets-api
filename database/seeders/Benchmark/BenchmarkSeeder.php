@@ -679,23 +679,41 @@ class BenchmarkSeeder extends Seeder
 
         $this->runStep('vaccinations (500k)', $vaccinationSql);
 
+        // `medications` (JSON) foi substituído por `prescription_items` (contrato
+        // docs/atendimento-veterinario/03-contrato-receituario.md §2) — a CTE de escrita
+        // (`WITH ins AS (INSERT ... RETURNING id)`) captura os ids recém-inseridos para o
+        // segundo INSERT poder referenciá-los, mesmo padrão de encadeamento via tabela
+        // temporária já usado no resto deste seeder, só que sem precisar de uma
+        // `CREATE TEMP TABLE` própria.
         $prescriptionSql = <<<SQL
-            INSERT INTO prescriptions (pet_id, professional_id, prescription_date, medications, general_instructions, is_controlled, created_at, updated_at)
-            SELECT
-                pp.pet_id,
-                prof.id,
-                (CURRENT_DATE - (s % 700)),
-                '[{"name":"Amoxicilina","dosage":"250mg","frequency":"12/12h"}]',
-                'Administrar após as refeições.',
-                (s % 100) < 5,
-                now() - (s % 700) * INTERVAL '1 day',
-                now() - (s % 700) * INTERVAL '1 day'
-            FROM generate_series(0, {$lastPrescriptionSeq}) AS s
-            JOIN bench_pet_pool pp ON pp.rn = 1 + (s % {$petCount})
-            JOIN bench_professional_pool prof ON prof.rn = 1 + ((s * 17 + 11) % {$professionalCount});
+            CREATE TEMP TABLE bench_prescriptions AS
+            WITH ins AS (
+                INSERT INTO prescriptions (pet_id, professional_id, prescription_date, general_instructions, is_controlled, created_at, updated_at)
+                SELECT
+                    pp.pet_id,
+                    prof.id,
+                    (CURRENT_DATE - (s % 700)),
+                    'Administrar após as refeições.',
+                    (s % 100) < 5,
+                    now() - (s % 700) * INTERVAL '1 day',
+                    now() - (s % 700) * INTERVAL '1 day'
+                FROM generate_series(0, {$lastPrescriptionSeq}) AS s
+                JOIN bench_pet_pool pp ON pp.rn = 1 + (s % {$petCount})
+                JOIN bench_professional_pool prof ON prof.rn = 1 + ((s * 17 + 11) % {$professionalCount})
+                RETURNING id, created_at, updated_at
+            )
+            SELECT * FROM ins;
             SQL;
 
         $this->runStep('prescriptions (500k)', $prescriptionSql);
+
+        $prescriptionItemSql = <<<'SQL'
+            INSERT INTO prescription_items (prescription_id, position, commercial_name, dose_value, dose_unit, route, frequency, duration_text, instructions_for_tutor, created_at, updated_at)
+            SELECT id, 1, 'Amoxicilina', 250, 'mg', 'oral', 'bid', '7 dias', 'Administrar após as refeições.', created_at, updated_at
+            FROM bench_prescriptions;
+            SQL;
+
+        $this->runStep('prescription_items (500k)', $prescriptionItemSql);
 
         $medicalRecordSql = <<<SQL
             INSERT INTO medical_records (pet_id, professional_id, record_date, weight, temperature, heart_rate, respiratory_rate, diagnosis, treatment_plan, created_at, updated_at)

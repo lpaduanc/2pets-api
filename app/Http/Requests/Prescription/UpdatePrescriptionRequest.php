@@ -8,17 +8,20 @@ class UpdatePrescriptionRequest extends PrescriptionRequest
 {
     /**
      * `pet_id` fica de fora de propósito: mover uma prescrição para outro pet reescreveria
-     * histórico clínico e escaparia do gate de acesso já validado na criação.
+     * histórico clínico e escaparia do gate de acesso já validado na criação. A imutabilidade
+     * de uma prescrição já emitida (contrato §1) NÃO é checada aqui — é
+     * `PrescriptionWriteService::update()` quem recusa, porque depende do estado persistido,
+     * não da forma do payload.
      *
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     public function rules(): array
     {
         return array_merge([
             'prescription_date' => 'sometimes|required|date',
             'valid_until' => 'nullable|date|after_or_equal:prescription_date',
-            'medications' => 'sometimes|required|array|min:1|max:'.self::MAX_MEDICATIONS,
-        ], $this->medicationRules(), $this->contentRules());
+            'items' => 'sometimes|required|array|min:1|max:'.self::MAX_ITEMS,
+        ], $this->itemRules(), $this->contentRules());
     }
 
     /**

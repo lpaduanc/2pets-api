@@ -38,6 +38,24 @@ class MasterDataTest extends TestCase
         $this->assertEquals($sorted, $names);
     }
 
+    /**
+     * `Pathology.is_chronic` (contrato
+     * docs/atendimento-veterinario/05-contrato-consulta-sem-digitacao.md §8) — o endpoint não
+     * usa Resource, então o campo precisa aparecer no JSON assim que `$fillable`/`$casts`
+     * cobrirem a coluna.
+     */
+    public function test_pathologies_endpoint_exposes_is_chronic(): void
+    {
+        Pathology::create(['name' => 'Diabetes', 'species' => 'dog', 'category' => 'metabolic', 'is_chronic' => true]);
+        Pathology::create(['name' => 'Gastroenterite Aguda', 'species' => null, 'category' => 'gastrointestinal', 'is_chronic' => false]);
+
+        $data = $this->getJson('/api/public/pathologies')->assertOk()->json();
+
+        $byName = collect($data)->keyBy('name');
+        $this->assertTrue($byName['Diabetes']['is_chronic']);
+        $this->assertFalse($byName['Gastroenterite Aguda']['is_chronic']);
+    }
+
     public function test_pathologies_filters_by_species(): void
     {
         Pathology::create(['name' => 'Diabetes Canina', 'species' => 'dog', 'category' => 'endocrine']);

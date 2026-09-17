@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Contracts\PaymentGatewayInterface;
+use App\Events\MedicalRecordFinalized;
 use App\Events\ReviewCreated;
 use App\Listeners\SendAppointmentNotification;
+use App\Listeners\SendReviewInviteNotification;
 use App\Listeners\SendReviewNotification;
 use App\Models\Breed;
 use App\Models\DietaryRestriction;
@@ -18,6 +21,7 @@ use App\Models\VaccineCatalog;
 use App\Observers\ProfessionalSpecialtyObserver;
 use App\Observers\ReferenceData\ReferenceDataCacheObserver;
 use App\Observers\Search\ProfessionalSearchCacheObserver;
+use App\Services\Payment\MercadoPagoService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -45,10 +49,18 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Register any application services.
+     *
+     * `PaymentGatewayInterface` não tinha bind nenhum registrado (achado desta sessão,
+     * confirmado por `app(PaymentService::class)` explodindo com `BindingResolutionException`)
+     * — `PaymentController`/`WebhookController` já estavam inalcançáveis em qualquer ambiente
+     * antes desta correção, e `InvoiceController` (contrato
+     * docs/atendimento-veterinario/09-faturamento-do-atendimento.md) passou a depender do
+     * mesmo `PaymentService`. Mercado Pago é a única implementação hoje (`StripeService`
+     * existe, mas não implementa este contrato).
      */
     public function register(): void
     {
-        //
+        $this->app->bind(PaymentGatewayInterface::class, MercadoPagoService::class);
     }
 
     /**
@@ -58,6 +70,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Event::subscribe(SendAppointmentNotification::class);
         Event::listen(ReviewCreated::class, SendReviewNotification::class);
+        Event::listen(MedicalRecordFinalized::class, SendReviewInviteNotification::class);
 
         $this->registerSearchCacheObservers();
         $this->registerReferenceDataCacheObservers();

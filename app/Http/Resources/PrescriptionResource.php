@@ -8,31 +8,31 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Contrato único da prescrição — usado por index/show/store/update e por `prescriptions/valid`.
+ * Contrato único da prescrição — usado por index/show/store/update, `prescriptions/valid`,
+ * `issue` e `cancel`.
  *
- * Três garantias que a tela do profissional depende e que o `toArray()` do model não dava:
+ * Garantias que a tela do profissional depende e que o `toArray()` do model não dava:
  *
- *   1. `prescription_date` e `valid_until` saem em `Y-m-d`. São datas de calendário: serializar
- *      como ISO datetime (`2026-05-04T00:00:00.000000Z`) faz o cliente aplicar fuso e exibir o
- *      dia anterior.
- *   2. `medications` é SEMPRE uma lista de objetos. Linhas legadas foram gravadas
- *      duplo-encodadas (`json_encode` no controller + cast `array` no model), e nessas o cast
- *      devolve string — o cliente iterava os caracteres da string. A migration
- *      `repair_double_encoded_prescription_medications` normalizou a base; o desencapsulamento
- *      aqui é a segunda linha de defesa, para que nenhuma linha residual quebre a tela.
+ *   1. `prescription_date`/`valid_until`/`issued_at`/`canceled_at` saem em formato estável.
+ *      As duas primeiras são datas de calendário (`Y-m-d`): serializar como ISO datetime
+ *      faz o cliente aplicar fuso e exibir o dia anterior.
+ *   2. `items` é a lista estruturada de `PrescriptionItem` (contrato
+ *      docs/atendimento-veterinario/03-contrato-receituario.md §2) — substitui o antigo
+ *      array `medications` (JSON).
  *   3. `pet.tutor` vem embutido. O model chama a relação de `user`; o contrato da API usa
  *      `tutor`, que é o vocabulário do produto.
  *
- * Exige `pet.user` e `professional` eager-loaded — `Model::preventLazyLoading()` está ativo
- * fora de produção, então esquecer o eager load falha alto, não em silêncio.
+ * NUNCA expõe `control_number`/`signature_type`/`signed_at`/`verification_code`/`hash` —
+ * colunas preparatórias da fatia de assinatura digital, contrato §2: "não lidas, não expostas
+ * nesta fatia".
+ *
+ * Exige `Prescription::RESOURCE_RELATIONS` eager-loaded — `Model::preventLazyLoading()` está
+ * ativo fora de produção, então esquecer o eager load falha alto, não em silêncio.
  *
  * @mixin \App\Models\Prescription
  */
 class PrescriptionResource extends JsonResource
 {
-    /** Profundidade máxima de desencapsulamento de um valor duplo-encodado legado. */
-    private const MAX_ENCODING_DEPTH = 3;
-
     /**
      * @return array<string, mixed>
      */
@@ -44,12 +44,20 @@ class PrescriptionResource extends JsonResource
             'professional' => $this->professionalPayload(),
             'appointment_id' => $this->appointment_id,
             'medical_record_id' => $this->medical_record_id,
+            'standalone_reason' => $this->standalone_reason,
+            'kind' => $this->kind?->value,
             'prescription_date' => $this->prescription_date?->format('Y-m-d'),
             'valid_until' => $this->valid_until?->format('Y-m-d'),
             'is_controlled' => (bool) $this->is_controlled,
-            'medications' => $this->medicationList(),
+            'items' => PrescriptionItemResource::collection($this->whenLoaded('items')),
             'general_instructions' => $this->general_instructions,
             'warnings' => $this->warnings,
+            'is_editable' => $this->isEditable(),
+            'issued_at' => $this->issued_at?->toISOString(),
+            'canceled_at' => $this->canceled_at?->toISOString(),
+            'canceled_reason' => $this->canceled_reason,
+            'canceled_by' => $this->participantPayload($this->canceledBy),
+            'supersedes_id' => $this->supersedes_id,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];
@@ -99,35 +107,5 @@ class PrescriptionResource extends JsonResource
             'id' => $participant->id,
             'name' => $participant->name,
         ];
-    }
-
-    /**
-     * @return list<mixed>
-     */
-    private function medicationList(): array
-    {
-        $medications = $this->decodeMedications($this->medications);
-
-        if ($medications === []) {
-            return [];
-        }
-
-        // Linha legada gravada como objeto único em vez de lista: embrulha em vez de descartar.
-        return array_is_list($medications) ? $medications : [$medications];
-    }
-
-    /**
-     * @return array<array-key, mixed>
-     */
-    private function decodeMedications(mixed $value): array
-    {
-        $depth = 0;
-
-        while (is_string($value) && $depth < self::MAX_ENCODING_DEPTH) {
-            $value = json_decode($value, true);
-            $depth++;
-        }
-
-        return is_array($value) ? $value : [];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PetVetAccessOrigin;
 use App\Enums\VetAccessLevel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -46,6 +47,7 @@ class PetVetAccess extends Model
         'pet_id',
         'veterinarian_id',
         'granted_by',
+        'origin',
         'access_level',
         'requested_access_level',
         'message',
@@ -67,6 +69,7 @@ class PetVetAccess extends Model
         return [
             'access_level' => VetAccessLevel::class,
             'requested_access_level' => VetAccessLevel::class,
+            'origin' => PetVetAccessOrigin::class,
             'granted_at' => 'datetime',
             'revoked_at' => 'datetime',
             'superseded_at' => 'datetime',

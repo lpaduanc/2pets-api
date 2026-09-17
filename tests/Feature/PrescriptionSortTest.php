@@ -159,12 +159,15 @@ class PrescriptionSortTest extends TestCase
      */
     private function createPrescription(array $overrides = []): Prescription
     {
-        return Prescription::create(array_merge([
+        $prescription = Prescription::create(array_merge([
             'pet_id' => $this->pet->id,
             'professional_id' => $this->professional->id,
             'prescription_date' => '2026-03-05',
-            'medications' => [['name' => 'Amoxicilina', 'dosage' => '250mg']],
         ], $overrides));
+
+        $prescription->items()->create(['position' => 1, 'commercial_name' => 'Amoxicilina', 'dose_value' => 250, 'dose_unit' => 'mg']);
+
+        return $prescription;
     }
 
     /**

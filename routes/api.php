@@ -5,26 +5,41 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AiBusinessController;
 use App\Http\Controllers\Api\AiBusinessInsightsController;
 use App\Http\Controllers\Api\AiController;
+use App\Http\Controllers\Api\AppointmentChargeController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\BreedController;
+use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ExamController;
 use App\Http\Controllers\Api\FavoriteController;
+use App\Http\Controllers\Api\HospitalizationCareLogController;
+use App\Http\Controllers\Api\HospitalizationClinicalActController;
 use App\Http\Controllers\Api\HospitalizationController;
+use App\Http\Controllers\Api\HospitalizationProgressNoteController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LgpdController;
+use App\Http\Controllers\Api\MarketingUnsubscribeController;
+use App\Http\Controllers\Api\MedicalRecordAttachmentController;
 use App\Http\Controllers\Api\MedicalRecordController;
+use App\Http\Controllers\Api\MedicalRecordPetDataController;
+use App\Http\Controllers\Api\MedicalRecordReadController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\NewPatientAppointmentController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PetCardController;
 use App\Http\Controllers\Api\PetController;
 use App\Http\Controllers\Api\PetHealthRecordsController;
 use App\Http\Controllers\Api\PetHealthSummaryController;
+use App\Http\Controllers\Api\PetInvoicesController;
+use App\Http\Controllers\Api\PetTimelineController;
 use App\Http\Controllers\Api\PetVetAccessController;
 use App\Http\Controllers\Api\PetWeightController;
+use App\Http\Controllers\Api\PrescriptionAlertsController;
 use App\Http\Controllers\Api\PrescriptionController;
+use App\Http\Controllers\Api\PrescriptionItemPromotionController;
+use App\Http\Controllers\Api\PrescriptionReadController;
 use App\Http\Controllers\Api\ProfessionalClientController;
 use App\Http\Controllers\Api\ProfessionalDashboardController;
 use App\Http\Controllers\Api\Public\BookingController;
@@ -48,6 +63,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\DocumentFileController;
 use App\Http\Controllers\ProfessionalSchemaController;
 use App\Http\Controllers\RegistrationCompletionController;
+use App\Http\Controllers\RegistrationContinuationController;
 use App\Http\Controllers\RegistrationDraftController;
 use App\Http\Middleware\AdminMiddleware;
 use App\Models\Appointment;
@@ -77,6 +93,12 @@ Route::middleware('throttle:10,1')->group(function () {
     // Reativação de conta autodesativada — público porque quem chega aqui está bloqueado
     // do /login normal (sem token Sanctum). Mesmas credenciais do login.
     Route::post('/account/reactivate', [AccountController::class, 'reactivate']);
+
+    // Link de continuação de cadastro (contrato docs/atendimento-veterinario/
+    // 07-contrato-agendamento-pet-novo.md §6) — público, o tutor ainda não tem sessão.
+    // GET mostra nome/CPF/pet sem consumir o token; POST define a senha e consome.
+    Route::get('/register/continue/{token}', [RegistrationContinuationController::class, 'show']);
+    Route::post('/register/continue/{token}', [RegistrationContinuationController::class, 'complete']);
 });
 
 // Token de 64 caracteres não é força-bruteável em 10 tentativas/min, mas o endpoint não tinha
@@ -133,6 +155,14 @@ Route::prefix('public')->middleware('throttle:30,1')->group(function () {
     Route::get('/dietary-restrictions', [MasterDataController::class, 'dietaryRestrictions']);
 });
 
+// Lista curada de alertas clínicos do receituário — contrato
+// docs/atendimento-veterinario/03-contrato-receituario.md §5. Caminho literal do contrato
+// (`reference/prescription-alerts`), não `public/…`: sem PII, cacheável, mesma régua de
+// throttle do grupo de master data acima.
+Route::prefix('reference')->middleware('throttle:30,1')->group(function () {
+    Route::get('/prescription-alerts', [PrescriptionAlertsController::class, 'index']);
+});
+
 // Signed document file access (CRMV/RG/diploma preview in the admin panel).
 // No `auth:sanctum` on purpose: an `<img src>`/direct link can't carry a bearer
 // token. The short-lived signature — minted only for authorized viewers by
@@ -140,6 +170,12 @@ Route::prefix('public')->middleware('throttle:30,1')->group(function () {
 Route::get('/documents/{document}/file', [DocumentFileController::class, 'show'])
     ->name('documents.file')
     ->middleware(['signed', 'throttle:60,1']);
+
+// Descadastro de marketing em um clique (contrato docs/atendimento-veterinario/
+// 07-contrato-agendamento-pet-novo.md §7) — link de e-mail, sem sessão logada.
+Route::get('/unsubscribe/marketing/{user}', [MarketingUnsubscribeController::class, 'unsubscribe'])
+    ->name('unsubscribe.marketing')
+    ->middleware(['signed', 'throttle:30,1']);
 
 // Public booking routes (require auth)
 Route::prefix('public')->middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
@@ -223,6 +259,46 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     // Pet weight history — tutor + any active vet grant can read; owner + WRITE/FULL can add.
     Route::get('/pets/{pet}/weights', [PetWeightController::class, 'index']);
     Route::post('/pets/{pet}/weights', [PetWeightController::class, 'store']);
+
+    // Fluxo de atendimento — leitura compartilhada tutor + vet autorizado (contrato
+    // docs/atendimento-veterinario/01-contrato-api-e-taxonomia.md §1 "Leitura"). Fora do
+    // prefixo `professional`: quem lê aqui pode ser o dono do pet.
+    Route::get('/pets/{pet}/medical-records', [MedicalRecordReadController::class, 'forPet']);
+    Route::get('/medical-records/{id}', [MedicalRecordReadController::class, 'show']);
+
+    // Promover consulta → cadastro do pet — SEMPRE ação do TUTOR (contrato
+    // docs/atendimento-veterinario/08-consulta-autorizada-por-agendamento.md §D), por isso
+    // fora do prefixo `professional/`. Segmento literal antes de `/medical-records/{id}` não
+    // é necessário aqui: os dois convivem porque `pet-data-diff`/`apply-to-pet` são sufixos,
+    // não o próprio `{id}`.
+    Route::get('/medical-records/{id}/pet-data-diff', [MedicalRecordPetDataController::class, 'diff']);
+    Route::post('/medical-records/{id}/apply-to-pet', [MedicalRecordPetDataController::class, 'apply']);
+
+    // Faturamento — leitura do tutor (contrato docs/atendimento-veterinario/
+    // 09-faturamento-do-atendimento.md §4 "Leitura (tutor)"). Fora do prefixo `professional/`
+    // de propósito: quem lê aqui é o `client_id` da fatura, não o profissional. `GET
+    // invoices/{id}` reusa o MESMO `InvoiceController::show` da rota profissional —
+    // `InvoicePolicy::view` decide as duas audiências.
+    Route::get('/pets/{pet}/invoices', PetInvoicesController::class);
+    Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
+
+    // Leitura compartilhada de prescrição — contrato
+    // docs/atendimento-veterinario/03-contrato-receituario.md §1/§6. Registrada pelo
+    // frontend-specialist; mesmo espírito das duas rotas acima.
+    Route::get('/pets/{pet}/prescriptions', [PrescriptionReadController::class, 'forPet']);
+    Route::get('/pets/{pet}/timeline', PetTimelineController::class);
+
+    // Promover item de prescrição a `PetMedication` — SEMPRE ação explícita do tutor (doc de
+    // domínio docs/atendimento-veterinario/02-receituario-dominio.md §5.2), por isso fora do
+    // prefixo `professional/`.
+    Route::post(
+        '/prescriptions/{prescriptionId}/items/{itemId}/promote-to-medication',
+        PrescriptionItemPromotionController::class
+    );
+
+    // Download de anexo de prontuário — mesma regra de acesso do detalhe (autor, tutor ou
+    // vet com PetVetAccess). Não é URL pública: exige Sanctum, disco sempre privado.
+    Route::get('/medical-records/{id}/attachments/{attachmentId}/download', [MedicalRecordAttachmentController::class, 'download']);
 
     // Pet Vet Access — controle de acesso veterinario ao pet
     Route::prefix('pet-vet-access')->group(function () {
@@ -309,26 +385,82 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         // Appointments
         Route::get('appointments/today', [AppointmentController::class, 'today']);
         Route::get('appointments/upcoming', [AppointmentController::class, 'upcoming']);
+
+        // Paciente novo (contrato docs/atendimento-veterinario/
+        // 07-contrato-agendamento-pet-novo.md §1) — endpoint separado, não mistura as regras
+        // de `client_id`/`pet_id` obrigatórios do `store()` abaixo.
+        Route::post('appointments/new-patient', [NewPatientAppointmentController::class, 'store']);
+
+        // Fluxo de atendimento (contrato docs/atendimento-veterinario/01-contrato-api-e-taxonomia.md
+        // §1) — segmentos literais ANTES do apiResource, senão `{appointment}` capturaria
+        // "walk-in" como id (mesma armadilha já documentada para as rotas de pet acima).
+        Route::post('appointments/walk-in', [ConsultationController::class, 'walkIn']);
+        Route::post('appointments/{id}/start', [ConsultationController::class, 'start']);
+        Route::post('appointments/{id}/close-without-finalizing', [ConsultationController::class, 'closeWithoutFinalizing']);
+
+        // Linhas de cobrança do atendimento — contrato docs/atendimento-veterinario/
+        // 09-faturamento-do-atendimento.md §13.3/§13.7. MOVEU de
+        // `medical-records/{id}/charges` (§13.3): banho e tosa não gera prontuário, então
+        // a comanda pendura no agendamento, que todo atendimento tem. Trava de
+        // mutabilidade em `AppointmentChargeService`, não aqui.
+        Route::get('appointments/{id}/charges', [AppointmentChargeController::class, 'index']);
+        Route::post('appointments/{id}/charges', [AppointmentChargeController::class, 'store']);
+        Route::put('appointments/{id}/charges/{chargeId}', [AppointmentChargeController::class, 'update']);
+        Route::delete('appointments/{id}/charges/{chargeId}', [AppointmentChargeController::class, 'destroy']);
+
         Route::apiResource('appointments', AppointmentController::class);
 
-        // Medical Records
+        // Medical Records — mesma armadilha: "pending" antes do apiResource, senão vira
+        // `{medical_record}` na rota de show.
+        Route::get('medical-records/pending', [ConsultationController::class, 'pending']);
+        Route::post('medical-records/{id}/summary-preview', [ConsultationController::class, 'summaryPreview']);
+        Route::post('medical-records/{id}/finalize', [ConsultationController::class, 'finalize']);
+        Route::post('medical-records/{id}/addenda', [ConsultationController::class, 'storeAddendum']);
+        Route::post('medical-records/{id}/attachments', [MedicalRecordAttachmentController::class, 'store']);
+        Route::delete('medical-records/{id}/attachments/{attachmentId}', [MedicalRecordAttachmentController::class, 'destroy']);
+
         Route::apiResource('medical-records', MedicalRecordController::class);
 
         // Vaccinations
         Route::get('vaccinations/upcoming', [VaccinationController::class, 'upcoming']);
         Route::apiResource('vaccinations', VaccinationController::class);
 
-        // Prescriptions
+        // Prescriptions — segmentos literais ANTES do apiResource (mesma armadilha já
+        // documentada para "pending"/"walk-in" acima).
         Route::get('prescriptions/valid', [PrescriptionController::class, 'valid']);
+        Route::post('prescriptions/{id}/issue', [PrescriptionController::class, 'issue']);
+        Route::post('prescriptions/{id}/cancel', [PrescriptionController::class, 'cancel']);
         Route::apiResource('prescriptions', PrescriptionController::class);
 
         // Hospitalizations
         Route::apiResource('hospitalizations', HospitalizationController::class);
 
+        // Ato clínico Grupo A (ex.: cirurgia) aberto DURANTE uma internação ativa —
+        // contrato docs/atendimento-veterinario/11-internacao-no-fluxo-de-faturamento.md
+        // §2.2. Pendura no `appointment_id` da própria internação, cobra na mesma
+        // comanda; edição/finalização do prontuário resultante reaproveita as rotas de
+        // `medical-records/{id}` que já existem acima, sem endpoint novo para isso.
+        Route::post('hospitalizations/{id}/clinical-acts', [HospitalizationClinicalActController::class, 'store']);
+
+        // Módulo clínico de internação — contrato docs/atendimento-veterinario/
+        // 12-modulo-clinico-internacao.md §1/§4/§7. Sem GET próprio: a leitura é
+        // `GET hospitalizations/{id}` com `progress_notes`/`care_logs` eager-loaded (mesmo
+        // padrão de `medical-records/{id}/addenda`, sem endpoint de listagem próprio).
+        Route::post('hospitalizations/{id}/progress-notes', [HospitalizationProgressNoteController::class, 'store']);
+        Route::post('hospitalizations/{id}/care-logs', [HospitalizationCareLogController::class, 'store']);
+
         // Surgeries
         Route::apiResource('surgeries', SurgeryController::class);
 
-        // Invoices
+        // Invoices — ciclo de vida (contrato docs/atendimento-veterinario/
+        // 09-faturamento-do-atendimento.md §4). Segmentos literais ANTES do apiResource,
+        // mesma armadilha já documentada para "pending"/"walk-in" acima.
+        Route::post('invoices/{id}/issue', [InvoiceController::class, 'issue']);
+        Route::post('invoices/{id}/mark-as-paid', [InvoiceController::class, 'markAsPaid']);
+        // Contrato docs/atendimento-veterinario/11-internacao-no-fluxo-de-faturamento.md
+        // §3-bis.4 — pagamento adiantado, restrito à internação (`AdvancePaymentService`).
+        Route::post('invoices/{id}/advance-payment', [InvoiceController::class, 'recordAdvancePayment']);
+        Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
         Route::apiResource('invoices', InvoiceController::class);
 
         // Services

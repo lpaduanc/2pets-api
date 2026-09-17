@@ -150,6 +150,10 @@ class ProfessionalRecordsSoftDeleteTest extends TestCase
         );
     }
 
+    /**
+     * Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §4/§11 item 4:
+     * `destroy` só é permitido enquanto `status = draft` (`InvoicePolicy::editDraft`).
+     */
     private function createInvoice(): Invoice
     {
         return Invoice::create([
@@ -165,7 +169,7 @@ class ProfessionalRecordsSoftDeleteTest extends TestCase
             'discount' => 0,
             'tax' => 0,
             'total' => 100,
-            'status' => 'pending',
+            'status' => 'draft',
         ]);
     }
 }

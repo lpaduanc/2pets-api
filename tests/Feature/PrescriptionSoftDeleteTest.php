@@ -115,7 +115,7 @@ class PrescriptionSoftDeleteTest extends TestCase
 
         $this->getJson("/api/professional/prescriptions/{$prescription->id}")->assertStatus(404);
         $this->putJson("/api/professional/prescriptions/{$prescription->id}", [
-            'medications' => [['name' => 'Meloxicam', 'dosage' => '2mg', 'frequency' => '24/24h']],
+            'items' => [['commercial_name' => 'Meloxicam', 'dose_value' => 2, 'dose_unit' => 'mg']],
         ])->assertStatus(404);
         $this->deleteJson("/api/professional/prescriptions/{$prescription->id}")->assertStatus(404);
     }
@@ -149,11 +149,14 @@ class PrescriptionSoftDeleteTest extends TestCase
      */
     private function createPrescription(array $overrides = []): Prescription
     {
-        return Prescription::create(array_merge([
+        $prescription = Prescription::create(array_merge([
             'pet_id' => $this->pet->id,
             'professional_id' => $this->professional->id,
             'prescription_date' => now()->toDateString(),
-            'medications' => [['name' => 'Amoxicilina', 'dosage' => '250mg']],
         ], $overrides));
+
+        $prescription->items()->create(['position' => 1, 'commercial_name' => 'Amoxicilina', 'dose_value' => 250, 'dose_unit' => 'mg']);
+
+        return $prescription;
     }
 }

@@ -231,6 +231,18 @@ class User extends Authenticatable implements HasMedia
         return $this->deactivated_at !== null;
     }
 
+    /**
+     * Conta criada por outra pessoa em nome deste tutor (fluxo de paciente novo,
+     * `docs/atendimento-veterinario/07-contrato-agendamento-pet-novo.md` §2), que ele ainda não
+     * reivindicou definindo a própria senha. `password IS NULL` é a ÚNICA fonte de verdade —
+     * nunca inferir isso de `registration_status` sozinho, que também vale `pending` para outros
+     * fluxos (ex.: empresa parceira aguardando aprovação).
+     */
+    public function isUnclaimed(): bool
+    {
+        return $this->password === null;
+    }
+
     public function accountStatus(): AccountStatus
     {
         return AccountStatus::fromUser($this);
@@ -403,5 +415,49 @@ class User extends Authenticatable implements HasMedia
             ->sortBy(fn (OrganizationMember $member): int => $member->role === OrganizationMember::ROLE_OWNER ? 0 : 1)
             ->unique('organization_id')
             ->values();
+    }
+
+    /**
+     * A organização "ativa" desta pessoa para preencher `organization_id` em registros
+     * comerciais novos (`Invoice`, `Service`) — contrato
+     * docs/atendimento-veterinario/09-faturamento-do-atendimento.md §12.6. `null` para vet
+     * volante (nenhum vínculo). Quando a pessoa tem mais de uma organização, prevalece a
+     * mesma prioridade de `primaryMembershipPerOrganization()` (dono antes de vínculo comum).
+     */
+    public function activeOrganizationId(): ?int
+    {
+        return $this->primaryMembershipPerOrganization()->first()?->organization_id;
+    }
+
+    /**
+     * Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §5: "dono da
+     * organização" concede a mesma autoridade do autor sobre fatura/comanda daquela empresa.
+     */
+    public function ownsOrganization(int $organizationId): bool
+    {
+        return $this->ownedOrganizations()->where('organizations.id', $organizationId)->exists();
+    }
+
+    /**
+     * Qualquer vínculo ativo (não só dono) — usado para "front desk cobra, não decide"
+     * (contrato §5: qualquer membro ativo pode receber pagamento de fatura já emitida).
+     */
+    public function isActiveMemberOfOrganization(int $organizationId): bool
+    {
+        return $this->activeOrganizationMemberships()->where('organization_id', $organizationId)->exists();
+    }
+
+    /**
+     * Contrato docs/atendimento-veterinario/12-modulo-clinico-internacao.md §6.2: terceiro
+     * nível de autorização sobre uma internação — um colega de plantão da MESMA organização
+     * que já tem autoridade para escrever prontuário em QUALQUER lugar do sistema
+     * (`medical-records.create`, Spatie) ganha autoridade sobre uma internação específica
+     * daquela organização, sem precisar ser o autor nem o dono. `clinic_owner` nunca tem
+     * `medical-records.create` (seeder, `docs/rbac-clinica-autoria-e-staff.md`) — este método
+     * nunca autoriza uma conta puramente administrativa.
+     */
+    public function hasClinicalAccessToOrganization(int $organizationId): bool
+    {
+        return $this->hasPermissionTo('medical-records.create') && $this->isActiveMemberOfOrganization($organizationId);
     }
 }

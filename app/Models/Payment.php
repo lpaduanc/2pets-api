@@ -12,6 +12,7 @@ class Payment extends Model
         'user_id',
         'gateway',
         'gateway_payment_id',
+        'purpose',
         'method',
         'amount',
         'status',
@@ -41,4 +42,3 @@ class Payment extends Model
         return $this->belongsTo(User::class);
     }
 }
-

@@ -38,6 +38,14 @@
     <div class="controlled">Receita de medicamento controlado — reter via na dispensação.</div>
 @endif
 
+@if ($prescription->kind === \App\Enums\PrescriptionKind::SPECIAL_CONTROL)
+    <div class="controlled">
+        Receituário de controle especial. Este documento é uma CÓPIA INFORMATIVA — o app não
+        substitui o talão físico (Notificação de Receita ou Receita de Controle Especial) que
+        o veterinário deve preencher e entregar conforme a legislação sanitária vigente.
+    </div>
+@endif
+
 <h2>Paciente</h2>
 <table class="data">
     <tr>
@@ -67,27 +75,36 @@
 </table>
 
 <h2>Medicamentos</h2>
-@if (count($medications) === 0)
+@if ($prescription->items->isEmpty())
     <p class="muted">Nenhum medicamento registrado nesta prescrição.</p>
 @else
     <table class="meds">
         <thead>
         <tr>
             <th>Medicamento</th>
-            <th>Dosagem</th>
+            <th>Dose</th>
+            <th>Via</th>
             <th>Frequência</th>
             <th>Duração</th>
+            <th>Qtd. a dispensar</th>
             <th>Orientações</th>
         </tr>
         </thead>
         <tbody>
-        @foreach ($medications as $medication)
+        @foreach ($prescription->items as $item)
             <tr>
-                <td>{{ $medication['name'] ?? '—' }}</td>
-                <td>{{ $medication['dosage'] ?? '—' }}</td>
-                <td>{{ $medication['frequency'] ?? '—' }}</td>
-                <td>{{ $medication['duration'] ?? '—' }}</td>
-                <td>{{ $medication['instructions'] ?? '—' }}</td>
+                <td>
+                    {{ $item->displayName() }}{{ $item->concentration ? ' ('.$item->concentration.')' : '' }}
+                    @if ($item->is_controlled)
+                        <br><span class="muted">(controlado)</span>
+                    @endif
+                </td>
+                <td>{{ $item->dose_value !== null && $item->dose_unit ? $item->dose_value.' '.$item->dose_unit : '—' }}</td>
+                <td>{{ $item->routeLabel() ?? '—' }}</td>
+                <td>{{ $item->frequencyLabel() ?? '—' }}</td>
+                <td>{{ $item->duration_text ?? '—' }}</td>
+                <td>{{ $item->quantity_to_dispense ?? '—' }}</td>
+                <td>{{ $item->instructions_for_tutor ?? '—' }}</td>
             </tr>
         @endforeach
         </tbody>

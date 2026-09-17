@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\PetAgeCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -47,6 +48,10 @@ class PetPatientResource extends JsonResource
                 'image' => $pet->image_url,
                 'neutered' => $pet->neutered,
                 'is_lost' => (bool) ($pet->is_lost ?? false),
+                // Global ao pet (algum medical_record finalizado, de QUALQUER profissional) —
+                // não confundir com `last_visit_at` abaixo, que é por vínculo com ESTE vet.
+                // Ver docs/atendimento-veterinario/07-contrato-agendamento-pet-novo.md §2.
+                'has_finalized_record' => (bool) ($this->resource->has_finalized_record ?? false),
             ] : null,
 
             'tutor' => $grantor ? [
@@ -70,19 +75,6 @@ class PetPatientResource extends JsonResource
      */
     private function calculateAge(?\Carbon\Carbon $birth): ?array
     {
-        if (! $birth) {
-            return null;
-        }
-        $now = now();
-        $years = (int) floor($birth->diffInYears($now));
-        $months = ((int) floor($birth->diffInMonths($now))) % 12;
-
-        return [
-            'years' => $years,
-            'months' => $months,
-            'label' => $years > 0
-                ? "{$years} ano".($years > 1 ? 's' : '').($months > 0 ? " e {$months} mes".($months > 1 ? 'es' : '') : '')
-                : "{$months} mes".($months > 1 ? 'es' : ''),
-        ];
+        return $birth ? PetAgeCalculator::calculate($birth) : null;
     }
 }

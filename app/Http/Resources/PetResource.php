@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\PetAgeCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -59,18 +60,6 @@ class PetResource extends JsonResource
      */
     protected function calculateAge(): array
     {
-        $birth = $this->birth_date;
-        $now = now();
-
-        $years = (int) floor($birth->diffInYears($now));
-        $months = ((int) floor($birth->diffInMonths($now))) % 12;
-
-        return [
-            'years' => $years,
-            'months' => $months,
-            'label' => $years > 0
-                ? "{$years} ano".($years > 1 ? 's' : '').($months > 0 ? " e {$months} mes".($months > 1 ? 'es' : '') : '')
-                : "{$months} mes".($months > 1 ? 'es' : ''),
-        ];
+        return PetAgeCalculator::calculate($this->birth_date);
     }
 }

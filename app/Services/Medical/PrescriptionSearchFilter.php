@@ -14,19 +14,17 @@ use Illuminate\Database\Eloquent\Builder;
  * Indexabilidade (mesmas duas regras de `PatientSearchFilter`, ver
  * `.claude/agent-memory/backend-specialist/busca-fuzzy-fase5.md`):
  *
- *   1. Subconsultas NÃO correlacionadas (`pet_id IN (SELECT …)`), nunca `whereHas`. Um EXISTS
+ *   1. Subconsultas NÃO correlacionadas (`… IN (SELECT …)`), nunca `whereHas`. Um EXISTS
  *      correlacionado pela PK obriga o Postgres a resolver linha a linha e o índice GIN trigram
  *      nunca é usado.
  *   2. Cada lado do OR fica sobre UMA tabela só — `BitmapOr` entre índices de tabelas
  *      diferentes não existe no Postgres. Pet e tutor viram dois `IN` sobre `pets`, resolvidos
  *      por `idx_pets_name_unaccent_trgm` e `idx_users_name_unaccent_trgm`.
  *
- * O ramo do medicamento é o único sem índice, e isso é aceitável: ele só roda depois do
- * `professional_id = ?` (índice B-tree), portanto sobre as receitas do próprio profissional.
- * A comparação é feita em `::jsonb::text` — o cast `array` do model grava com escape unicode
- * (`Ração`), e só a normalização do `jsonb` devolve o texto legível para o ILIKE
- * casar. `::jsonb::text` também é seguro para qualquer formato de JSON armazenado, ao
- * contrário de `jsonb_array_elements()`, que estoura em linha que não seja array.
+ * O ramo do medicamento (desde a migração para `prescription_items`, contrato
+ * docs/atendimento-veterinario/03-contrato-receituario.md §2) é o único sem índice, e isso é
+ * aceitável: ele só roda depois do `professional_id = ?` (índice B-tree), portanto sobre as
+ * receitas do próprio profissional.
  */
 final class PrescriptionSearchFilter
 {
@@ -51,7 +49,7 @@ final class PrescriptionSearchFilter
             $scoped
                 ->whereIn('pet_id', fn (QueryBuilder $pets) => $this->matchingPets($pets, $term))
                 ->orWhereIn('pet_id', fn (QueryBuilder $pets) => $this->petsOfMatchingTutors($pets, $term))
-                ->orWhereRaw($this->medicationExpression(), ['%'.$term.'%']);
+                ->orWhereIn('id', fn (QueryBuilder $items) => $this->matchingPrescriptionItems($items, $term));
         });
     }
 
@@ -92,8 +90,19 @@ final class PrescriptionSearchFilter
         );
     }
 
-    private function medicationExpression(): string
+    /**
+     * Mesmo idioma das duas subconsultas acima (`whereIn('pet_id', …)`), aplicado a
+     * `prescription_id`: não-correlacionada, uma tabela só. Casa nome comercial OU princípio
+     * ativo de qualquer item da receita.
+     */
+    private function matchingPrescriptionItems(QueryBuilder $items, string $term): void
     {
-        return $this->expressions->ilikeMatch('prescriptions.medications::jsonb::text');
+        $items->select('prescription_id')->from('prescription_items');
+
+        $items->where(function (QueryBuilder $scoped) use ($term): void {
+            $scoped
+                ->whereRaw($this->expressions->ilikeMatch('prescription_items.commercial_name'), ['%'.$term.'%'])
+                ->orWhereRaw($this->expressions->ilikeMatch('prescription_items.active_ingredient'), ['%'.$term.'%']);
+        });
     }
 }
