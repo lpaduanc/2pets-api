@@ -431,7 +431,7 @@ class User extends Authenticatable implements HasMedia
 
     /**
      * Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §5: "dono da
-     * organização" concede a mesma autoridade do autor sobre fatura/comanda daquela empresa.
+     * organização" concede a mesma autoridade do autor sobre fatura/conta daquela empresa.
      */
     public function ownsOrganization(int $organizationId): bool
     {

@@ -93,7 +93,7 @@ class Appointment extends Model
     }
 
     /**
-     * Linhas de cobrança lançadas durante o atendimento (contrato §13.3) — a "comanda"
+     * Linhas de cobrança lançadas durante o atendimento (contrato §13.3) — a "conta"
      * em aberto enquanto o atendimento está `in_progress` e a fatura não foi paga.
      */
     public function charges(): HasMany

@@ -79,7 +79,7 @@ final class AppointmentChargeService
     }
 
     /**
-     * Contrato §13.3: a comanda só aceita alteração enquanto o atendimento está EM
+     * Contrato §13.3: a conta só aceita alteração enquanto o atendimento está EM
      * ANDAMENTO e a fatura (se já existir) não foi paga/cancelada — itens congelam no
      * pagamento (invariante 13), não na emissão.
      */

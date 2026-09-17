@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * Linha de cobrança lançada durante o atendimento (a "comanda" em aberto). Contrato
+ * Linha de cobrança lançada durante o atendimento (a "conta" em aberto). Contrato
  * docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.3 — pendurada no
  * AGENDAMENTO, não mais no prontuário: todo atendimento tem um agendamento, clínico ou
  * não (banho e tosa não gera `MedicalRecord`).

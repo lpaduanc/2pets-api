@@ -401,7 +401,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         // Linhas de cobrança do atendimento — contrato docs/atendimento-veterinario/
         // 09-faturamento-do-atendimento.md §13.3/§13.7. MOVEU de
         // `medical-records/{id}/charges` (§13.3): banho e tosa não gera prontuário, então
-        // a comanda pendura no agendamento, que todo atendimento tem. Trava de
+        // a conta pendura no agendamento, que todo atendimento tem. Trava de
         // mutabilidade em `AppointmentChargeService`, não aqui.
         Route::get('appointments/{id}/charges', [AppointmentChargeController::class, 'index']);
         Route::post('appointments/{id}/charges', [AppointmentChargeController::class, 'store']);
@@ -438,7 +438,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         // Ato clínico Grupo A (ex.: cirurgia) aberto DURANTE uma internação ativa —
         // contrato docs/atendimento-veterinario/11-internacao-no-fluxo-de-faturamento.md
         // §2.2. Pendura no `appointment_id` da própria internação, cobra na mesma
-        // comanda; edição/finalização do prontuário resultante reaproveita as rotas de
+        // conta; edição/finalização do prontuário resultante reaproveita as rotas de
         // `medical-records/{id}` que já existem acima, sem endpoint novo para isso.
         Route::post('hospitalizations/{id}/clinical-acts', [HospitalizationClinicalActController::class, 'store']);
 

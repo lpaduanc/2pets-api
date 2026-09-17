@@ -150,7 +150,7 @@ class HospitalizationClinicalActTest extends TestCase
         $this->assertSame('in_progress', Appointment::findOrFail($hospitalization->appointment_id)->status);
 
         // A internação continua cobrável: uma diária lançada depois de finalizar o ato
-        // ainda entra normalmente na mesma comanda.
+        // ainda entra normalmente na mesma conta.
         $this->postJson("/api/professional/appointments/{$hospitalization->appointment_id}/charges", [
             'description' => 'Diária de internação',
             'unit_price' => 200,
@@ -213,7 +213,7 @@ class HospitalizationClinicalActTest extends TestCase
         $this->assertSame(0, MedicalRecord::count());
     }
 
-    /** Mesma autorização de quem edita a comanda (`AppointmentPolicy::manageCharges`), não PetVetAccess. */
+    /** Mesma autorização de quem edita a conta (`AppointmentPolicy::manageCharges`), não PetVetAccess. */
     public function test_forbidden_for_a_professional_without_manage_charges_authorization(): void
     {
         $hospitalization = $this->admit();

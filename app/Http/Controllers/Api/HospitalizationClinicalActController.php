@@ -15,7 +15,7 @@ use Illuminate\Http\JsonResponse;
  * Contrato docs/atendimento-veterinario/11-internacao-no-fluxo-de-faturamento.md §2.2.
  *
  * Controller fino de propósito, mesmo padrão de `HospitalizationController`/
- * `ExamController`: toda a regra (autorização de comanda, gate de veterinário, criação
+ * `ExamController`: toda a regra (autorização de conta, gate de veterinário, criação
  * do prontuário + cobrança na mesma transação) vive em `HospitalizationClinicalActService`.
  */
 class HospitalizationClinicalActController extends Controller

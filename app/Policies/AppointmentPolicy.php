@@ -9,14 +9,14 @@ use App\Models\User;
 /**
  * Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §5/§13.3: só
  * quem atendeu (autor do agendamento) ou o dono da organização decide o que está sendo
- * cobrado antes de a fatura ser paga. Front desk/colega comum nunca edita a comanda em
+ * cobrado antes de a fatura ser paga. Front desk/colega comum nunca edita a conta em
  * aberto — mesmo espírito de separar "concluir agenda" de "decidir conteúdo clínico".
  *
- * Movida de `MedicalRecordPolicy::manageCharges` (§13.3): a comanda agora pendura no
+ * Movida de `MedicalRecordPolicy::manageCharges` (§13.3): a conta agora pendura no
  * agendamento, não mais no prontuário.
  *
  * Exceção estrita a INTERNAÇÃO (contrato docs/atendimento-veterinario/
- * 12-modulo-clinico-internacao.md §6.2): plantão muda, e a comanda da diária continua sendo
+ * 12-modulo-clinico-internacao.md §6.2): plantão muda, e a conta da diária continua sendo
  * da clínica, não só de quem admitiu — um colega da MESMA organização com
  * `medical-records.create` lança diária/item mesmo sem ter admitido o paciente. Nenhum outro
  * `appointment.type` ganha esse terceiro nível: consulta, banho e tosa etc. continuam só

@@ -30,7 +30,7 @@ enum HospitalizationStatus: string
 
     /**
      * As três saídas da internação (alta, transferência, óbito) fecham o agendamento da
-     * estadia igualmente — contrato §3. `ACTIVE` é o único estado que mantém a comanda
+     * estadia igualmente — contrato §3. `ACTIVE` é o único estado que mantém a conta
      * aberta.
      */
     public function isClosed(): bool

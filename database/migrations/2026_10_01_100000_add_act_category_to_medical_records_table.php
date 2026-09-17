@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * Uma internação de vários dias pode ter mais de um ato clínico Grupo A (ex.: duas
  * cirurgias em dias diferentes da mesma estadia) — a cobrança de TODOS entra na mesma
- * comanda (decisão do dono do produto, §2.2), então todos pendurados no MESMO
+ * conta (decisão do dono do produto, §2.2), então todos pendurados no MESMO
  * `appointment_id` (`Hospitalization.appointment_id`). Sem um campo próprio, o leitor da
  * API teria que adivinhar o que cada `MedicalRecord` representa pela ordem/data — esta
  * coluna declara explicitamente qual ato ele é (`ServiceCategory` do ato, ex.: `surgery`).

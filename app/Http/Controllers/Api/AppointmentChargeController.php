@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Gate;
  * `professional/appointments/{id}/charges` — contrato
  * docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.3/§13.7. MOVEU de
  * `professional/medical-records/{id}/charges`: banho e tosa não gera prontuário, então a
- * comanda pendura no agendamento, que todo atendimento tem. Controller fino: toda regra
+ * conta pendura no agendamento, que todo atendimento tem. Controller fino: toda regra
  * de negócio (trava de mutabilidade, resolução de catálogo, sincronia com a fatura) vive
  * em `AppointmentChargeService`; `AppointmentPolicy::manageCharges` decide quem opera.
  */

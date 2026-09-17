@@ -85,7 +85,7 @@ class AdvancePaymentTest extends TestCase
         $this->assertSame('pending', $invoice->fresh()->status);
     }
 
-    /** Invariante 13 preservada: adiantamento não congela a comanda. */
+    /** Invariante 13 preservada: adiantamento não congela a conta. */
     public function test_new_charges_are_still_accepted_after_advance_payments(): void
     {
         $appointment = $this->makeHospitalizationAppointment();

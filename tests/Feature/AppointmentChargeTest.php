@@ -17,7 +17,7 @@ use Tests\TestCase;
  * Linhas de cobrança do atendimento — contrato
  * docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.3/§13.5/§13.7.
  *
- * MOVEU de `MedicalRecordChargeTest`/`medical-records/{id}/charges` (§13.3): a comanda
+ * MOVEU de `MedicalRecordChargeTest`/`medical-records/{id}/charges` (§13.3): a conta
  * agora pendura no AGENDAMENTO, não mais no prontuário — banho e tosa não gera
  * `MedicalRecord` e precisa lançar cobrança do mesmo jeito.
  *
@@ -185,7 +185,7 @@ class AppointmentChargeTest extends TestCase
 
     /**
      * Contrato §5: front desk (staff comum da mesma organização) NÃO decide o que está
-     * sendo cobrado — só o autor ou o dono da organização editam a comanda em aberto.
+     * sendo cobrado — só o autor ou o dono da organização editam a conta em aberto.
      */
     public function test_a_regular_staff_colleague_cannot_manage_the_charges(): void
     {

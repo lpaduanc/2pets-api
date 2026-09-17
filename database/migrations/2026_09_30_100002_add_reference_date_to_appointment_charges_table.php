@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  * as diárias de dois dias atrás). `created_at` registraria a data do LANÇAMENTO, não a
  * data do FATO GERADOR — duas linhas "Diária de internação" no mesmo dia, nenhuma no dia
  * que elas de fato cobrem. `reference_date` é nullable: só a diária a usa por ora, os
- * outros itens de comanda continuam sem data própria (`created_at` basta para eles).
+ * outros itens da conta continuam sem data própria (`created_at` basta para eles).
  */
 return new class extends Migration
 {

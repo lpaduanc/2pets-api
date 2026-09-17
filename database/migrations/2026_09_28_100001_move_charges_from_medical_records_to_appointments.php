@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.3.
  *
- * A comanda muda de dono: do PRONTUÁRIO para o AGENDAMENTO. Banho e tosa não gera
+ * A conta muda de dono: do PRONTUÁRIO para o AGENDAMENTO. Banho e tosa não gera
  * prontuário (não existe módulo de grooming — é só `appointments.type` + categoria de
- * `ServiceCategory`), então pendurar a comanda em `medical_records` deixava banho e
+ * `ServiceCategory`), então pendurar a conta em `medical_records` deixava banho e
  * tosa sem como lançar cobrança incremental. O agendamento é o que TODO atendimento
  * tem, clínico ou não — pendurar ali elimina o caso especial em vez de duplicar
  * mecanismo.

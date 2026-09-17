@@ -233,7 +233,7 @@ class HospitalizationBillingTest extends TestCase
             'reference_date' => now()->toDateString(),
         ])->assertStatus(201);
 
-        // Item sem `reference_date` (ex.: exame avulso lançado na mesma comanda).
+        // Item sem `reference_date` (ex.: exame avulso lançado na mesma conta).
         $this->postJson("/api/professional/appointments/{$hospitalization->appointment_id}/charges", [
             'description' => 'Raio-X tórax — durante internação',
             'unit_price' => 180,
@@ -255,7 +255,7 @@ class HospitalizationBillingTest extends TestCase
         // Estadia de UM único dia: hoje.
         $hospitalization = $this->admit(now()->toDateString());
 
-        // Diária datada de amanhã, lançada AINDA com a comanda aberta (`in_progress`) —
+        // Diária datada de amanhã, lançada AINDA com a conta aberta (`in_progress`) —
         // fora da janela admissão–alta que será fechada em seguida (hoje–hoje).
         $this->postJson("/api/professional/appointments/{$hospitalization->appointment_id}/charges", [
             'service_id' => $daily->id,
@@ -275,7 +275,7 @@ class HospitalizationBillingTest extends TestCase
     }
 
     /**
-     * §2.2: um exame durante internação ativa entra na MESMA comanda — nunca abre um
+     * §2.2: um exame durante internação ativa entra na MESMA conta — nunca abre um
      * segundo `Appointment`/`Invoice`.
      */
     public function test_exam_during_active_hospitalization_bills_into_the_same_invoice(): void

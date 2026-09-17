@@ -148,13 +148,13 @@ class AppointmentController extends Controller
      * 11-internacao-no-fluxo-de-faturamento.md §0/§6: uma vez que a fatura do agendamento já
      * existe, editar `services[]` por aqui deixava essa fatura desatualizada em silêncio
      * (`AppointmentServicesWriter::sync()` não sincroniza fatura nenhuma). A partir daqui,
-     * mudança de item depois que a comanda já nasceu é sempre via `/charges`
+     * mudança de item depois que a conta já nasceu é sempre via `/charges`
      * (`AppointmentChargeService`, que já sincroniza a cada mutação).
      */
     private function assertServicesEditable(Appointment $appointment): void
     {
         if (Invoice::where('appointment_id', $appointment->id)->exists()) {
-            abort(422, 'Este agendamento já tem uma fatura em aberto — edite os serviços pela comanda (/charges), não por aqui.');
+            abort(422, 'Este agendamento já tem uma fatura em aberto — edite os serviços pela conta do atendimento (/charges), não por aqui.');
         }
     }
 

@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
  * solicitado com o pet em internação ativa NÃO passa por `ConsultationService::start()`
  * (que criaria um segundo `Appointment`/`Invoice`) — o `Exam` nasce vinculado ao
  * `appointment_id` da PRÓPRIA internação, e uma linha correspondente entra na mesma
- * comanda, na mesma transação. Fora de uma internação ativa, o comportamento de
+ * conta, na mesma transação. Fora de uma internação ativa, o comportamento de
  * `POST /exams` não muda em nada.
  */
 final class HospitalizationExamService
@@ -59,7 +59,7 @@ final class HospitalizationExamService
     {
         $appointment = $hospitalization->loadMissing('appointment')->appointment;
 
-        // Mesma autorização de quem edita a comanda (`AppointmentPolicy::manageCharges`) —
+        // Mesma autorização de quem edita a conta (`AppointmentPolicy::manageCharges`) —
         // `resolvePetForWrite` (chamado antes, no controller) só garante acesso ao PET, não
         // autoriza lançar cobrança na internação de outro profissional.
         if ($this->gate->forUser($professional)->denies('manageCharges', $appointment)) {

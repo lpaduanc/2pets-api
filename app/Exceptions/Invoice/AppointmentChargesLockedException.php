@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use RuntimeException;
 
 /**
- * Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.3: a comanda
+ * Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.3: a conta
  * (`AppointmentCharge`) só pode ser criada/editada/removida enquanto o atendimento está
  * em andamento e a fatura (se já existir) não foi paga/cancelada — itens congelam no
  * PAGAMENTO (invariante 13), não na emissão.

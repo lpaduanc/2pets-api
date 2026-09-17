@@ -36,7 +36,7 @@ class ExamController extends Controller
 
     /**
      * Pet com internação ativa (contrato docs/atendimento-veterinario/
-     * 11-internacao-no-fluxo-de-faturamento.md §2.2): o exame entra na comanda da própria
+     * 11-internacao-no-fluxo-de-faturamento.md §2.2): o exame entra na conta da própria
      * internação em vez de aceitar `appointment_id` do payload — decisão do
      * `HospitalizationExamService`, não deste controller.
      */

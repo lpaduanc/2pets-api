@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\DB;
  * `Appointment`/`Invoice` — exatamente o que o doc 11 veta) nem por `assertStartable()`
  * (a internação já está `IN_PROGRESS`, não `SCHEDULED`/`CONFIRMED`). Em vez disso, este
  * service cria o `MedicalRecord` diretamente, pendurado no `appointment_id` da PRÓPRIA
- * internação, e lança a cobrança correspondente na mesma comanda — mesma transação, mesma
+ * internação, e lança a cobrança correspondente na mesma conta — mesma transação, mesma
  * autorização (`AppointmentPolicy::manageCharges`), mesmo dono de fatura que
  * `HospitalizationExamService` já usa para exame durante internação (o precedente exato
  * que este service espelha).
@@ -84,9 +84,9 @@ final class HospitalizationClinicalActService
     }
 
     /**
-     * Mesma autorização de quem edita a comanda da internação
+     * Mesma autorização de quem edita a conta da internação
      * (`HospitalizationExamService::createDuringActiveStay`) — abrir um ato clínico aqui
-     * SEMPRE lança uma cobrança na mesma comanda, então exige a mesma permissão de quem
+     * SEMPRE lança uma cobrança na mesma conta, então exige a mesma permissão de quem
      * mexe em dinheiro do atendimento, não só acesso ao pet.
      */
     private function assertCanManageCharges(User $professional, Appointment $appointment): void
