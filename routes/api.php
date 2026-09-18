@@ -8,6 +8,10 @@ use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\AppointmentChargeController;
 use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\BreedController;
+use App\Http\Controllers\Api\Commercial\BrandController;
+use App\Http\Controllers\Api\Commercial\PriceListController;
+use App\Http\Controllers\Api\Commercial\ProductController;
+use App\Http\Controllers\Api\Commercial\ProductGroupController;
 use App\Http\Controllers\Api\ConsultationController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ExamController;
@@ -468,6 +472,24 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
         // Inventory
         Route::apiResource('inventory', InventoryController::class);
+
+        // ---------------------------------------------------------------
+        // Catálogo comercial — contrato docs/gap-simplesvet/08-produtos-
+        // precificacao-lista-precos.md. Escopo por organização em
+        // `CommercialScopeResolver`, nunca por `professional_id` solto.
+        // ---------------------------------------------------------------
+
+        // Segmento literal ANTES do apiResource: sem isto `{product}` capturaria
+        // "lookup" como id — mesma armadilha já documentada em "pending"/"walk-in".
+        Route::get('products/lookup', [ProductController::class, 'lookup']);
+        Route::apiResource('products', ProductController::class);
+
+        Route::apiResource('product-groups', ProductGroupController::class)->except(['show']);
+        Route::apiResource('brands', BrandController::class)->except(['show']);
+
+        // Lista de preços do balcão — `export` antes de qualquer rota com parâmetro.
+        Route::get('price-list/export', [PriceListController::class, 'export']);
+        Route::get('price-list', [PriceListController::class, 'index']);
 
         // My patients — pets this vet has active PetVetAccess grants for (enriched list).
         Route::get('my-patients', [PetVetAccessController::class, 'myPatients']);
