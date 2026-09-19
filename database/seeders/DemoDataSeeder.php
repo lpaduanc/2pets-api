@@ -160,10 +160,14 @@ class DemoDataSeeder extends Seeder
                 ['vaccine_name' => 'Gripe Canina', 'application_date' => now()->subMonths(4), 'next_dose_date' => now()->addMonths(2), 'dose_number' => 1],
             ];
 
+            // `vaccinations.professional_id` — e `appointments.professional_id` mais
+            // abaixo — sao FK para `users.id`, NAO para `professionals.id`. Passar
+            // `$professional->id` so nao estourava quando os dois ids coincidiam por
+            // acaso; num banco recem-criado da violacao de chave estrangeira.
             foreach ($vaccines as $vac) {
                 Vaccination::updateOrCreate(
                     ['pet_id' => $pet->id, 'vaccine_name' => $vac['vaccine_name']],
-                    array_merge($vac, ['professional_id' => $professional->id])
+                    array_merge($vac, ['professional_id' => $profUser->id])
                 );
             }
 
@@ -215,13 +219,13 @@ class DemoDataSeeder extends Seeder
             Appointment::updateOrCreate(
                 [
                     'client_id' => $tutor->id,
-                    'professional_id' => $professional->id,
+                    'professional_id' => $profUser->id,
                     'appointment_date' => $appt['appointment_date'],
                     'appointment_time' => $appt['appointment_time'],
                 ],
                 array_merge($appt, [
                     'client_id' => $tutor->id,
-                    'professional_id' => $professional->id,
+                    'professional_id' => $profUser->id,
                     'pet_id' => $petIds[$i % count($petIds)] ?? $petIds[0],
                 ])
             );

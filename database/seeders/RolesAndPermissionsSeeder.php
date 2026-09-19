@@ -193,6 +193,13 @@ class RolesAndPermissionsSeeder extends Seeder
             Permission::findOrCreate($permission, 'web');
         }
 
+        // Segunda invalidação, de propósito: as 113 linhas acima podem ter sido
+        // criadas com os eventos de model mudos (o trait `RefreshesPermissionCache`
+        // do spatie só limpa o cache por `saved`/`deleted`). Sem isto, o
+        // `syncPermissions` abaixo lê a coleção vazia que sobrou no cache e
+        // estoura com "There is no permission named `users.view`".
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
         // ---------------------------------------------------------------
         // ROLES
         // ---------------------------------------------------------------

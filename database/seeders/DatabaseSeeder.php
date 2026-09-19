@@ -2,15 +2,26 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
+     *
+     * NÃO reintroduza `WithoutModelEvents` aqui. Os seeders deste projeto
+     * DEPENDEM dos eventos de model para produzir linhas válidas:
+     *
+     *   - `Pet::creating` gera o `public_id` (NOT NULL, sem default no banco);
+     *     com os eventos mudos o `PetSeeder` estoura com 23502 na primeira linha.
+     *   - O trait `RefreshesPermissionCache` do spatie/laravel-permission só
+     *     invalida o cache de permissions por `saved`/`deleted`; sem eles o
+     *     `RolesAndPermissionsSeeder` lê a coleção vazia que ficou no Redis e
+     *     estoura com "There is no permission named `users.view`".
+     *
+     * Os observers registrados em `AppServiceProvider` (cache de busca,
+     * especialidades) são idempotentes e apenas invalidam cache — rodá-los
+     * durante o seed é inofensivo.
      */
     public function run(): void
     {

@@ -21,9 +21,11 @@ return [
 
     'allowed_origins' => [
         'http://localhost:5173',  // 2pets-website (Vite)
+        'http://localhost:5174',  // 2pets-website (Vite) — porta alternativa: 5173 ocupada por outro stack local
         'http://localhost:9000',  // 2pets-app (legacy)
         'http://localhost:9200',  // 2pets-app (Docker)
         'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
         'http://127.0.0.1:9000',
         'http://127.0.0.1:9200',
 

@@ -36,9 +36,16 @@ class User extends Authenticatable implements HasMedia
         // Mantem `location` (geography) sincronizada com latitude/longitude a cada save().
         InteractsWithMedia,
         LogsActivity,
-        Notifiable,
+        // O `notify()` sobrescrito abaixo é o portão de desativação de conta; ele precisa
+        // chamar a implementação original, que vem DESTE trait e não da classe pai
+        // (`Illuminate\Foundation\Auth\User` não usa `Notifiable`). Sem o alias,
+        // `parent::notify()` cai no `__call` do Eloquent e toda notificação a usuário
+        // estoura com "Call to undefined method App\Models\User::notify()".
+        Notifiable {
+            notify as private baseNotify;
+        }
         // SoftDeletes coexiste com LGPD anonimização: delete() esconde o registro; anonymize() apaga dados sensíveis in-place.
-        SoftDeletes;
+        use SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -272,7 +279,7 @@ class User extends Authenticatable implements HasMedia
             return;
         }
 
-        parent::notify($instance);
+        $this->baseNotify($instance);
     }
 
     // ------------------------------------------------------------------

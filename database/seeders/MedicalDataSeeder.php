@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Appointment;
 use App\Models\Hospitalization;
+use App\Models\HospitalizationProgressNote;
 use App\Models\Inventory;
 use App\Models\Invoice;
 use App\Models\MedicalRecord;
@@ -68,7 +69,12 @@ class MedicalDataSeeder extends Seeder
             'appointment_date' => Carbon::today()->addDays(7),
             'appointment_time' => '11:00',
             'duration' => 45,
-            'type' => 'checkup',
+            // `checkup` saiu do domínio de `type` na migration
+            // `2026_09_29_100000_merge_appointments_type_into_service_category`, que
+            // alinhou a coluna às categorias de serviço e converteu os registros
+            // legados de `checkup` para `consultation` (a informação de rotina passou
+            // a morar em `medical_records.chief_complaint = routine_checkup`).
+            'type' => 'consultation',
             'status' => 'confirmed',
             'reason' => 'Retorno - verificar peso',
             'price' => 100.00,
@@ -253,24 +259,56 @@ class MedicalDataSeeder extends Seeder
         ]);
 
         // Create Hospitalizations
-        Hospitalization::create([
+        //
+        // `daily_notes` e `total_cost` saíram do `$fillable` de `Hospitalization`
+        // (docs 11 §4 e 12 §2): a evolução diária virou `HospitalizationProgressNote`
+        // (append-only, com autor e hora) e o valor cobrado vem sempre de
+        // `Invoice.total`. Como `db:seed` roda sob `Model::unguard()`, passá-los aqui
+        // não era ignorado — a `daily_notes` (json sem cast) estourava o seed inteiro
+        // com "Array to string conversion".
+        //
+        // Desde a migration `2026_09_30_100000_add_appointment_id_to_hospitalizations_table`
+        // (doc 11 §1) toda internação pendura num `Appointment` com
+        // `type = hospitalization` — é por ele que passam faturamento e status.
+        $hospitalizationAppointment = Appointment::create([
+            'professional_id' => $professional->id,
+            'client_id' => $tutor->id,
+            'pet_id' => $max->id,
+            'appointment_date' => Carbon::today()->subDays(5),
+            'appointment_time' => '08:00',
+            'duration' => 60,
+            'type' => 'hospitalization',
+            'status' => 'completed',
+            'reason' => 'Internação - gastroenterite severa',
+            'price' => 850.00,
+        ]);
+
+        $hospitalization = Hospitalization::create([
             'pet_id' => $max->id,
             'professional_id' => $professional->id,
+            'appointment_id' => $hospitalizationAppointment->id,
             'admission_date' => Carbon::today()->subDays(5),
             'discharge_date' => Carbon::today()->subDays(2),
             'reason' => 'Gastroenterite severa - desidratação',
             'status' => 'discharged',
-            'daily_notes' => [
-                ['date' => Carbon::today()->subDays(5)->toDateString(), 'note' => 'Admissão. Acesso venoso. Início fluidoterapia.'],
-                ['date' => Carbon::today()->subDays(4)->toDateString(), 'note' => 'Animal mais alerta. Comeu um pouco de ração úmida.'],
-                ['date' => Carbon::today()->subDays(3)->toDateString(), 'note' => 'Sem vômitos. Fezes pastosas.'],
-            ],
             'medications' => [
                 ['name' => 'Cerenia', 'dose' => '0.4ml', 'route' => 'SC'],
                 ['name' => 'Metadona', 'dose' => '0.2ml', 'route' => 'IM'],
             ],
-            'total_cost' => 850.00,
         ]);
+
+        foreach ([
+            [5, 'Admissão. Acesso venoso. Início fluidoterapia.'],
+            [4, 'Animal mais alerta. Comeu um pouco de ração úmida.'],
+            [3, 'Sem vômitos. Fezes pastosas.'],
+        ] as [$daysAgo, $body]) {
+            HospitalizationProgressNote::create([
+                'hospitalization_id' => $hospitalization->id,
+                'author_id' => $professional->id,
+                'recorded_at' => Carbon::today()->subDays($daysAgo)->setTime(9, 0),
+                'body' => $body,
+            ]);
+        }
 
         // Create Surgeries
         Surgery::create([
@@ -308,7 +346,7 @@ class MedicalDataSeeder extends Seeder
         ]);
 
         $this->command->info('Medical data seeded successfully!');
-        $this->command->info('- 3 Appointments created');
+        $this->command->info('- 4 Appointments created');
         $this->command->info('- 2 Medical Records created');
         $this->command->info('- 3 Vaccinations created');
         $this->command->info('- 2 Prescriptions created');
