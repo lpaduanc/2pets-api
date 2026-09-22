@@ -36,6 +36,14 @@ class Service extends Model implements Sellable
         'show_in_price_list',
         'allow_price_override',
         'active',
+        // Fase 6 do fluxo de agendamento — override de sinal por serviço. `deposit_enabled`
+        // é tri-state (`null` = sem override, herda do estabelecimento) — ver
+        // `App\Services\Appointment\DepositConfigResolver`.
+        'deposit_enabled',
+        'deposit_percentage',
+        // Item 21 do backlog gap-simplesvet — elegibilidade mínima por área de atendimento.
+        // Nullable: serviço sem área não restringe elegibilidade (não regressivo).
+        'service_area_id',
     ];
 
     protected $casts = [
@@ -45,6 +53,8 @@ class Service extends Model implements Sellable
         'show_in_price_list' => 'boolean',
         'allow_price_override' => 'boolean',
         'active' => 'boolean',
+        'deposit_enabled' => 'boolean',
+        'deposit_percentage' => 'decimal:2',
     ];
 
     public function professional(): BelongsTo
@@ -60,6 +70,11 @@ class Service extends Model implements Sellable
     public function group(): BelongsTo
     {
         return $this->belongsTo(ProductGroup::class, 'product_group_id');
+    }
+
+    public function serviceArea(): BelongsTo
+    {
+        return $this->belongsTo(ServiceArea::class);
     }
 
     public function saleItems(): MorphMany

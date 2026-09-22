@@ -33,6 +33,11 @@ final class LostPetAlertService
                 'pet_id' => $pet->id,
                 'user_id' => $pet->user_id,
                 'status' => 'active',
+                // O `default` da coluna e 5.00 (migration original). A regra de
+                // produto e 30 km (`config/lost-pet.php`), entao o raio e
+                // preenchido aqui em vez de depender do default do schema —
+                // quem passar `alert_radius_km` explicitamente vence.
+                'alert_radius_km' => config('lost-pet.default_radius_km'),
                 ...$data,
             ]);
         });
@@ -86,6 +91,54 @@ final class LostPetAlertService
             ->whereRaw($dWithin['sql'], $dWithin['bindings'])
             ->with(['pet', 'user'])
             ->orderBy('distance_km')
+            ->get();
+    }
+
+    /**
+     * Alertas ativos cujo raio ALCANCA este ponto — ou seja, exatamente os
+     * alertas cuja notificacao este usuario recebeu (ou receberia).
+     *
+     * Diferente de {@see getNearbyAlerts()}, que pergunta "o que existe num raio
+     * de X km de mim": aqui quem define a distancia e cada alerta, pelo seu
+     * proprio `alert_radius_km`. E o criterio certo para o menu "Pets Perdidos":
+     * a lista tem que bater com quem foi notificado, senao o tutor recebe um
+     * push de um pet que depois nao encontra em lugar nenhum no app.
+     *
+     * Os dois `ST_DWithin` nao sao redundantes. O primeiro tem distancia
+     * CONSTANTE (o teto de `config/lost-pet.php`) e por isso o planner consegue
+     * usar o indice GIST parcial de `last_seen_geo`; o segundo, com a distancia
+     * vindo de uma coluna, e exato mas nao indexavel — roda so sobre o que o
+     * primeiro ja reduziu.
+     */
+    public function getAlertsReaching(float $latitude, float $longitude, ?int $excludeUserId = null): Collection
+    {
+        $maxRadiusKm = (float) config('lost-pet.max_radius_km');
+
+        $indexBound = $this->geoLocationService->dWithinExpression('last_seen_geo', $latitude, $longitude, $maxRadiusKm);
+        $point = $this->geoLocationService->makePointExpression($latitude, $longitude);
+        $distance = $this->geoLocationService->distanceExpression('last_seen_geo', $latitude, $longitude);
+
+        return LostPetAlert::query()
+            ->select('lost_pet_alerts.*')
+            ->selectRaw("({$distance['sql']}) / 1000 AS distance_km", $distance['bindings'])
+            ->where('status', 'active')
+            ->whereRaw($indexBound['sql'], $indexBound['bindings'])
+            ->whereRaw("ST_DWithin(last_seen_geo, {$point['sql']}, alert_radius_km * 1000)", $point['bindings'])
+            ->when($excludeUserId !== null, fn ($query) => $query->where('user_id', '!=', $excludeUserId))
+            ->with(['pet', 'user'])
+            ->orderBy('distance_km')
+            ->get();
+    }
+
+    /**
+     * Alertas ativos abertos por este tutor — os que so ele pode encerrar.
+     */
+    public function getActiveAlertsForUser(int $userId): Collection
+    {
+        return LostPetAlert::where('user_id', $userId)
+            ->where('status', 'active')
+            ->with(['pet', 'user'])
+            ->orderBy('created_at', 'desc')
             ->get();
     }
 

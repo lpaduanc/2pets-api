@@ -14,13 +14,17 @@ use App\Exceptions\Invoice\InvalidInvoiceStatusTransitionException;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\User;
+use App\Services\Commercial\InvoicePaymentCashRecorder;
+use App\Services\Finance\InvoiceFinancialEntryRecorder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 final class PaymentService
 {
     public function __construct(
-        private readonly PaymentGatewayInterface $gateway
+        private readonly PaymentGatewayInterface $gateway,
+        private readonly InvoicePaymentCashRecorder $cashRecorder,
+        private readonly InvoiceFinancialEntryRecorder $financialEntries,
     ) {}
 
     public function createPayment(
@@ -131,6 +135,10 @@ final class PaymentService
             'payment_channel' => $channel->value,
         ]);
 
+        // Perna contábil da fatura (doc 02): receita no DRE, independente do canal
+        // (gateway ou balcão) — este é o único ponto de escrita de "fatura foi paga".
+        $this->financialEntries->recordForPaidInvoice($invoice, $payment);
+
         return $invoice;
     }
 
@@ -173,7 +181,13 @@ final class PaymentService
                 ], fn (mixed $value): bool => $value !== null),
             ]);
 
-            return $this->markInvoiceAsPaid($invoice, $payment, PaymentChannel::MANUAL_OFFLINE);
+            $invoice = $this->markInvoiceAsPaid($invoice, $payment, PaymentChannel::MANUAL_OFFLINE);
+
+            // Recebimento no balcão entra no caixa aberto de quem recebeu (doc
+            // gap-simplesvet/01). Sem caixa aberto, nada muda neste fluxo.
+            $this->cashRecorder->record($payment, $recordedBy);
+
+            return $invoice;
         });
     }
 

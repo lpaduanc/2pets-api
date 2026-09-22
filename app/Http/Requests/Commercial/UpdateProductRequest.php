@@ -4,7 +4,9 @@ namespace App\Http\Requests\Commercial;
 
 use App\Enums\ProductPurpose;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Fluent;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Update é PATCH-semântico: tudo `sometimes`, para que a edição inline de markup na listagem
@@ -36,6 +38,7 @@ class UpdateProductRequest extends FormRequest
             'product_group_id' => ['sometimes', 'nullable', 'integer', 'exists:product_groups,id'],
             'brand_id' => ['sometimes', 'nullable', 'integer', 'exists:brands,id'],
             'category_id' => ['sometimes', 'nullable', 'integer', 'exists:product_categories,id'],
+            'immunization_product_id' => ['sometimes', 'nullable', 'integer', 'exists:immunization_products,id'],
 
             'price' => ['sometimes', 'numeric', 'min:0', 'max:9999999.99'],
             'average_cost' => ['sometimes', 'numeric', 'min:0'],
@@ -56,5 +59,27 @@ class UpdateProductRequest extends FormRequest
             'images' => ['sometimes', 'nullable', 'array'],
             'images.*' => ['string', 'max:2048'],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'track_batches.accepted' => 'Produto ligado a uma vacina/vermífugo do calendário precisa controlar lote.',
+        ];
+    }
+
+    /**
+     * Cobre o caso "os dois campos vêm juntos neste PATCH"; o caso "só um dos dois vem, o outro
+     * já estava assim no cadastro" é responsabilidade de `ProductController::update()`, que
+     * conhece o estado atual do produto (`Product::requiresBatchTracking()`).
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->sometimes('track_batches', ['accepted'], function (Fluent $data): bool {
+            return filled($data->get('immunization_product_id'));
+        });
     }
 }

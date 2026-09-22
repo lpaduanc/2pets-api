@@ -29,9 +29,54 @@ final class FrontendRoute
 
     public const PROFESSIONAL_DASHBOARD = '/professional/dashboard';
 
+    public const PROFESSIONAL_APPOINTMENTS = '/professional/appointments';
+
     public const PROFESSIONAL_PROFILE = '/professional/profile';
 
     public const PROFESSIONAL_MY_PATIENTS = '/professional/meus-pacientes';
+
+    public const TUTOR_LOST_PETS = '/tutor/pets-perdidos';
+
+    public const PROFESSIONAL_LOST_PETS = '/professional/pets-perdidos';
+
+    public const COMPANY_LOST_PETS = '/company/pets-perdidos';
+
+    /**
+     * O menu "Pets Perdidos" existe nos tres layouts autenticados, com prefixo
+     * diferente em cada um. O alerta de raio notifica tutor, profissional e
+     * clinica na mesma varredura, entao o destino tem que ser escolhido por
+     * destinatario — um `action_url` fixo levaria dois tercos das pessoas a uma
+     * rota que o guard do router recusa.
+     *
+     * O corte e `users.role`, o mesmo que os getters `isTutor`/`isCompany` do
+     * `auth-store` usam para decidir o layout. Qualquer outro papel (vet
+     * freelancer, staff de clinica) cai no layout profissional, que e onde o
+     * router ja os coloca.
+     */
+    public static function lostPetsFor(\App\Models\User $user): string
+    {
+        return match ($user->role) {
+            'tutor' => self::TUTOR_LOST_PETS,
+            'company' => self::COMPANY_LOST_PETS,
+            default => self::PROFESSIONAL_LOST_PETS,
+        };
+    }
+
+    public static function tutorQuote(int $quoteId): string
+    {
+        return "/tutor/orcamentos/{$quoteId}";
+    }
+
+    public static function professionalQuote(int $quoteId): string
+    {
+        return "/professional/orcamentos/{$quoteId}";
+    }
+
+    /** Link de aprovação sem login (doc 24) — o token vai em texto puro só aqui. */
+    public static function publicQuoteDecision(string $plainToken): string
+    {
+        return "/orcamento/{$plainToken}";
+    }
 
     public static function tutorPetAuthorizedVets(int $petId): string
     {

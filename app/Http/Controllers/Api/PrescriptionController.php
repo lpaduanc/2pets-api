@@ -12,8 +12,10 @@ use App\Http\Requests\Prescription\StorePrescriptionRequest;
 use App\Http\Requests\Prescription\UpdatePrescriptionRequest;
 use App\Http\Resources\PrescriptionResource;
 use App\Models\Prescription;
+use App\Services\Medical\PrescriptionDuplicationService;
 use App\Services\Medical\PrescriptionLifecycleService;
 use App\Services\Medical\PrescriptionSearchFilter;
+use App\Services\Medical\PrescriptionSignatureService;
 use App\Services\Medical\PrescriptionWriteService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +33,8 @@ class PrescriptionController extends Controller
         private readonly PrescriptionSearchFilter $searchFilter,
         private readonly PrescriptionWriteService $writeService,
         private readonly PrescriptionLifecycleService $lifecycleService,
+        private readonly PrescriptionSignatureService $signatureService,
+        private readonly PrescriptionDuplicationService $duplicationService,
     ) {}
 
     /**
@@ -112,6 +116,29 @@ class PrescriptionController extends Controller
         );
 
         return $this->respondWithPrescription($prescription, 'Prescrição cancelada com sucesso!');
+    }
+
+    /**
+     * `POST prescriptions/{id}/sign` — assinatura eletrônica simples (spec 15). Só o autor
+     * pode assinar (mesma restrição de `issue`/`cancel`, via `ownedPrescription`).
+     */
+    public function sign(Request $request, int $id): JsonResponse
+    {
+        $prescription = $this->signatureService->sign($this->ownedPrescription($request, $id));
+
+        return $this->respondWithPrescription($prescription, 'Prescrição assinada com sucesso!');
+    }
+
+    /**
+     * `POST prescriptions/{id}/duplicate` — clona os itens para uma nova prescrição
+     * rascunho (spec 12, alternativa barata a um modelo de prescrição nomeado). A original
+     * permanece intacta.
+     */
+    public function duplicate(Request $request, int $id): JsonResponse
+    {
+        $duplicate = $this->duplicationService->duplicate($this->ownedPrescription($request, $id));
+
+        return $this->respondWithPrescription($duplicate, 'Prescrição duplicada com sucesso!', 201);
     }
 
     /** Receitas ainda em vigor — sem prazo ou com validade a partir de hoje. */

@@ -3,6 +3,7 @@
 namespace App\Services\Medical;
 
 use App\Models\Prescription;
+use App\Services\Hospitalization\HospitalizationStayGuard;
 
 /**
  * Substitui por completo os itens de uma prescrição — nunca faz merge parcial. O contrato
@@ -12,13 +13,18 @@ use App\Models\Prescription;
  */
 final class PrescriptionItemsWriter
 {
-    public function __construct(private readonly PrescriptionDoseCalculator $doseCalculator) {}
+    public function __construct(
+        private readonly PrescriptionDoseCalculator $doseCalculator,
+        private readonly HospitalizationStayGuard $stayGuard,
+    ) {}
 
     /**
      * @param  list<array<string, mixed>>  $itemsData
      */
     public function replace(Prescription $prescription, array $itemsData): void
     {
+        $this->stayGuard->assertItemsStartWithinStay($prescription, $itemsData);
+
         $prescription->items()->delete();
 
         foreach (array_values($itemsData) as $index => $itemData) {

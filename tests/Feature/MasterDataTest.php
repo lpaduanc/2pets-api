@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ImmunizationGroup;
+use App\Enums\PetSpecies;
 use App\Models\DietaryRestriction;
 use App\Models\FoodAllergy;
 use App\Models\FoodBrand;
+use App\Models\ImmunizationProduct;
 use App\Models\Pathology;
 use App\Models\Specialty;
-use App\Models\VaccineCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -74,35 +76,29 @@ class MasterDataTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // Vaccine catalog
+    // Vaccine catalog (lê `immunization_products`, `group = vaccine` — substitui o
+    // legado `VaccineCatalog`, ver contrato docs/gap-simplesvet/contratos/13-contrato-api.md)
     // ---------------------------------------------------------------
+
+    private function createGlobalVaccine(string $name, PetSpecies $species, bool $legallyRequired = true): ImmunizationProduct
+    {
+        $product = ImmunizationProduct::create([
+            'organization_id' => null,
+            'name' => $name,
+            'group' => ImmunizationGroup::VACCINE,
+            'legally_required' => $legallyRequired,
+            'active' => true,
+        ]);
+        $product->speciesLinks()->create(['species' => $species]);
+
+        return $product;
+    }
 
     public function test_vaccine_catalog_returns_data(): void
     {
-        VaccineCatalog::create([
-            'name' => 'V8',
-            'species' => 'dog',
-            'doses_required' => 3,
-            'interval_days' => 21,
-            'booster_interval_days' => 365,
-            'required' => true,
-        ]);
-        VaccineCatalog::create([
-            'name' => 'Antirrabica',
-            'species' => 'dog',
-            'doses_required' => 1,
-            'interval_days' => 0,
-            'booster_interval_days' => 365,
-            'required' => true,
-        ]);
-        VaccineCatalog::create([
-            'name' => 'Triplice Felina',
-            'species' => 'cat',
-            'doses_required' => 3,
-            'interval_days' => 21,
-            'booster_interval_days' => 365,
-            'required' => true,
-        ]);
+        $this->createGlobalVaccine('V8', PetSpecies::DOG);
+        $this->createGlobalVaccine('Antirrabica', PetSpecies::DOG);
+        $this->createGlobalVaccine('Triplice Felina', PetSpecies::CAT);
 
         $response = $this->getJson('/api/public/vaccine-catalog');
 
@@ -112,22 +108,8 @@ class MasterDataTest extends TestCase
 
     public function test_vaccine_catalog_filters_by_species(): void
     {
-        VaccineCatalog::create([
-            'name' => 'V8',
-            'species' => 'dog',
-            'doses_required' => 3,
-            'interval_days' => 21,
-            'booster_interval_days' => 365,
-            'required' => true,
-        ]);
-        VaccineCatalog::create([
-            'name' => 'Triplice Felina',
-            'species' => 'cat',
-            'doses_required' => 3,
-            'interval_days' => 21,
-            'booster_interval_days' => 365,
-            'required' => true,
-        ]);
+        $this->createGlobalVaccine('V8', PetSpecies::DOG);
+        $this->createGlobalVaccine('Triplice Felina', PetSpecies::CAT);
 
         $response = $this->getJson('/api/public/vaccine-catalog?species=cat');
 
@@ -135,8 +117,26 @@ class MasterDataTest extends TestCase
             ->assertJsonCount(1);
 
         $data = $response->json();
-        $this->assertEquals('cat', $data[0]['species']);
+        $this->assertEquals(['cat'], $data[0]['species']);
         $this->assertEquals('Triplice Felina', $data[0]['name']);
+    }
+
+    public function test_vaccine_catalog_ignores_organization_scoped_products(): void
+    {
+        $this->createGlobalVaccine('Antirrabica', PetSpecies::DOG);
+        $organizationScoped = ImmunizationProduct::create([
+            'organization_id' => 99,
+            'name' => 'Vacina exclusiva da clinica',
+            'group' => ImmunizationGroup::VACCINE,
+            'legally_required' => false,
+            'active' => true,
+        ]);
+        $organizationScoped->speciesLinks()->create(['species' => PetSpecies::DOG]);
+
+        $data = $this->getJson('/api/public/vaccine-catalog')->assertOk()->json();
+
+        $this->assertCount(1, $data);
+        $this->assertEquals('Antirrabica', $data[0]['name']);
     }
 
     // ---------------------------------------------------------------

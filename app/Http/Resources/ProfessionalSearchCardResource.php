@@ -64,7 +64,25 @@ class ProfessionalSearchCardResource extends ProfessionalSearchResource
             // Especialidades ficam: o CLAUDE.md §4 define o card como "foto, nome, tipo,
             // especialidades, distância, avaliação média". É um array curto de strings.
             'specialties' => $professional?->specialties ?? [],
+            // Fase 7 do fluxo de agendamento: especialidades da EQUIPE (só preenchido para
+            // quem tem organização) — é o que deixa claro ao tutor POR QUE uma clínica
+            // apareceu numa busca por especialidade que o dono não pratica pessoalmente
+            // (ex.: clínica aparece em "cardiologia" porque um vet da equipe é
+            // cardiologista). Vazio para conta unipessoal, nunca repete o que já está em
+            // `specialties`.
+            'team_specialties' => $this->teamOnlySpecialties($professional),
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function teamOnlySpecialties(?object $professional): array
+    {
+        return array_values(array_diff(
+            $professional?->team_specialties ?? [],
+            $professional?->specialties ?? [],
+        ));
     }
 
     /**
@@ -104,6 +122,10 @@ class ProfessionalSearchCardResource extends ProfessionalSearchResource
             'verified' => (bool) ($professional?->is_crmv_verified ?? false),
             'is_featured' => (bool) ($professional?->is_featured ?? false),
             'is_open_now' => $this->isOpenNow($professional),
+            // Fase 2 do fluxo de agendamento — mesmo campo/mesma regra de
+            // `ProfessionalSearchResource`, ver o comentário lá.
+            'team_size' => (int) ($this->team_size ?? 0),
+            'has_team' => ((int) ($this->team_size ?? 0)) > 1,
         ];
     }
 

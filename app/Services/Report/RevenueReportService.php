@@ -2,7 +2,12 @@
 
 namespace App\Services\Report;
 
+use App\Enums\SaleKind;
+use App\Enums\SaleStatus;
 use App\Models\Invoice;
+use App\Models\Sale;
+use App\Models\SaleItem;
+use App\Models\SaleReceipt;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,6 +21,10 @@ use Illuminate\Support\Facades\DB;
  * column with one row per invoice) — every call threw a QueryException. Fixed
  * while pushing the aggregation into SQL, per the same rule ("nunca `->get()`
  * seguido de `->sum()`").
+ *
+ * Receita = faturas de atendimento pagas + o que entrou nas vendas do PDV (produto ou
+ * serviço) — docs/gap-simplesvet/01-caixa-pdv.md: o PDV reflete no financeiro. Venda entra
+ * pelo que foi RECEBIDO no período (`sale_receipts.received_at`), venda cancelada fica de fora.
  */
 final class RevenueReportService
 {
@@ -49,11 +58,25 @@ final class RevenueReportService
             )
             ->first();
 
+        $salesRevenue = round((float) $this->receiptsQuery($professionalId, $startDate, $endDate)->sum('amount'), 2);
+        $sales = $this->receiptsQuery($professionalId, $startDate, $endDate)
+            ->join('sales', 'sales.id', '=', 'sale_receipts.sale_id')
+            ->selectRaw('COUNT(DISTINCT sales.id) AS sales, COUNT(DISTINCT sales.client_id) AS clients')
+            ->first();
+
+        $totalRevenue = round((float) $row->total_revenue + $salesRevenue, 2);
+        $documents = (int) $row->total_invoices + (int) $sales->sales;
+
         return [
-            'total_revenue' => (float) $row->total_revenue,
+            'total_revenue' => $totalRevenue,
             'total_invoices' => (int) $row->total_invoices,
-            'average_ticket' => (float) $row->average_ticket,
-            'unique_clients' => (int) $row->unique_clients,
+            'invoices_revenue' => (float) $row->total_revenue,
+            'total_sales' => (int) $sales->sales,
+            'sales_revenue' => $salesRevenue,
+            'average_ticket' => $documents > 0 ? round($totalRevenue / $documents, 2) : 0.0,
+            // Aproximação: soma os clientes distintos de cada fonte (o mesmo tutor com fatura
+            // e venda no período conta duas vezes). Venda sem cliente identificado não conta.
+            'unique_clients' => (int) $row->unique_clients + (int) $sales->clients,
         ];
     }
 
@@ -75,11 +98,27 @@ final class RevenueReportService
             ->orderByDesc('revenue')
             ->get();
 
-        return $rows->map(fn ($row): array => [
+        $byName = $rows->mapWithKeys(fn ($row): array => [$row->name => [
             'name' => $row->name,
             'quantity' => (float) $row->quantity,
             'revenue' => (float) $row->revenue,
-        ])->all();
+        ]])->all();
+
+        // Itens das vendas do PDV pagas no período (produto e serviço), somados pelo nome.
+        $saleItems = SaleItem::query()
+            ->whereIn('sale_id', $this->paidSalesQuery($professionalId, $startDate, $endDate)->select('id'))
+            ->selectRaw('description AS name, SUM(quantity) AS quantity, SUM(total) AS revenue')
+            ->groupBy('description')
+            ->get();
+
+        foreach ($saleItems as $item) {
+            $current = $byName[$item->name] ?? ['name' => $item->name, 'quantity' => 0.0, 'revenue' => 0.0];
+            $current['quantity'] += (float) $item->quantity;
+            $current['revenue'] += (float) $item->revenue;
+            $byName[$item->name] = $current;
+        }
+
+        return collect($byName)->sortByDesc('revenue')->values()->all();
     }
 
     private function fetchByMonth(int $professionalId, Carbon $startDate, Carbon $endDate): array
@@ -94,11 +133,26 @@ final class RevenueReportService
             ->orderBy('month')
             ->get();
 
-        return $rows->map(fn ($row): array => [
+        $salesByMonth = $this->receiptsQuery($professionalId, $startDate, $endDate)
+            ->selectRaw("to_char(date_trunc('month', received_at), 'MM/YYYY') AS month, SUM(amount) AS revenue")
+            ->groupBy(DB::raw("date_trunc('month', received_at)"))
+            ->pluck('revenue', 'month');
+
+        $months = $rows->mapWithKeys(fn ($row): array => [Carbon::parse($row->month)->format('m/Y') => [
             'month' => Carbon::parse($row->month)->format('m/Y'),
             'revenue' => (float) $row->revenue,
             'invoices' => (int) $row->invoices,
-        ])->all();
+        ]])->all();
+
+        foreach ($salesByMonth as $month => $revenue) {
+            $months[$month] ??= ['month' => $month, 'revenue' => 0.0, 'invoices' => 0];
+            $months[$month]['revenue'] = round($months[$month]['revenue'] + (float) $revenue, 2);
+        }
+
+        return collect($months)
+            ->sortBy(fn (array $row): string => Carbon::createFromFormat('m/Y', $row['month'])->format('Y-m'))
+            ->values()
+            ->all();
     }
 
     private function fetchInvoiceList(int $professionalId, Carbon $startDate, Carbon $endDate): array
@@ -108,12 +162,50 @@ final class RevenueReportService
             ->orderBy('payment_date')
             ->get(['id', 'invoice_number', 'client_id', 'payment_date', 'total']);
 
-        return $invoices->map(fn (Invoice $invoice): array => [
+        $rows = $invoices->map(fn (Invoice $invoice): array => [
             'invoice_number' => $invoice->invoice_number,
             'client' => $invoice->client->name,
             'date' => $invoice->payment_date->format('d/m/Y'),
             'amount' => (float) $invoice->total,
-        ])->all();
+            'sort' => $invoice->payment_date->format('Y-m-d'),
+        ]);
+
+        // Cada recebimento de venda do PDV vira uma linha, na data em que o dinheiro entrou.
+        $receipts = $this->receiptsQuery($professionalId, $startDate, $endDate)
+            ->with('sale.client:id,name')
+            ->get()
+            ->map(fn (SaleReceipt $receipt): array => [
+                'invoice_number' => 'Venda PDV '.($receipt->sale->number ?? $receipt->sale->id),
+                'client' => $receipt->sale->client?->name ?? 'Consumidor não identificado',
+                'date' => $receipt->received_at->format('d/m/Y'),
+                'amount' => (float) $receipt->amount,
+                'sort' => $receipt->received_at->format('Y-m-d'),
+            ]);
+
+        return $rows->concat($receipts)
+            ->sortBy('sort')
+            ->map(fn (array $row): array => collect($row)->except('sort')->all())
+            ->values()
+            ->all();
+    }
+
+    private function receiptsQuery(int $professionalId, Carbon $startDate, Carbon $endDate): Builder
+    {
+        return SaleReceipt::query()
+            ->whereBetween('sale_receipts.received_at', [$startDate->copy()->startOfDay(), $endDate->copy()->endOfDay()])
+            ->whereHas('sale', fn (Builder $sale) => $sale
+                ->where('professional_id', $professionalId)
+                ->where('kind', SaleKind::SALE->value)
+                ->where('status', '!=', SaleStatus::CANCELLED->value));
+    }
+
+    private function paidSalesQuery(int $professionalId, Carbon $startDate, Carbon $endDate): Builder
+    {
+        return Sale::query()
+            ->where('professional_id', $professionalId)
+            ->where('kind', SaleKind::SALE->value)
+            ->where('status', SaleStatus::PAID->value)
+            ->whereBetween('sold_at', [$startDate->copy()->startOfDay(), $endDate->copy()->endOfDay()]);
     }
 
     private function paidInvoicesQuery(int $professionalId, Carbon $startDate, Carbon $endDate): Builder

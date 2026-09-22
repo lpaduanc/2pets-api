@@ -72,10 +72,13 @@ class LostPetAlert extends Model
             'found_details' => $details,
         ]);
 
-        // Update pet status
+        // `lost_alert_message` sai junto: a carteirinha publica so o exibe
+        // enquanto `is_lost`, mas deixar o texto do sumico gravado num pet que
+        // ja voltou e um resto de estado que reaparece no proximo alerta.
         $this->pet->update([
             'is_lost' => false,
             'lost_since' => null,
+            'lost_alert_message' => null,
         ]);
     }
 
@@ -86,6 +89,7 @@ class LostPetAlert extends Model
         $this->pet->update([
             'is_lost' => false,
             'lost_since' => null,
+            'lost_alert_message' => null,
         ]);
     }
 

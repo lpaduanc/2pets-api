@@ -5,7 +5,9 @@ namespace App\Http\Requests\Appointment;
 use App\DataTransferObjects\Cpf;
 use App\Enums\PetSpecies;
 use App\Enums\ServiceCategory;
+use App\Rules\ScopedAppointmentTypeExists;
 use App\Rules\ValidCpf;
+use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -45,7 +47,7 @@ class StoreNewPatientAppointmentRequest extends FormRequest
         ]);
     }
 
-    public function rules(): array
+    public function rules(CommercialScopeResolver $scope): array
     {
         return [
             'tutor_cpf' => ['bail', 'required', 'digits:'.Cpf::DIGIT_COUNT, app(ValidCpf::class)],
@@ -62,6 +64,8 @@ class StoreNewPatientAppointmentRequest extends FormRequest
             'duration' => ['nullable', 'integer', 'min:15', 'max:480'],
             // Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md §3.
             'type' => ['required', Rule::enum(ServiceCategory::class)],
+            // Item 14 (achado do frontend) — ver comentário equivalente em `StoreAppointmentRequest`.
+            'appointment_type_id' => ['nullable', 'integer', new ScopedAppointmentTypeExists($this->user(), $scope)],
             'reason' => ['nullable', 'string', 'max:1000'],
 
             'existing_pet_id' => ['nullable', 'integer', 'exists:pets,id'],

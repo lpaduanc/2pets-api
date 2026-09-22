@@ -96,9 +96,22 @@ class AuthController extends Controller
         ], 201);
     }
 
+    /**
+     * `Auth::guard('web')` explícito, não o guard PADRÃO sem nome: achado escrevendo o
+     * teste de ponta a ponta da jornada de agendamento — dentro do MESMO processo/
+     * container (é o que o harness de teste HTTP do Laravel faz ao simular vários
+     * requests em sequência, exatamente como um app real percorre login → ação →
+     * segundo login), qualquer chamada anterior a uma rota `auth:sanctum` já bem-sucedida
+     * troca o guard PADRÃO para `RequestGuard` (via `Auth::shouldUse()`, que o middleware
+     * `Authenticate` chama), e `RequestGuard` não implementa `attempt()` —
+     * `BadMethodCallException` em produção só não acontece porque o php-fpm deste projeto
+     * usa um processo novo por request (Octane teria o mesmo problema). Fixar o guard é
+     * a correção correta de qualquer forma: login nunca deveria depender de qual guard
+     * "está por cima" no momento.
+     */
     public function login(LoginRequest $request)
     {
-        if (! Auth::attempt($request->only('email', 'password'))) {
+        if (! Auth::guard('web')->attempt($request->only('email', 'password'))) {
             return response()->json([
                 'message' => 'Invalid login details',
             ], 401);

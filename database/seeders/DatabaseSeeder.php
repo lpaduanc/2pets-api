@@ -30,6 +30,10 @@ class DatabaseSeeder extends Seeder
             BreedSeeder::class,
             PathologySeeder::class,
             VaccineCatalogSeeder::class,
+            // Copia `vaccine_catalog` (linha acima) para `immunization_products` — os
+            // leitores atuais (`MasterDataController`, `VaccinationImportValidator`) não
+            // leem mais `vaccine_catalog` diretamente (contrato 13).
+            ImmunizationProductSeeder::class,
             FoodBrandSeeder::class,
             SpecialtySeeder::class,
             FoodAllergySeeder::class,
@@ -40,6 +44,11 @@ class DatabaseSeeder extends Seeder
             SubscriptionPlanSeeder::class,
             CouponSeeder::class,
             DemoDataSeeder::class,
+            ClinicOrganizationSeeder::class,
+            HolidaySeeder::class,
+            // Depende dos e-mails que `ProfessionalSeeder`/`DemoDataSeeder` já criaram —
+            // por último de propósito.
+            AvailabilitySeeder::class,
         ]);
     }
 }

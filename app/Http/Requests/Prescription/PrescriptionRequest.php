@@ -66,6 +66,11 @@ abstract class PrescriptionRequest extends FormRequest
             'items.*.quantity_to_dispense' => 'nullable|string|max:255',
             'items.*.instructions_for_tutor' => 'nullable|string|max:1000',
             'items.*.is_controlled' => 'sometimes|boolean',
+            // Contrato docs/gap-simplesvet/specs/12-internacao-mapa-execucao-spec.md §3:
+            // só relevante quando este item pendura numa prescrição de internação — a janela
+            // (não antes da admissão, não depois da alta) é validada em
+            // `HospitalizationStayGuard`, cruzamento de agregado que não cabe aqui.
+            'items.*.starts_at' => 'nullable|date',
         ];
     }
 

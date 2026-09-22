@@ -2,19 +2,23 @@
 
 namespace App\Services\Inventory;
 
-use App\Enums\InventoryMovementType;
+use App\DataTransferObjects\LockedClinicalStock;
+use App\Enums\StockMovementType;
 use App\Exceptions\Inventory\ExpiredBatchException;
 use App\Exceptions\Inventory\InsufficientStockException;
 use App\Exceptions\Inventory\InventoryAccessDeniedException;
-use App\Models\Inventory;
-use App\Models\InventoryMovement;
+use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\User;
+use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Stock\StockService;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * Baixa de estoque por ato clínico atômico (vacina/vermífugo) — docs/vinculo-estoque-aplicacao-
- * clinica.md itens 1, 4, 5 e 6.
+ * clinica.md itens 1, 4, 5 e 6, agora sobre `Product`/`ProductBatch`/`StockService` (consolidação
+ * de estoque, docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md).
  *
  * `lockAndValidate()` deve rodar DENTRO de uma `DB::transaction()` já aberta pelo chamador, e
  * ANTES de criar o registro clínico: assim uma falha de estoque nunca deixa uma vacinação ou
@@ -22,77 +26,89 @@ use Illuminate\Database\Eloquent\Model;
  */
 final class ClinicalStockDeductionService
 {
+    /** Uma dose aplicada = uma unidade decrementada — regra 2 da spec de consolidação (sem fracionamento). */
+    private const DEDUCTION_QUANTITY = 1;
+
     public function __construct(
-        private readonly InventoryScopeResolver $scopeResolver,
+        private readonly CommercialScopeResolver $scopeResolver,
+        private readonly StockService $stock,
     ) {}
 
     /**
-     * @throws InventoryAccessDeniedException Item de outra organização/profissional.
+     * @throws InventoryAccessDeniedException Produto de outra organização/profissional.
      * @throws ExpiredBatchException Lote vencido na data do ato, sem `confirm_expired`.
      * @throws InsufficientStockException Saldo menor que 1 unidade.
      */
     public function lockAndValidate(
-        int $inventoryId,
+        int $productId,
+        ?int $productBatchId,
         User $requester,
         CarbonInterface $applicationDate,
         bool $confirmExpired,
-    ): Inventory {
-        $inventory = Inventory::query()->lockForUpdate()->findOrFail($inventoryId);
+    ): LockedClinicalStock {
+        $product = Product::query()->lockForUpdate()->findOrFail($productId);
+        $this->guardAccess($product, $requester);
 
-        $this->guardAccess($inventory, $requester);
-        $this->guardExpiry($inventory, $applicationDate, $confirmExpired);
-        $this->guardStock($inventory);
+        $lock = new LockedClinicalStock($product, $this->lockBatch($product, $productBatchId));
 
-        return $inventory;
+        $this->guardExpiry($lock, $applicationDate, $confirmExpired);
+        $this->guardStock($lock);
+
+        return $lock;
     }
 
     /**
-     * Decrementa 1 unidade e grava o movimento no mesmo golpe. `organization_id` espelha o dono
-     * do item NO MOMENTO do movimento (item 6 do parecer) — nunca recalculado depois.
+     * Decrementa 1 unidade via `StockService` (livro `stock_movements`, `balance_after`
+     * recalculado sob lock) e amarra o movimento ao registro clínico que o originou.
      */
     public function recordDeduction(
-        Inventory $inventory,
+        LockedClinicalStock $lock,
         Model $reference,
-        InventoryMovementType $type,
         int $professionalId,
         bool $confirmedExpired,
     ): void {
-        $inventory->decrement('quantity');
-
-        InventoryMovement::create([
-            'inventory_id' => $inventory->id,
-            'organization_id' => $inventory->organization_id,
-            'professional_id' => $professionalId,
-            'type' => $type,
-            'quantity_delta' => -1,
-            'reference_type' => $reference::class,
-            'reference_id' => $reference->getKey(),
+        $this->stock->out($lock->product, StockMovementType::INTERNAL_USE, self::DEDUCTION_QUANTITY, [
+            'batch_id' => $lock->batch?->id,
+            'reference' => $reference,
+            'user' => $professionalId,
             'notes' => $confirmedExpired
                 ? 'Lote vencido aplicado mediante confirmação explícita do profissional.'
                 : null,
         ]);
     }
 
-    private function guardAccess(Inventory $inventory, User $requester): void
+    private function lockBatch(Product $product, ?int $productBatchId): ?ProductBatch
     {
-        if (! $this->scopeResolver->userCanAccess($inventory, $requester)) {
+        if ($productBatchId === null) {
+            return null;
+        }
+
+        return $product->batches()->lockForUpdate()->findOrFail($productBatchId);
+    }
+
+    private function guardAccess(Product $product, User $requester): void
+    {
+        if (! $this->scopeResolver->userCanAccess($product, $requester)) {
             throw new InventoryAccessDeniedException;
         }
     }
 
-    private function guardExpiry(Inventory $inventory, CarbonInterface $applicationDate, bool $confirmExpired): void
+    private function guardExpiry(LockedClinicalStock $lock, CarbonInterface $applicationDate, bool $confirmExpired): void
     {
-        $isExpired = $inventory->expiry_date !== null && $inventory->expiry_date->lt($applicationDate);
+        $expiry = $lock->expiryDate();
+        $isExpired = $expiry !== null && $expiry->lt($applicationDate);
 
         if ($isExpired && ! $confirmExpired) {
-            throw new ExpiredBatchException($inventory);
+            throw new ExpiredBatchException($lock);
         }
     }
 
-    private function guardStock(Inventory $inventory): void
+    private function guardStock(LockedClinicalStock $lock): void
     {
-        if ($inventory->quantity < 1) {
-            throw new InsufficientStockException($inventory);
+        $balance = $lock->batch?->quantity ?? (int) $lock->product->stock_quantity;
+
+        if ($balance < self::DEDUCTION_QUANTITY) {
+            throw new InsufficientStockException($lock);
         }
     }
 }

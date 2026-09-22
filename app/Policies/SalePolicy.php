@@ -24,7 +24,17 @@ class SalePolicy
 
     public function update(User $user, Sale $sale): bool
     {
-        return $sale->status->isEditable() && $this->belongsToUserScope($user, $sale);
+        return $sale->isEditable() && $this->belongsToUserScope($user, $sale);
+    }
+
+    /**
+     * Cabeçalho (cliente, animal, observações). Mais largo que `update`: trocar o cliente de
+     * uma venda já paga é correção de cadastro, não mexe em valor — quais campos mudam em cada
+     * situação é do `SaleService::updateDetails`.
+     */
+    public function updateDetails(User $user, Sale $sale): bool
+    {
+        return $this->belongsToUserScope($user, $sale);
     }
 
     public function registerReceipt(User $user, Sale $sale): bool
@@ -48,6 +58,16 @@ class SalePolicy
         }
 
         return $this->ownsScope($user, $sale);
+    }
+
+    /**
+     * Enviar, revisar, converter e baixar o PDF de orçamento (doc 24). Não passa por `update`
+     * de propósito: orçamento aprovado não é editável, mas continua convertível e revisável.
+     * Mesma régua da venda — é operação de recepção, não ato clínico.
+     */
+    public function manageQuote(User $user, Sale $sale): bool
+    {
+        return $sale->isQuote() && $this->belongsToUserScope($user, $sale);
     }
 
     private function belongsToUserScope(User $user, Sale $sale): bool

@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Log;
 final class WhatsAppService
 {
     private ?string $apiUrl;
+
     private ?string $apiKey;
+
     private ?string $phoneNumberId;
 
     public function __construct()
@@ -19,16 +21,24 @@ final class WhatsAppService
         $this->phoneNumberId = config('services.whatsapp.phone_number_id');
     }
 
-    public function send(User $user, string $message): void
+    /**
+     * Retorno `bool` adicionado para `App\Services\Crm\CrmMessageDispatcher` (item 17 do
+     * backlog gap-simplesvet) saber se grava `message_dispatches.status = sent` ou `failed` —
+     * o comportamento de log/fallback sem credencial é o mesmo de sempre, só passou a ser
+     * também OBSERVÁVEL pelo chamador, sem quebrar quem já ignorava o retorno `void` anterior.
+     */
+    public function send(User $user, string $message): bool
     {
-        if (!$this->apiKey || !$this->phoneNumberId) {
+        if (! $this->apiKey || ! $this->phoneNumberId) {
             Log::warning('WhatsApp API not configured');
-            return;
+
+            return false;
         }
 
         if (empty($user->phone)) {
             Log::warning('User has no phone number', ['user_id' => $user->id]);
-            return;
+
+            return false;
         }
 
         $phone = $this->formatPhoneNumber($user->phone);
@@ -46,18 +56,24 @@ final class WhatsAppService
                 ],
             ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('WhatsApp message failed', [
                     'user_id' => $user->id,
                     'phone' => $phone,
                     'response' => $response->body(),
                 ]);
+
+                return false;
             }
+
+            return true;
         } catch (\Exception $e) {
             Log::error('WhatsApp message error', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 
@@ -67,11 +83,10 @@ final class WhatsAppService
         $phone = preg_replace('/[^0-9]/', '', $phone);
 
         // Add country code if not present (Brazil: 55)
-        if (strlen($phone) === 11 && !str_starts_with($phone, '55')) {
-            $phone = '55' . $phone;
+        if (strlen($phone) === 11 && ! str_starts_with($phone, '55')) {
+            $phone = '55'.$phone;
         }
 
         return $phone;
     }
 }
-

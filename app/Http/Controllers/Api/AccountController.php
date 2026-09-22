@@ -50,9 +50,15 @@ class AccountController extends Controller
      * reativam e já devolvem um token novo — mesmo formato de resposta do login, para o
      * frontend reaproveitar o handler de "logado com sucesso".
      */
+    /**
+     * `Auth::guard('web')` explícito — mesma correção de `AuthController::login()`
+     * (achado escrevendo o teste de ponta a ponta da jornada de agendamento): o guard
+     * PADRÃO sem nome pode já ter sido trocado para `RequestGuard` por uma autenticação
+     * `auth:sanctum` anterior no mesmo processo, e `RequestGuard` não tem `attempt()`.
+     */
     public function reactivate(ReactivateAccountRequest $request): JsonResponse
     {
-        if (! Auth::attempt($request->only('email', 'password'))) {
+        if (! Auth::guard('web')->attempt($request->only('email', 'password'))) {
             return response()->json(['message' => 'Credenciais inválidas'], 401);
         }
 

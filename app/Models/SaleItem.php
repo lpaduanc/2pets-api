@@ -6,6 +6,7 @@ use App\Contracts\Sellable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
@@ -66,6 +67,16 @@ class SaleItem extends Model
     public function staff(): BelongsTo
     {
         return $this->belongsTo(OrganizationMember::class, 'staff_id');
+    }
+
+    /**
+     * Fechamento de comissão (doc 09) que já consumiu este item, se houver — `unique
+     * (sale_item_id)` no banco garante no máximo um. `whereDoesntHave` sobre esta relação é
+     * o que impede o mesmo item de entrar em dois fechamentos.
+     */
+    public function commissionSettlementItem(): HasOne
+    {
+        return $this->hasOne(CommissionSettlementItem::class);
     }
 
     /**

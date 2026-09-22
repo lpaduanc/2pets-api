@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\AuthorizesPetAccess;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Exam\AddExamResultsRequest;
+use App\Http\Requests\Exam\FinalizeExamRequest;
 use App\Http\Requests\Exam\StoreExamRequest;
 use App\Models\Exam;
 use App\Models\ExamImage;
 use App\Services\Hospitalization\HospitalizationExamService;
+use App\Services\Medical\ExamReportService;
 use App\Services\Medical\ExamService;
+use App\Services\Report\ExamReportPdfService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +26,8 @@ class ExamController extends Controller
     public function __construct(
         private readonly ExamService $examService,
         private readonly HospitalizationExamService $hospitalizationExamService,
+        private readonly ExamReportService $reportService,
+        private readonly ExamReportPdfService $pdfService,
     ) {}
 
     public function index(Request $request, int $petId): JsonResponse
@@ -48,6 +53,7 @@ class ExamController extends Controller
         $exam = $this->hospitalizationExamService->createExam($pet, $request->user(), [
             'exam_type' => $validated['exam_type'],
             'exam_name' => $validated['exam_name'],
+            'exam_type_id' => $validated['exam_type_id'] ?? null,
             'exam_date' => Carbon::parse($validated['exam_date']),
             'notes' => $validated['notes'] ?? null,
             'appointment_id' => $validated['appointment_id'] ?? null,
@@ -59,6 +65,26 @@ class ExamController extends Controller
             'message' => 'Exam created successfully',
             'data' => $exam,
         ], 201);
+    }
+
+    /** `POST /exams/{id}/finalize` — contrato docs/gap-simplesvet/contratos/16-contrato-api.md. */
+    public function finalize(FinalizeExamRequest $request, int $examId): JsonResponse
+    {
+        $exam = Exam::findOrFail($examId);
+        $this->resolvePetForWrite($request, (int) $exam->pet_id);
+
+        $exam = $this->reportService->finalize($exam, $request->validated());
+
+        return response()->json(['data' => $exam]);
+    }
+
+    /** `GET /exams/{id}/pdf` — leitura compartilhada tutor + vet autorizado. */
+    public function pdf(Request $request, int $examId)
+    {
+        $exam = Exam::findOrFail($examId);
+        $this->resolvePetForRead($request, (int) $exam->pet_id);
+
+        return $this->pdfService->generate($exam);
     }
 
     public function addResults(AddExamResultsRequest $request, int $examId): JsonResponse

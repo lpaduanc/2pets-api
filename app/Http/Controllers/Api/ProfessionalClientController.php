@@ -13,8 +13,11 @@ use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\ProfessionalClient;
 use App\Models\User;
+use App\Services\Professional\ClientInviteService;
+use App\Services\Professional\ClientPortalStatusService;
 use App\Services\Professional\ClientProvisioningService;
 use App\Services\Professional\ProfessionalClientsQuery;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Auth;
@@ -32,6 +35,8 @@ class ProfessionalClientController extends Controller
     public function __construct(
         private readonly ClientProvisioningService $clientProvisioningService,
         private readonly ProfessionalClientsQuery $clientsQuery,
+        private readonly ClientInviteService $clientInviteService,
+        private readonly ClientPortalStatusService $clientPortalStatusService,
     ) {}
 
     /**
@@ -201,5 +206,31 @@ class ProfessionalClientController extends Controller
         });
 
         return response()->json($pets);
+    }
+
+    /**
+     * Dispara (ou reenvia) o convite de vínculo fora do fluxo de agendamento — contrato
+     * `docs/gap-simplesvet/specs/19-portal-do-cliente-spec.md` (Achado 1).
+     */
+    public function invite(string $id): JsonResponse
+    {
+        $client = $this->clientsQuery->query(Auth::id())->where('id', $id)->firstOrFail();
+
+        $this->clientInviteService->invite(Auth::user(), $client);
+
+        return response()->json(['message' => 'Convite enviado com sucesso.']);
+    }
+
+    /**
+     * `{ state: no_account|invited|active }` — contrato
+     * `docs/gap-simplesvet/specs/19-portal-do-cliente-spec.md` item 4.
+     */
+    public function portalStatus(string $id): JsonResponse
+    {
+        $client = $this->clientsQuery->query(Auth::id())->where('id', $id)->firstOrFail();
+
+        $state = $this->clientPortalStatusService->resolve($client);
+
+        return response()->json(['state' => $state->value]);
     }
 }

@@ -101,11 +101,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'services.update',
             'services.delete',
 
-            // --- Inventory ---
-            'inventory.view',
-            'inventory.create',
-            'inventory.update',
-            'inventory.delete',
+            // --- Produtos/estoque (consolidação de `inventory.*`, docs/gap-simplesvet/specs/
+            // produtos-estoque-consolidado-spec.md — `Product` é a única fonte de verdade) ---
+            'products.view',
+            'products.create',
+            'products.update',
+            'products.delete',
 
             // --- Invoices ---
             'invoices.view.own',
@@ -186,6 +187,92 @@ class RolesAndPermissionsSeeder extends Seeder
             'staff.update',
             'staff.delete',
             'staff.schedules.manage',
+
+            // ---------------------------------------------------------------
+            // Módulos do backlog gap-simplesvet (item 22 — catálogo único de
+            // permissões novas; ver docs/gap-simplesvet/specs/permissoes-catalogo.md).
+            // Convenção mantida: recurso[-composto].ação[.escopo], escopo ∈ {own, any}.
+            // ---------------------------------------------------------------
+
+            // --- Financeiro ---
+            'financial-entries.view.own',
+            'financial-entries.view.any',
+            'financial-entries.create',
+            'financial-entries.update',
+            'financial-entries.delete',
+            'financial-accounts.view',
+            'financial-accounts.manage',
+            'chart-of-accounts.view',
+            'chart-of-accounts.manage',
+            'reports.dre.view',
+            'reports.cash-flow.view',
+            'acquirer-settlements.view',
+            'acquirer-settlements.manage',
+            'client-account.view.own',
+            'client-account.view.any',
+            'client-account.manage',
+
+            // --- Fiscal ---
+            'fiscal-documents.view',
+            'fiscal-documents.issue',
+            'fiscal-documents.cancel',
+            'fiscal-settings.manage',
+
+            // --- Comercial (comissão, pacotes de serviço, lista de preços) ---
+            'commissions.view.own',
+            'commissions.view.any',
+            'commissions.rule.manage',
+            'service-packages.view',
+            'service-packages.manage',
+            'price-lists.view',
+            'price-lists.manage',
+
+            // --- Clínico (protocolos e modelos administrativos, não o ato clínico em si) ---
+            'vaccine-protocols.view',
+            'vaccine-protocols.manage',
+            'exam-templates.view',
+            'exam-templates.manage',
+            'document-templates.view',
+            'document-templates.manage',
+            'hospitalization-boxes.view',
+            'hospitalization-boxes.manage',
+
+            // --- CRM ---
+            'crm.campaign.send',
+            'crm.campaign.manage',
+            'crm.segment.manage',
+            // Novas nesta rodada (docs/gap-simplesvet/specs/17-crm-mensageria-spec.md +
+            // 25-paineis-operacionais-spec.md): `clients.contact.view-bulk` unifica o que as
+            // duas specs propuseram com nomes diferentes (`crm.contacts.view-bulk` em 17,
+            // `clients.contact.view-bulk` em 25) — um nome só, para não duplicar a mesma regra.
+            'crm.templates.manage',
+            'crm.automations.manage',
+            'clients.contact.view-bulk',
+
+            // --- BI ---
+            'bi.view.own',
+            'bi.view.any',
+
+            // --- Agenda / Escala (item 21) ---
+            'agenda.view.own',
+            'agenda.view.any',
+            'agenda.manage',
+            'service-areas.view',
+            'service-areas.manage',
+
+            // --- Cadastros configuráveis (item 23) ---
+            'catalog.manage',
+
+            // --- Repasse a parceiro terceiro (item 09, achado desta passada final — não
+            // havia permissão própria; ver docs/gap-simplesvet/contratos/09-contrato-api.md) ---
+            'partner-payouts.manage',
+
+            // --- Importação de dados (item 26) ---
+            'data.import',
+
+            // --- Auditoria / impersonação (item 22) ---
+            'audit-log.view.any',
+            'impersonation.manage',
         ];
 
         // Create all permissions for the 'web' guard
@@ -229,6 +316,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'video-consultations.create', 'video-consultations.join',
         ]);
 
+        // Tutor — vê o próprio saldo/conta-cliente e as próprias comissões nunca fazem sentido
+        // (comissão é de quem presta serviço), então só `client-account.view.own` entra aqui.
+        $tutor->givePermissionTo(['client-account.view.own']);
+
         // 2. Vet Freelancer
         $vetFreelancer = Role::findOrCreate('vet_freelancer', 'web');
         $vetFreelancer->syncPermissions([
@@ -254,6 +345,41 @@ class RolesAndPermissionsSeeder extends Seeder
             'professional.clients.view', 'professional.clients.manage',
             'video-consultations.create', 'video-consultations.join', 'video-consultations.manage',
             'reminders.view.own', 'reminders.manage',
+        ]);
+
+        // Vet freelancer opera sozinho: escopo `.own`/`.manage` (não há organização com outros
+        // sócios/colaboradores acima dele) — mesma régua administrativa do `clinic_owner`, mas
+        // sem os escopos `.any` que só fazem sentido com equipe.
+        $vetFreelancer->givePermissionTo([
+            // Vet volante é dono do próprio estoque/catálogo (consolidação de `inventory.*`,
+            // achado desta passada: `inventory.*` nunca tinha sido concedida a este papel,
+            // gap que só não doeu porque a rota nunca teve `permission:...` até agora).
+            'products.view', 'products.create', 'products.update', 'products.delete',
+            'financial-entries.view.own', 'financial-entries.create', 'financial-entries.update', 'financial-entries.delete',
+            'financial-accounts.view', 'financial-accounts.manage',
+            'chart-of-accounts.view', 'chart-of-accounts.manage',
+            'reports.dre.view', 'reports.cash-flow.view',
+            'acquirer-settlements.view', 'acquirer-settlements.manage',
+            'client-account.view.own', 'client-account.manage',
+            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage',
+            'commissions.view.own', 'commissions.rule.manage',
+            'service-packages.view', 'service-packages.manage',
+            'price-lists.view', 'price-lists.manage',
+            'vaccine-protocols.view', 'vaccine-protocols.manage',
+            'exam-templates.view', 'exam-templates.manage',
+            'document-templates.view', 'document-templates.manage',
+            'crm.campaign.send', 'crm.campaign.manage', 'crm.segment.manage',
+            'crm.templates.manage', 'crm.automations.manage', 'clients.contact.view-bulk',
+            'bi.view.own',
+            'agenda.view.own', 'agenda.manage',
+            'service-areas.view', 'service-areas.manage',
+            'catalog.manage',
+            'data.import',
+            // Passada final do item 22: `partner-payouts.manage` é nova (achado do contrato
+            // 09 — não existia permissão própria para repasse a parceiro terceiro). Mesma
+            // população de `financial-accounts.manage`/`fiscal-documents.issue` acima (owner,
+            // ou o próprio profissional sem organização).
+            'partner-payouts.manage',
         ]);
 
         // 3. Clinic Owner
@@ -285,7 +411,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'hospitalizations.view.any',
             'surgeries.view.any',
             'services.view', 'services.create', 'services.update', 'services.delete',
-            'inventory.view', 'inventory.create', 'inventory.update', 'inventory.delete',
+            'products.view', 'products.create', 'products.update', 'products.delete',
             'invoices.view.any', 'invoices.create', 'invoices.update', 'invoices.delete',
             'reviews.view', 'reviews.respond',
             'payments.view.any', 'payments.create', 'payments.refund',
@@ -299,6 +425,33 @@ class RolesAndPermissionsSeeder extends Seeder
             'video-consultations.create', 'video-consultations.join', 'video-consultations.manage',
             'reminders.view.own', 'reminders.manage',
             'staff.view', 'staff.create', 'staff.update', 'staff.delete', 'staff.schedules.manage',
+        ]);
+
+        // Dono de clínica é gestão administrativa do negócio — nenhuma das permissões abaixo
+        // é ato clínico (protocolo/modelo é configuração, não a aplicação em um paciente).
+        $clinicOwner->givePermissionTo([
+            'financial-entries.view.any', 'financial-entries.create', 'financial-entries.update', 'financial-entries.delete',
+            'financial-accounts.view', 'financial-accounts.manage',
+            'chart-of-accounts.view', 'chart-of-accounts.manage',
+            'reports.dre.view', 'reports.cash-flow.view',
+            'acquirer-settlements.view', 'acquirer-settlements.manage',
+            'client-account.view.any', 'client-account.manage',
+            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage',
+            'commissions.view.any', 'commissions.rule.manage',
+            'service-packages.view', 'service-packages.manage',
+            'price-lists.view', 'price-lists.manage',
+            'vaccine-protocols.view', 'vaccine-protocols.manage',
+            'exam-templates.view', 'exam-templates.manage',
+            'document-templates.view', 'document-templates.manage',
+            'hospitalization-boxes.view', 'hospitalization-boxes.manage',
+            'crm.campaign.send', 'crm.campaign.manage', 'crm.segment.manage',
+            'crm.templates.manage', 'crm.automations.manage', 'clients.contact.view-bulk',
+            'bi.view.any',
+            'agenda.view.any', 'agenda.manage',
+            'service-areas.view', 'service-areas.manage',
+            'catalog.manage',
+            'data.import',
+            'partner-payouts.manage',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -326,6 +479,33 @@ class RolesAndPermissionsSeeder extends Seeder
             'reminders.view.own', 'reminders.manage',
         ]);
 
+        // Veterinário empregado: só leitura de configuração clínica administrativa e das
+        // próprias comissões/agenda — nunca `.manage`/`.any`, que é papel do dono. As três
+        // permissões `.view`/`.view.any` abaixo são exceção deliberada (achado desta passada
+        // final, specs 04 §Permissões por papel e 11 §Permissões por papel): "ver conta
+        // bancária/forma de pagamento/depósito" e "ver saldo de UM cliente antes de aceitar
+        // fiado" são operação de balcão do dia a dia, abertas a QUALQUER membro ativo — nunca
+        // eram permissão nenhuma porque a rota não tinha `permission:...` até esta rodada.
+        $clinicVet->givePermissionTo([
+            // Só leitura: escolher produto/lote na hora de aplicar vacina/vermífugo (seletor
+            // clínico, docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md item 4)
+            // não é gestão de catálogo — `.create`/`.update`/`.delete` continuam só do dono.
+            'products.view',
+            'commissions.view.own',
+            'service-packages.view',
+            'price-lists.view',
+            'vaccine-protocols.view',
+            'exam-templates.view',
+            'document-templates.view',
+            'hospitalization-boxes.view',
+            'bi.view.own',
+            'agenda.view.own',
+            'service-areas.view',
+            'financial-accounts.view',
+            'acquirer-settlements.view',
+            'client-account.view.any',
+        ]);
+
         // 5. Petshop Owner
         $petshopOwner = Role::findOrCreate('petshop_owner', 'web');
         $petshopOwner->syncPermissions([
@@ -333,7 +513,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'pets.view.any',
             'appointments.view.any', 'appointments.create', 'appointments.update.any', 'appointments.cancel.any',
             'services.view', 'services.create', 'services.update', 'services.delete',
-            'inventory.view', 'inventory.create', 'inventory.update', 'inventory.delete',
+            'products.view', 'products.create', 'products.update', 'products.delete',
             'invoices.view.any', 'invoices.create', 'invoices.update', 'invoices.delete',
             'reviews.view', 'reviews.respond',
             'payments.view.any', 'payments.create', 'payments.refund',
@@ -348,6 +528,31 @@ class RolesAndPermissionsSeeder extends Seeder
             'staff.view', 'staff.create', 'staff.update', 'staff.delete', 'staff.schedules.manage',
         ]);
 
+        // Petshop não pratica ato clínico nem internação — fora os catálogos clínicos
+        // (vaccine-protocols, exam-templates, hospitalization-boxes), a régua administrativa
+        // é a mesma do `clinic_owner`.
+        $petshopOwner->givePermissionTo([
+            'financial-entries.view.any', 'financial-entries.create', 'financial-entries.update', 'financial-entries.delete',
+            'financial-accounts.view', 'financial-accounts.manage',
+            'chart-of-accounts.view', 'chart-of-accounts.manage',
+            'reports.dre.view', 'reports.cash-flow.view',
+            'acquirer-settlements.view', 'acquirer-settlements.manage',
+            'client-account.view.any', 'client-account.manage',
+            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage',
+            'commissions.view.any', 'commissions.rule.manage',
+            'service-packages.view', 'service-packages.manage',
+            'price-lists.view', 'price-lists.manage',
+            'document-templates.view', 'document-templates.manage',
+            'crm.campaign.send', 'crm.campaign.manage', 'crm.segment.manage',
+            'crm.templates.manage', 'crm.automations.manage', 'clients.contact.view-bulk',
+            'bi.view.any',
+            'agenda.view.any', 'agenda.manage',
+            'service-areas.view', 'service-areas.manage',
+            'catalog.manage',
+            'data.import',
+            'partner-payouts.manage',
+        ]);
+
         // 6. Petshop Staff
         $petshopStaff = Role::findOrCreate('petshop_staff', 'web');
         $petshopStaff->syncPermissions([
@@ -355,7 +560,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'pets.view.any',
             'appointments.view.any', 'appointments.create', 'appointments.update.own',
             'services.view',
-            'inventory.view', 'inventory.update',
+            // `products.view`/`products.update` = equivalente exato de `inventory.view`/
+            // `inventory.update` que este papel já tinha antes da consolidação — não é
+            // concessão nova. `products.update` também expõe custo/markup no `ProductResource`
+            // (ver `canSeeCost()`), o que já era verdade em `InventoryController::show/update`
+            // (dump completo do model, `cost_price` incluso) antes desta migração.
+            'products.view', 'products.update',
             'invoices.view.any', 'invoices.create',
             'reviews.view',
             'documents.view.own',
@@ -363,6 +573,20 @@ class RolesAndPermissionsSeeder extends Seeder
             'messages.view.own', 'messages.send',
             'professional.profile.view', 'professional.dashboard',
             'professional.clients.view',
+        ]);
+
+        // Mesma exceção deliberada do `clinic_vet` acima (specs 04/11 §Permissões por papel):
+        // ver conta/forma de pagamento/depósito e o saldo de UM cliente é operação de balcão,
+        // e é o `RECEPTIONIST`/`ASSISTANT` (ambos mapeados para `petshop_staff`) quem mais usa
+        // isso no dia a dia — precisa ver o limite antes de aceitar fiado.
+        $petshopStaff->givePermissionTo([
+            'commissions.view.own',
+            'service-packages.view',
+            'price-lists.view',
+            'agenda.view.own',
+            'financial-accounts.view',
+            'acquirer-settlements.view',
+            'client-account.view.any',
         ]);
 
         // 7. Admin
@@ -390,6 +614,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'documents.view.any', 'documents.verify', 'documents.reject',
             'reports.view.any', 'reports.download',
             'subscriptions.view.any',
+        ]);
+
+        // Admin de plataforma (2pets), não dono de organização — só oversight, nunca gestão
+        // financeira/comercial de uma clínica específica.
+        $admin->givePermissionTo([
+            'audit-log.view.any',
+            'impersonation.manage',
         ]);
 
         // 8. Super Admin — gets ALL permissions

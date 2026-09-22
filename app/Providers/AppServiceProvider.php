@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Contracts\FiscalProviderGateway;
 use App\Contracts\PaymentGatewayInterface;
 use App\Events\MedicalRecordFinalized;
 use App\Events\ReviewCreated;
+use App\Listeners\Notifications\DispatchFallbackPushNotification;
+use App\Listeners\SendAppointmentDepositNotification;
 use App\Listeners\SendAppointmentNotification;
 use App\Listeners\SendReviewInviteNotification;
 use App\Listeners\SendReviewNotification;
@@ -12,18 +15,29 @@ use App\Models\Breed;
 use App\Models\DietaryRestriction;
 use App\Models\FoodAllergy;
 use App\Models\FoodBrand;
+use App\Models\ImmunizationProduct;
+use App\Models\OrganizationMember;
 use App\Models\Pathology;
 use App\Models\Professional;
 use App\Models\Service;
 use App\Models\Specialty;
 use App\Models\User;
-use App\Models\VaccineCatalog;
+use App\Observers\Organization\OrganizationMemberRoleReconciliationObserver;
+use App\Observers\Organization\TeamSpecialtyMembershipObserver;
+use App\Observers\Organization\TeamSpecialtyProfessionalObserver;
 use App\Observers\ProfessionalSpecialtyObserver;
 use App\Observers\ReferenceData\ReferenceDataCacheObserver;
 use App\Observers\Search\ProfessionalSearchCacheObserver;
+use App\Services\Crm\Automation\BirthdayTriggerResolver;
+use App\Services\Crm\Automation\DewormingDueTriggerResolver;
+use App\Services\Crm\Automation\InactiveClientTriggerResolver;
+use App\Services\Crm\Automation\MessageAutomationTriggerResolverRegistry;
+use App\Services\Crm\Automation\PostAppointmentFollowupTriggerResolver;
+use App\Services\Crm\Automation\VaccineTriggerResolver;
 use App\Services\Payment\MercadoPagoService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -39,7 +53,16 @@ class AppServiceProvider extends ServiceProvider
      */
     private const REFERENCE_DATA_MODELS = [
         Pathology::class,
-        VaccineCatalog::class,
+        // `ImmunizationProduct` substitui `VaccineCatalog` como fonte do endpoint público de
+        // catálogo de vacinas (contrato docs/gap-simplesvet/contratos/13-contrato-api.md) —
+        // `VaccineCatalog` é legado (@deprecated), não é mais lido por `MasterDataController`,
+        // então não precisa mais de observer aqui. Não observamos `ImmunizationProductSpecies`
+        // pelo mesmo motivo que `VaccineCatalog` nunca teve CRUD: o catálogo global
+        // (`organization_id = null`) só muda por seeder/migration, nunca por API — o observer
+        // genérico bumpa a versão pela TABELA do model salvo (`getTable()`), então observar o
+        // pivô bumparia a chave de `immunization_product_species`, não a de `immunization_products`
+        // que este cache realmente usa.
+        ImmunizationProduct::class,
         FoodBrand::class,
         Specialty::class,
         FoodAllergy::class,
@@ -61,6 +84,23 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(PaymentGatewayInterface::class, MercadoPagoService::class);
+
+        // docs/gap-simplesvet/specs/05-emissao-fiscal-nfe-nfce-nfse-spec.md: driver padrão do
+        // ambiente é o fake/log — sem credencial configurada, a emissão "funciona" (grava com
+        // status simulado, loga o payload). Trocar para um provedor real é só mudar este bind.
+        $this->app->bind(FiscalProviderGateway::class, \App\Services\Fiscal\LogFiscalProviderGateway::class);
+
+        // docs/gap-simplesvet/specs/17-crm-mensageria-spec.md: um resolvedor por gatilho de
+        // automação (OCP) — novo gatilho = nova classe implementando
+        // `MessageAutomationTriggerResolver` + uma linha aqui, nunca um `match` crescendo em
+        // `AutomationRunner`.
+        $this->app->singleton(MessageAutomationTriggerResolverRegistry::class, fn ($app) => new MessageAutomationTriggerResolverRegistry([
+            $app->make(VaccineTriggerResolver::class),
+            $app->make(DewormingDueTriggerResolver::class),
+            $app->make(BirthdayTriggerResolver::class),
+            $app->make(PostAppointmentFollowupTriggerResolver::class),
+            $app->make(InactiveClientTriggerResolver::class),
+        ]));
     }
 
     /**
@@ -69,12 +109,24 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Event::subscribe(SendAppointmentNotification::class);
+        Event::subscribe(SendAppointmentDepositNotification::class);
         Event::listen(ReviewCreated::class, SendReviewNotification::class);
         Event::listen(MedicalRecordFinalized::class, SendReviewInviteNotification::class);
 
+        // Fase 4 do fluxo de agendamento: push para TODA notificação já existente
+        // (`App\Notifications\*`) sem editar nenhuma delas — ver o docblock da classe.
+        Event::listen(NotificationSent::class, DispatchFallbackPushNotification::class);
+
         $this->registerSearchCacheObservers();
+        $this->registerTeamSpecialtyObservers();
         $this->registerReferenceDataCacheObservers();
         $this->registerRateLimiters();
+
+        // Item 22 — invariante do model: todo `OrganizationMember` criado/alterado
+        // reconcilia o papel Spatie do usuário a partir do cargo, sem depender de cada
+        // write path lembrar de chamar `UserRoleReconciler` manualmente (ver docblock do
+        // observer).
+        OrganizationMember::observe(OrganizationMemberRoleReconciliationObserver::class);
     }
 
     /**
@@ -129,6 +181,17 @@ class AppServiceProvider extends ServiceProvider
         Professional::observe(ProfessionalSearchCacheObserver::class);
         Professional::observe(ProfessionalSpecialtyObserver::class);
         Service::observe(ProfessionalSearchCacheObserver::class);
+    }
+
+    /**
+     * Fase 7 do fluxo de agendamento — mantém `professionals.team_specialties`
+     * (agregado de busca da equipe) em sincronia com `organization_members`/
+     * `professionals.specialties`. Ver `TeamSpecialtyAggregator`.
+     */
+    private function registerTeamSpecialtyObservers(): void
+    {
+        OrganizationMember::observe(TeamSpecialtyMembershipObserver::class);
+        Professional::observe(TeamSpecialtyProfessionalObserver::class);
     }
 
     private function registerReferenceDataCacheObservers(): void

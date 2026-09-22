@@ -21,7 +21,7 @@ use App\Models\User;
  * `organization_id` recém-adicionadas às tabelas comerciais (migration
  * `2026_09_14_100000_add_organization_id_to_commercial_tables`) NÃO servem para isto ainda:
  * nenhum controller de escrita (`AppointmentController`, `InvoiceController`, `ServiceController`,
- * `InventoryController`) as preenche na criação, então uma consulta criada hoje por um
+ * `ProductController`) as preenche na criação, então uma consulta criada hoje por um
  * `clinic_vet` fica com `organization_id` nulo até existir um backfill contínuo. Agregar pela
  * lista de `user_id` de `organization_members` funciona para dado antigo e novo igualmente,
  * por isso é o caminho escolhido aqui em vez de `WHERE organization_id = ?`.

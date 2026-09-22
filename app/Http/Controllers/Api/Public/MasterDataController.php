@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Api\Public;
 
+use App\Enums\ImmunizationGroup;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ImmunizationProductResource;
 use App\Models\DietaryRestriction;
 use App\Models\FoodAllergy;
 use App\Models\FoodBrand;
+use App\Models\ImmunizationProduct;
 use App\Models\Pathology;
 use App\Models\Specialty;
-use App\Models\VaccineCatalog;
 use App\Services\ReferenceData\ReferenceDataCacheService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,17 +43,33 @@ class MasterDataController extends Controller
         return response()->json($pathologies);
     }
 
+    /**
+     * Lê de `immunization_products` (`group = vaccine`, catálogo global) — substitui o
+     * legado `vaccine_catalog` (contrato `docs/gap-simplesvet/contratos/13-contrato-api.md`).
+     * `vaccine_catalog`/`VaccineCatalog` seguem existindo só para histórico, não são mais
+     * lidos por este endpoint.
+     */
     public function vaccineCatalog(Request $request): JsonResponse
     {
         $species = $request->input('species');
 
         $vaccines = $this->referenceDataCacheService->remember(
-            (new VaccineCatalog)->getTable(),
-            ['species' => $species],
-            fn () => VaccineCatalog::query()
-                ->when($species !== null, fn ($query) => $query->where('species', $species))
+            (new ImmunizationProduct)->getTable(),
+            ['group' => ImmunizationGroup::VACCINE->value, 'species' => $species],
+            fn () => ImmunizationProduct::query()
+                ->where('group', ImmunizationGroup::VACCINE)
+                ->whereNull('organization_id')
+                ->with('speciesLinks')
+                ->when(
+                    $species !== null,
+                    fn ($query) => $query->whereHas(
+                        'speciesLinks',
+                        fn ($speciesQuery) => $speciesQuery->where('species', $species),
+                    ),
+                )
                 ->orderBy('name')
-                ->get(),
+                ->get()
+                ->map(fn (ImmunizationProduct $product) => (new ImmunizationProductResource($product))->resolve()),
         );
 
         return response()->json($vaccines);

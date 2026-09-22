@@ -10,7 +10,9 @@ use App\Exceptions\Invoice\AdvancePaymentNotAllowedException;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\User;
+use App\Services\Commercial\InvoicePaymentCashRecorder;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * `POST professional/invoices/{id}/advance-payment` — contrato
@@ -22,6 +24,8 @@ use Carbon\Carbon;
  */
 final class AdvancePaymentService
 {
+    public function __construct(private readonly InvoicePaymentCashRecorder $cashRecorder) {}
+
     /**
      * Nunca reaproveita um `Payment` existente (cada adiantamento é um evento real
      * distinto) e nunca fecha a fatura sozinho — ela continua `pending` até o acerto
@@ -38,6 +42,25 @@ final class AdvancePaymentService
     ): Payment {
         $this->assertAllowed($invoice);
 
+        return DB::transaction(function () use ($invoice, $recordedBy, $method, $amount, $paidAt, $notes): Payment {
+            $payment = $this->createPayment($invoice, $recordedBy, $method, $amount, $paidAt, $notes);
+
+            // Adiantamento recebido no balcão entra no caixa aberto de quem recebeu (doc
+            // gap-simplesvet/01). Sem caixa aberto, nada muda neste fluxo.
+            $this->cashRecorder->record($payment, $recordedBy);
+
+            return $payment;
+        });
+    }
+
+    private function createPayment(
+        Invoice $invoice,
+        User $recordedBy,
+        PaymentMethod $method,
+        float $amount,
+        Carbon $paidAt,
+        ?string $notes,
+    ): Payment {
         return Payment::create([
             'invoice_id' => $invoice->id,
             'user_id' => $invoice->client_id,

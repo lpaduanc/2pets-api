@@ -4,7 +4,9 @@ namespace App\Http\Requests\Commercial;
 
 use App\Enums\ProductPurpose;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Fluent;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Contrato docs/gap-simplesvet/08-produtos-precificacao-lista-precos.md.
@@ -43,6 +45,10 @@ class StoreProductRequest extends FormRequest
             'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
             'category_id' => ['nullable', 'integer', 'exists:product_categories,id'],
 
+            // Seletor clínico (docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md
+            // item 4): liga este produto à identidade clínica do calendário (vacina/vermífugo).
+            'immunization_product_id' => ['nullable', 'integer', 'exists:immunization_products,id'],
+
             'price' => ['required_without_all:markup_percent', 'nullable', 'numeric', 'min:0', 'max:9999999.99'],
             'average_cost' => ['nullable', 'numeric', 'min:0'],
             'last_cost' => ['nullable', 'numeric', 'min:0'],
@@ -75,6 +81,18 @@ class StoreProductRequest extends FormRequest
             'ncm.regex' => 'NCM deve ter exatamente 8 dígitos.',
             'cest.regex' => 'CEST deve ter exatamente 7 dígitos.',
             'max_stock.gte' => 'Estoque máximo não pode ser menor que o mínimo.',
+            'track_batches.accepted' => 'Produto ligado a uma vacina/vermífugo do calendário precisa controlar lote.',
         ];
+    }
+
+    /**
+     * Regra de negócio 3 da spec de consolidação: todo produto que representa uma identidade
+     * clínica precisa rastrear lote — o lote aplicado entra na carteira do pet.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->sometimes('track_batches', ['accepted'], function (Fluent $data): bool {
+            return filled($data->get('immunization_product_id'));
+        });
     }
 }

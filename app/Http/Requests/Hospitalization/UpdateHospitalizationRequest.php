@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Hospitalization;
 
+use App\Enums\HospitalizationRiskLevel;
 use App\Enums\HospitalizationStatus;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -39,6 +40,8 @@ class UpdateHospitalizationRequest extends FormRequest
             'reason' => ['sometimes', 'required', 'string', 'max:255'],
             'status' => ['sometimes', 'required', Rule::enum(HospitalizationStatus::class)],
             'discharge_summary' => ['nullable', 'string'],
+            'box_id' => ['nullable', 'integer', 'exists:hospitalization_boxes,id'],
+            'risk_level' => ['nullable', Rule::in(HospitalizationRiskLevel::values())],
             'medications' => ['nullable', 'array'],
         ];
     }

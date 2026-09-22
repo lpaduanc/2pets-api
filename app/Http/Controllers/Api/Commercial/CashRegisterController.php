@@ -10,6 +10,8 @@ use App\Http\Requests\Commercial\StoreCashMovementRequest;
 use App\Http\Resources\Commercial\CashRegisterMovementResource;
 use App\Http\Resources\Commercial\CashRegisterResource;
 use App\Models\CashRegister;
+use App\Models\FinancialAccount;
+use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Services\Commercial\CashRegisterService;
 use App\Services\Commercial\CommercialScopeResolver;
@@ -18,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Caixa — contrato docs/gap-simplesvet/01-caixa-pdv.md.
@@ -117,6 +120,8 @@ class CashRegisterController extends Controller
     public function storeMovement(StoreCashMovementRequest $request, int $id): JsonResponse
     {
         $register = $this->findForUser($request->user(), $id, 'operate');
+        $this->assertInScope($request->user(), PaymentMethod::class, 'payment_method_id', $request->input('payment_method_id'));
+        $this->assertInScope($request->user(), FinancialAccount::class, 'account_id', $request->input('account_id'));
 
         $movement = $this->cashRegisters->recordMovement(
             $register,
@@ -190,6 +195,23 @@ class CashRegisterController extends Controller
         }
 
         return $normalized;
+    }
+
+    /**
+     * `exists:` do Form Request só prova que o id existe em ALGUMA clínica; aqui ele tem que
+     * ser desta. Sem isto, o movimento cairia na coluna de uma forma de outra clínica.
+     *
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $model
+     */
+    private function assertInScope(User $user, string $model, string $field, mixed $id): void
+    {
+        if ($id === null || $id === '') {
+            return;
+        }
+
+        if (! $this->scope->scopeQuery($model::query(), $user)->whereKey((int) $id)->exists()) {
+            throw ValidationException::withMessages([$field => 'Registro não encontrado nesta clínica.']);
+        }
     }
 
     private function findForUser(User $user, int $id, string $ability): CashRegister

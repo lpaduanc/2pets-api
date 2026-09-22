@@ -17,11 +17,17 @@ enum PaymentPurpose: string
     case SETTLEMENT = 'settlement';
     case ADVANCE = 'advance';
 
+    // Fase 6 do fluxo de agendamento: sinal cobrado do TUTOR na confirmação do agendamento
+    // (`AppointmentDepositService`), sem `invoice_id` — nasce antes de qualquer fatura
+    // existir (a fatura só nasce no início do atendimento, `ConsultationController::start`).
+    case DEPOSIT = 'deposit';
+
     public function label(): string
     {
         return match ($this) {
             self::SETTLEMENT => 'Acerto final',
             self::ADVANCE => 'Adiantamento',
+            self::DEPOSIT => 'Sinal',
         };
     }
 

@@ -89,6 +89,7 @@ final class NewPatientAppointmentService
             'appointment_time' => $data['appointment_time'],
             'duration' => $data['duration'] ?? self::DEFAULT_DURATION_MINUTES,
             'type' => $data['type'],
+            'appointment_type_id' => $data['appointment_type_id'] ?? null,
             'status' => AppointmentStatus::SCHEDULED->value,
             'reason' => $data['reason'] ?? null,
             'booking_source' => BookingSource::PROFESSIONAL->value,

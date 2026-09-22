@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\ServiceCategory;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Commercial\StoreServiceRequest;
+use App\Http\Requests\Commercial\UpdateServiceRequest;
+use App\Models\ProductGroup;
 use App\Models\Service;
+use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
 
 class ServiceController extends Controller
 {
+    public function __construct(private readonly CommercialScopeResolver $scope) {}
+
     public function index(Request $request)
     {
         $query = Service::where('professional_id', $request->user()->id);
@@ -22,28 +25,10 @@ class ServiceController extends Controller
         return response()->json($services);
     }
 
-    public function store(Request $request)
+    public function store(StoreServiceRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            // Achado ao migrar docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md:
-            // esta validação só aceitava 5 das 15 categorias reais, enquanto o CHECK do banco
-            // (migration 2026_09_22_100000) já tinha sido alinhado a `ServiceCategory` — ou
-            // seja, nenhum profissional conseguia cadastrar `imaging`/`laboratory`/etc. por
-            // aqui mesmo depois do banco aceitar. Corrigido junto por ser o mesmo bug de
-            // taxonomia paralela que motivou esta tarefa.
-            'category' => ['required', Rule::enum(ServiceCategory::class)],
-            'duration' => 'required|integer',
-            'price' => 'required|numeric',
-            'active' => 'boolean',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $data = $validator->validated();
+        $data = $request->validated();
+        $this->assertGroupIsVisible($request, $data['product_group_id'] ?? null);
         $data['professional_id'] = $request->user()->id;
         // Contrato docs/atendimento-veterinario/09-faturamento-do-atendimento.md §12.6.
         $data['organization_id'] = $request->user()->activeOrganizationId();
@@ -60,24 +45,17 @@ class ServiceController extends Controller
         return response()->json($service);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateServiceRequest $request, $id)
     {
         $service = Service::where('professional_id', $request->user()->id)->findOrFail($id);
 
-        $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'category' => ['sometimes', 'required', Rule::enum(ServiceCategory::class)],
-            'duration' => 'sometimes|required|integer',
-            'price' => 'sometimes|required|numeric',
-            'active' => 'boolean',
-        ]);
+        $data = $request->validated();
 
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+        if (array_key_exists('product_group_id', $data)) {
+            $this->assertGroupIsVisible($request, $data['product_group_id']);
         }
 
-        $service->update($validator->validated());
+        $service->update($data);
 
         return response()->json(['message' => 'Service updated', 'service' => $service]);
     }
@@ -88,5 +66,23 @@ class ServiceController extends Controller
         $service->delete();
 
         return response()->json(['message' => 'Service removed']);
+    }
+
+    /**
+     * `exists:product_groups,id` só garante que o grupo existe, não que é visível para quem
+     * chamou — sem este teste, um `product_group_id` de outra clínica entraria no cadastro do
+     * serviço (mesma armadilha corrigida em `ProductGroupController::assertParentIsVisible`).
+     */
+    private function assertGroupIsVisible(Request $request, ?int $groupId): void
+    {
+        if ($groupId === null) {
+            return;
+        }
+
+        $visible = $this->scope->scopeQuery(ProductGroup::query(), $request->user())
+            ->whereKey($groupId)
+            ->exists();
+
+        abort_unless($visible, 422, 'Grupo inválido.');
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\DataTransferObjects\VetAccessRequestData;
 use App\Enums\MedicalRecordStatus;
+use App\Enums\PetVetAccessOrigin;
 use App\Enums\VetAccessLevel;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PetVetAccess\AcceptVetAccessRequest;
@@ -184,15 +185,32 @@ class PetVetAccessController extends Controller
     }
 
     /**
-     * Tutor lista suas solicitações pendentes.
+     * Tutor lista suas solicitações pendentes. `?origin=` filtra pela origem do pedido
+     * (`PetVetAccessOrigin`) — usado por `pendingLinksForTutor()` para a vitrine dedicada de
+     * "vet me cadastrou como paciente novo" sem duplicar a query.
      */
     public function pendingForTutor(Request $request): AnonymousResourceCollection
     {
-        $user = $request->user();
+        return $this->pendingRequestsResource($request->user(), $request->query('origin'));
+    }
 
+    /**
+     * `GET me/pending-links` — contrato
+     * `docs/gap-simplesvet/specs/19-portal-do-cliente-spec.md` item 3: mesma lista de
+     * `pendingForTutor()`, pré-filtrada para pedidos que nasceram de um profissional
+     * cadastrando o tutor como paciente novo, sem ele ter solicitado nada.
+     */
+    public function pendingLinksForTutor(Request $request): AnonymousResourceCollection
+    {
+        return $this->pendingRequestsResource($request->user(), PetVetAccessOrigin::NEW_PATIENT_PENDING_REQUEST->value);
+    }
+
+    private function pendingRequestsResource(User $tutor, ?string $origin): AnonymousResourceCollection
+    {
         $accesses = PetVetAccess::with(['pet', ...PetVetAccess::PARTICIPANT_RELATIONS])
-            ->whereHas('pet', fn ($q) => $q->where('user_id', $user->id))
+            ->whereHas('pet', fn ($q) => $q->where('user_id', $tutor->id))
             ->pending()
+            ->when($origin !== null, fn ($q) => $q->where('origin', $origin))
             ->orderByDesc('requested_at')
             ->paginate(20);
 

@@ -6,6 +6,7 @@ use App\Enums\ProfessionalType;
 use App\Models\OrganizationMember;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Spatie\Permission\Models\Role;
 
 /**
  * Recalcula os papéis Spatie "profissionais" de uma pessoa a partir das duas fontes
@@ -49,7 +50,29 @@ final class UserRoleReconciler
             ->unique()
             ->values();
 
-        $user->syncRoles($finalRoles->all());
+        $user->syncRoles($this->onlyRolesRegisteredInCatalog($finalRoles)->all());
+    }
+
+    /**
+     * Um papel que ainda não existe em `roles` (catálogo do `RolesAndPermissionsSeeder`, que
+     * SEMPRE roda antes de qualquer reconciliação real em produção) não pode ser sincronizado
+     * — `syncRoles()` estouraria `RoleDoesNotExist`. Em produção este filtro nunca remove nada;
+     * o efeito só aparece em teste/fixture que cria `OrganizationMember` sem seedar o catálogo,
+     * onde reconciliar vira no-op em vez de quebrar a criação do registro (ver observer em
+     * `App\Observers\Organization\OrganizationMemberRoleReconciliationObserver`).
+     *
+     * @return Collection<int, string>
+     */
+    private function onlyRolesRegisteredInCatalog(Collection $roleNames): Collection
+    {
+        if ($roleNames->isEmpty()) {
+            return $roleNames;
+        }
+
+        return Role::query()
+            ->where('guard_name', 'web')
+            ->whereIn('name', $roleNames->all())
+            ->pluck('name');
     }
 
     /**

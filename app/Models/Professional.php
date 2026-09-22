@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Contracts\HasDepositSettings;
 use App\DataTransferObjects\Cnpj;
 use App\Enums\ProfessionalType;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Professional extends Model
+class Professional extends Model implements HasDepositSettings
 {
     use HasFactory, SoftDeletes;
 
@@ -20,12 +21,23 @@ class Professional extends Model
         'business_name',
         'cnpj',
         'specialties',
+        // Fase 7 do fluxo de agendamento — especialidades da EQUIPE (membros bookáveis e
+        // ativos da organização que este `Professional` possui), espelhadas por
+        // `App\Services\Organization\TeamSpecialtyAggregator`. Só é preenchida para quem
+        // é dono de organização; `null` para profissional avulso/membro comum.
+        'team_specialties',
         'opening_hours',
         'closing_hours',
         'working_days',
         'description',
         'crmv',
         'crmv_state',
+        // Perfil legal (spec 15) — título de como assina, registro no MAPA (só relevante
+        // para quem emite documento de trânsito/sanidade animal, nunca obrigatório para
+        // prescrição comum) e caminho da assinatura escaneada (storage privado).
+        'title',
+        'mapa_registration',
+        'signature_image_path',
         // Badge "verificado" (CLAUDE.md §2) — só é setado de verdade via
         // `Professional::where(...)->update()` no AdminController::verifyDocument, que é uma
         // escrita em massa via query builder e por isso ignora $fillable. Ainda assim precisa
@@ -41,6 +53,8 @@ class Professional extends Model
         'technical_responsible_crmv',
         'technical_responsible_crmv_state',
         'service_radius_km',
+        'deposit_enabled',
+        'deposit_percentage',
         'services_offered',
         'products_sold',
         'equipment',
@@ -79,6 +93,7 @@ class Professional extends Model
     protected $casts = [
         'professional_type' => ProfessionalType::class,
         'specialties' => 'array',
+        'team_specialties' => 'array',
         'working_days' => 'array',
         'courses' => 'array',
         'services_offered' => 'array',
@@ -88,6 +103,8 @@ class Professional extends Model
         'graduation_year' => 'integer',
         'experience_years' => 'integer',
         'service_radius_km' => 'integer',
+        'deposit_enabled' => 'boolean',
+        'deposit_percentage' => 'decimal:2',
         'average_rating' => 'decimal:2',
         'total_reviews' => 'integer',
         'is_featured' => 'boolean',
@@ -161,5 +178,15 @@ class Professional extends Model
     public function catalogSpecialties(): BelongsToMany
     {
         return $this->belongsToMany(Specialty::class, 'professional_specialty')->withTimestamps();
+    }
+
+    public function depositEnabled(): bool
+    {
+        return (bool) $this->deposit_enabled;
+    }
+
+    public function depositPercentage(): ?float
+    {
+        return $this->deposit_percentage === null ? null : (float) $this->deposit_percentage;
     }
 }

@@ -25,6 +25,10 @@ class LgpdController extends Controller
         'consent_sms_transactional',
         'consent_whatsapp_transactional',
         'consent_analytics',
+        // docs/gap-simplesvet/specs/17-crm-mensageria-spec.md: versão "campanha" (marketing)
+        // de SMS/WhatsApp, separada da transacional acima — default false (opt-in).
+        'consent_sms_marketing',
+        'consent_whatsapp_marketing',
     ];
 
     public function exportData(Request $request): JsonResponse
@@ -177,6 +181,8 @@ class LgpdController extends Controller
             'consent_sms_transactional' => (bool) $user->consent_sms_transactional,
             'consent_whatsapp_transactional' => (bool) $user->consent_whatsapp_transactional,
             'consent_analytics' => (bool) $user->consent_analytics,
+            'consent_sms_marketing' => (bool) $user->consent_sms_marketing,
+            'consent_whatsapp_marketing' => (bool) $user->consent_whatsapp_marketing,
         ];
     }
 

@@ -9,8 +9,10 @@ use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\RegistrationContinuationToken;
 use App\Models\User;
+use App\Notifications\PetVetAccessRequested;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -82,6 +84,56 @@ class NewPatientAppointmentTest extends TestCase
             'professional_id' => $this->professional->id,
             'client_id' => $tutor->id,
         ]);
+    }
+
+    /**
+     * Achado 2 de `docs/gap-simplesvet/specs/19-portal-do-cliente-spec.md`: tutor com conta
+     * ATIVA e reivindicada não pode ganhar acesso `write`/`accepted` automático só porque um
+     * vet digitou o CPF dele num agendamento de paciente novo — vira solicitação `pending`
+     * que ele aprova/nega, como qualquer outro pedido de `PetVetAccess`.
+     */
+    public function test_existing_active_tutor_gets_pending_access_request_instead_of_automatic_grant(): void
+    {
+        Notification::fake();
+
+        $existingTutor = User::factory()->tutor()->create(['cpf' => '39053344705']);
+        $existingPet = Pet::factory()->create(['user_id' => $existingTutor->id, 'name' => 'Rex', 'species' => 'dog']);
+
+        $payload = $this->basePayload();
+        $payload['pet_name'] = 'Rex';
+        $payload['existing_pet_id'] = $existingPet->id;
+
+        $this->postJson('/api/professional/appointments/new-patient', $payload)->assertCreated();
+
+        $access = PetVetAccess::where('pet_id', $existingPet->id)->firstOrFail();
+        $this->assertSame($this->professional->id, $access->veterinarian_id);
+        $this->assertSame('pending', $access->status);
+        $this->assertFalse($access->is_active);
+        $this->assertNull($access->access_level);
+        $this->assertSame(PetVetAccessOrigin::NEW_PATIENT_PENDING_REQUEST, $access->origin);
+
+        Notification::assertSentTo($existingTutor, PetVetAccessRequested::class);
+    }
+
+    /**
+     * Não-regressão explícita: tutor com CPF DESCONHECIDO (nasce `isUnclaimed()`) continua
+     * recebendo o grant automático de sempre — só o caminho de tutor já ativo mudou.
+     */
+    public function test_unknown_tutor_still_gets_automatic_accepted_grant(): void
+    {
+        $this->postJson('/api/professional/appointments/new-patient', $this->basePayload())
+            ->assertCreated();
+
+        $tutor = User::where('cpf', '39053344705')->firstOrFail();
+        $this->assertTrue($tutor->isUnclaimed());
+
+        $pet = Pet::where('user_id', $tutor->id)->firstOrFail();
+        $access = PetVetAccess::where('pet_id', $pet->id)->firstOrFail();
+
+        $this->assertSame('accepted', $access->status);
+        $this->assertTrue($access->is_active);
+        $this->assertSame('write', $access->access_level->value);
+        $this->assertSame(PetVetAccessOrigin::NEW_PATIENT_SELF_GRANT, $access->origin);
     }
 
     public function test_reuses_existing_tutor_by_cpf_instead_of_duplicating(): void

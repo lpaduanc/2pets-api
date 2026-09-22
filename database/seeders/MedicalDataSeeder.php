@@ -2,18 +2,23 @@
 
 namespace Database\Seeders;
 
+use App\Enums\ProductPurpose;
+use App\Enums\StockMovementType;
 use App\Models\Appointment;
 use App\Models\Hospitalization;
 use App\Models\HospitalizationProgressNote;
-use App\Models\Inventory;
 use App\Models\Invoice;
 use App\Models\MedicalRecord;
 use App\Models\Pet;
 use App\Models\Prescription;
+use App\Models\Product;
+use App\Models\ProductGroup;
 use App\Models\Service;
+use App\Models\Supplier;
 use App\Models\Surgery;
 use App\Models\User;
 use App\Models\Vaccination;
+use App\Services\Stock\StockService;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
@@ -231,32 +236,61 @@ class MedicalDataSeeder extends Seeder
             'active' => true,
         ]);
 
-        // Create Inventory
-        $amoxicillin = Inventory::create([
+        // Create Products (estoque consolidado — docs/gap-simplesvet/specs/
+        // produtos-estoque-consolidado-spec.md)
+        $medicationGroupId = ProductGroup::firstOrCreate(
+            ['professional_id' => $professional->id, 'organization_id' => null, 'name' => 'Medicamentos'],
+            ['active' => true],
+        )->id;
+        $vaccineGroupId = ProductGroup::firstOrCreate(
+            ['professional_id' => $professional->id, 'organization_id' => null, 'name' => 'Vacinas'],
+            ['active' => true],
+        )->id;
+        $vetPharmaId = Supplier::firstOrCreate(
+            ['professional_id' => $professional->id, 'organization_id' => null, 'legal_name' => 'VetPharma Distribuidora'],
+            ['active' => true],
+        )->id;
+        $zoetisId = Supplier::firstOrCreate(
+            ['professional_id' => $professional->id, 'organization_id' => null, 'legal_name' => 'Zoetis'],
+            ['active' => true],
+        )->id;
+        $stock = app(StockService::class);
+
+        $amoxicillin = Product::create([
             'professional_id' => $professional->id,
-            'item_name' => 'Amoxicilina 250mg',
-            'category' => 'medication',
-            'quantity' => 50,
-            'unit' => 'comprimidos',
-            'min_quantity' => 20,
-            'cost_price' => 0.50,
-            'selling_price' => 1.50,
-            'supplier' => 'VetPharma Distribuidora',
+            'product_group_id' => $medicationGroupId,
+            'last_supplier_id' => $vetPharmaId,
+            'name' => 'Amoxicilina 250mg',
+            'sku' => 'DEMO-AMOXICILINA-250MG',
+            'unit_of_sale' => 'CP',
+            'purpose' => ProductPurpose::CONSUMABLE,
+            'price' => 1.50,
+            'average_cost' => 0.50,
+            'last_cost' => 0.50,
+            'controls_stock' => true,
+            'track_inventory' => true,
+            'min_stock' => 20,
             'expiry_date' => Carbon::today()->addYear(),
         ]);
+        $stock->in($amoxicillin, StockMovementType::OPENING_BALANCE, 50, ['unit_cost' => 0.50]);
 
-        $vaccineV10 = Inventory::create([
+        $vaccineV10 = Product::create([
             'professional_id' => $professional->id,
-            'item_name' => 'Vacina V10',
-            'category' => 'vaccine',
-            'quantity' => 10,
-            'unit' => 'doses',
-            'min_quantity' => 5,
-            'cost_price' => 45.00,
-            'selling_price' => 90.00,
-            'supplier' => 'Zoetis',
+            'product_group_id' => $vaccineGroupId,
+            'last_supplier_id' => $zoetisId,
+            'name' => 'Vacina V10',
+            'sku' => 'DEMO-VACINA-V10',
+            'unit_of_sale' => 'DS',
+            'purpose' => ProductPurpose::CONSUMABLE,
+            'price' => 90.00,
+            'average_cost' => 45.00,
+            'last_cost' => 45.00,
+            'controls_stock' => true,
+            'track_inventory' => true,
+            'min_stock' => 5,
             'expiry_date' => Carbon::today()->addMonths(6),
         ]);
+        $stock->in($vaccineV10, StockMovementType::OPENING_BALANCE, 10, ['unit_cost' => 45.00]);
 
         // Create Hospitalizations
         //
@@ -351,7 +385,7 @@ class MedicalDataSeeder extends Seeder
         $this->command->info('- 3 Vaccinations created');
         $this->command->info('- 2 Prescriptions created');
         $this->command->info('- 2 Services created');
-        $this->command->info('- 2 Inventory items created');
+        $this->command->info('- 2 Products (estoque) created');
         $this->command->info('- 1 Hospitalization created');
         $this->command->info('- 1 Surgery created');
         $this->command->info('- 1 Invoice created');

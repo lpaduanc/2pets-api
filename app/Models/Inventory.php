@@ -11,6 +11,20 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
+/**
+ * @deprecated Substituído por `Product` (`controls_stock=true`) — contrato
+ * `docs/gap-simplesvet/contratos/produtos-estoque-consolidado-contrato-api.md` e spec
+ * `docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md`. `InventoryController` foi
+ * removido; `ClinicalStockDeductionService`/`ImmunizationDoseApplicationService` agora operam
+ * sobre `Product`/`ProductBatch`. Esta classe/tabela ficam só como histórico — cada linha foi
+ * copiada 1:1 para `products` (`legacy_inventory_id`) pela migration
+ * `2026_11_03_100002_migrate_inventory_data_to_products`.
+ *
+ * Plano de remoção: mesma régua de `VaccineCatalog` — não dropar `inventories` enquanto
+ * `vaccinations.inventory_id`/`pet_dewormings.inventory_id` (também `@deprecated`, mantidos por
+ * `product_id`/`product_batch_id`) ainda existirem no schema. Não remover antes de decisão
+ * explícita do usuário.
+ */
 class Inventory extends Model
 {
     use LogsActivity, SoftDeletes;

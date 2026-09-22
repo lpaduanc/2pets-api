@@ -23,7 +23,7 @@ class SaleResource extends JsonResource
             'kind_label' => $this->kind->label(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
-            'is_editable' => $this->status->isEditable(),
+            'is_editable' => $this->isEditable(),
             'fiscal_operation' => $this->fiscal_operation->value,
             'fiscal_operation_label' => $this->fiscal_operation->label(),
 
@@ -66,10 +66,14 @@ class SaleResource extends JsonResource
             'items' => SaleItemResource::collection($this->whenLoaded('items')),
             'receipts' => SaleReceiptResource::collection($this->whenLoaded('receipts')),
 
-            // Alimenta o filtro de pendencia fiscal da consulta (doc 01). Hoje sempre null
-            // porque a emissao pertence ao doc 05 — o campo ja existe para que a tela nao
-            // precise trocar de contrato quando aquele documento entrar.
-            'fiscal_pending' => null,
+            // Pendência fiscal da consulta (doc 01): documentos que a venda ainda precisa ter
+            // emitidos, descontando o que já foi AUTORIZADO (doc 05) — ver
+            // `Sale::fiscalPendingDocuments()`.
+            'fiscal_pending' => $this->whenLoaded('items', fn (): array => $this->whenLoaded(
+                'fiscalDocuments',
+                fn (): array => $this->fiscalPendingDocuments(),
+                []
+            ), []),
 
             'created_at' => $this->created_at?->toIso8601String(),
         ];

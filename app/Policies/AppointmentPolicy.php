@@ -26,17 +26,39 @@ class AppointmentPolicy
 {
     public function manageCharges(User $user, Appointment $appointment): bool
     {
+        if ($this->isAuthorOrOrganizationOwner($user, $appointment)) {
+            return true;
+        }
+
+        return $this->isHospitalizationColleague($user, $appointment, $appointment->professional?->activeOrganizationId());
+    }
+
+    /**
+     * `POST professional/appointments/{id}/confirm` — Fase 4 do fluxo de agendamento:
+     * mesma régua de posse de `manageCharges` (autor OU dono da organização), sem a
+     * exceção de colega de internação — confirmar/recusar é decisão de quem vai atender,
+     * nunca de um colega de plantão qualquer.
+     */
+    public function confirm(User $user, Appointment $appointment): bool
+    {
+        return $this->isAuthorOrOrganizationOwner($user, $appointment);
+    }
+
+    /** `POST professional/appointments/{id}/reject` — mesma régua de `confirm()`. */
+    public function reject(User $user, Appointment $appointment): bool
+    {
+        return $this->isAuthorOrOrganizationOwner($user, $appointment);
+    }
+
+    private function isAuthorOrOrganizationOwner(User $user, Appointment $appointment): bool
+    {
         if ($appointment->professional_id === $user->id) {
             return true;
         }
 
-        $authorOrganizationId = $appointment->professional?->activeOrganizationId();
+        $organizationId = $appointment->professional?->activeOrganizationId();
 
-        if ($authorOrganizationId !== null && $user->ownsOrganization($authorOrganizationId)) {
-            return true;
-        }
-
-        return $this->isHospitalizationColleague($user, $appointment, $authorOrganizationId);
+        return $organizationId !== null && $user->ownsOrganization($organizationId);
     }
 
     private function isHospitalizationColleague(User $user, Appointment $appointment, ?int $authorOrganizationId): bool

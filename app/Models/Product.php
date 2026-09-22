@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Contracts\Sellable;
 use App\Enums\ProductPurpose;
+use App\Enums\StockMovementType;
+use App\Services\Stock\StockService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,13 +15,22 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * Catálogo COMERCIAL da organização — o que se vende no balcão (doc 01) e o que se compra do
- * fornecedor (doc 06). Nasceu como tabela de e-commerce e foi promovida a catálogo em
- * `2026_10_03_100001_add_commercial_fields_to_products_table`.
+ * Catálogo COMERCIAL da organização — o que se vende no balcão (doc 01), o que se compra do
+ * fornecedor (doc 06) e, desde a consolidação de estoque
+ * (docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md), também o INSUMO CLÍNICO
+ * (frasco de vacina, vermífugo, medicamento, insumo, equipamento) que antes vivia em
+ * `Inventory`/`InventoryMovement`. `ClinicalStockDeductionService` decrementa esta tabela via
+ * `StockService`, não mais `Inventory`.
  *
- * Não confundir com `Inventory`, que é o INSUMO CLÍNICO (frasco de vacina, vermífugo) que
- * `ClinicalStockDeductionService` decrementa quando o vet aplica. São dois estoques com donos
- * e regras diferentes, e a migration citada explica por que não foram fundidos.
+ * `Inventory`/`InventoryMovement` permanecem no schema só como legado histórico
+ * (`@deprecated`, ver os próprios models) — a migration
+ * `2026_11_03_100002_migrate_inventory_data_to_products` copiou cada linha para cá,
+ * preservando a referência em `legacy_inventory_id`.
+ *
+ * `immunization_product_id` liga este produto (o item de estoque de verdade, com custo/lote)
+ * ao catálogo clínico `ImmunizationProduct` (a identidade da vacina/vermífugo no calendário,
+ * spec 13) — vários produtos comerciais (marcas/lotes diferentes) podem apontar para a mesma
+ * identidade clínica, por isso o FK mora aqui e não o inverso.
  */
 class Product extends Model implements Sellable
 {
@@ -31,6 +42,7 @@ class Product extends Model implements Sellable
         'category_id',
         'product_group_id',
         'brand_id',
+        'last_supplier_id',
         'name',
         'description',
         'sku',
@@ -57,6 +69,8 @@ class Product extends Model implements Sellable
         'expiry_date',
         'images',
         'is_active',
+        'immunization_product_id',
+        'legacy_inventory_id',
     ];
 
     /**
@@ -109,6 +123,37 @@ class Product extends Model implements Sellable
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function lastSupplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'last_supplier_id');
+    }
+
+    /** Identidade clínica (vacina/vermífugo/antiparasitário) que este produto aplica — spec 13. */
+    public function immunizationProduct(): BelongsTo
+    {
+        return $this->belongsTo(ImmunizationProduct::class);
+    }
+
+    /**
+     * @deprecated Rastreabilidade da migração de `inventories` — não usar em regra de negócio
+     *      nova. Ver docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md.
+     */
+    public function legacyInventory(): BelongsTo
+    {
+        return $this->belongsTo(Inventory::class, 'legacy_inventory_id');
+    }
+
+    /** Livro de movimentos (doc 07). Só `StockService` escreve aqui. */
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class);
+    }
+
+    public function batches(): HasMany
+    {
+        return $this->hasMany(ProductBatch::class);
     }
 
     public function cartItems(): HasMany
@@ -185,22 +230,27 @@ class Product extends Model implements Sellable
         return $this->stock_quantity >= $quantity;
     }
 
-    public function decrementStock(int $quantity): void
+    /**
+     * Baixa do pedido de e-commerce. Passa pelo `StockService` (doc 07) para o saldo continuar
+     * reconstituível pelo livro `stock_movements` — um `decrement()` direto aqui quebraria a
+     * invariante `SUM(movimentos) = stock_quantity`.
+     */
+    public function decrementStock(int $quantity, ?Model $reference = null): void
     {
-        if (! $this->track_inventory) {
+        if (! $this->track_inventory || $quantity < 1) {
             return;
         }
 
-        $this->decrement('stock_quantity', $quantity);
+        app(StockService::class)->out($this, StockMovementType::SALE_OUT, $quantity, ['reference' => $reference]);
     }
 
-    public function incrementStock(int $quantity): void
+    public function incrementStock(int $quantity, ?Model $reference = null): void
     {
-        if (! $this->track_inventory) {
+        if (! $this->track_inventory || $quantity < 1) {
             return;
         }
 
-        $this->increment('stock_quantity', $quantity);
+        app(StockService::class)->in($this, StockMovementType::RETURN_IN, $quantity, ['reference' => $reference]);
     }
 
     /**
@@ -243,5 +293,26 @@ class Product extends Model implements Sellable
     public function scopeLowStock(Builder $query): Builder
     {
         return $query->where('controls_stock', true)->whereColumn('stock_quantity', '<=', 'min_stock');
+    }
+
+    /**
+     * Seletor clínico (spec produtos-estoque-consolidado, item 4): produtos que aplicam a
+     * identidade clínica informada, para o vet escolher marca/lote na hora do ato.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeForImmunizationProduct(Builder $query, int $immunizationProductId): Builder
+    {
+        return $query->where('immunization_product_id', $immunizationProductId);
+    }
+
+    /**
+     * Regra de negócio 3 da spec de consolidação: todo produto que representa uma identidade
+     * clínica (vacina/vermífugo/antiparasitário) precisa rastrear lote, porque o lote aplicado
+     * entra na carteira do pet (Res. CFMV 1.321/2020).
+     */
+    public function requiresBatchTracking(): bool
+    {
+        return $this->immunization_product_id !== null;
     }
 }

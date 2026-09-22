@@ -32,18 +32,41 @@ final class ClientProvisioningService
         private readonly UserRoleReconciler $roleReconciler,
         private readonly EmailVerificationService $emailVerificationService,
         private readonly PasswordResetLinkService $passwordResetLinkService,
+        private readonly TutorIdentityResolver $tutorIdentityResolver,
     ) {}
 
     /**
-     * @param  array{name: string, email: string, phone: ?string, address: ?string}  $data
+     * `cpf` opcional (Achado 1 de `docs/gap-simplesvet/specs/19-portal-do-cliente-spec.md`):
+     * quando informado, a identidade é resolvida por CPF via `TutorIdentityResolver` — o
+     * MESMO resolvedor do fluxo de paciente novo — em vez do caminho antigo por e-mail. Isso
+     * evita o par de mecanismos paralelos e incompatíveis que existia antes: a mesma pessoa
+     * cadastrada pelos dois caminhos com CPF/e-mail que não colidem não nasce em duas contas.
+     *
+     * @param  array{name: string, email: ?string, cpf: ?string, phone: ?string, address: ?string}  $data
      */
     public function provision(array $data, int $professionalId): User
     {
-        $client = User::where('email', $data['email'])->first() ?? $this->createTutorAccount($data);
+        $client = $this->resolveClient($data);
 
         $this->linkToProfessional($client, $professionalId);
 
         return $client;
+    }
+
+    /**
+     * @param  array{name: string, email: ?string, cpf: ?string, phone: ?string, address: ?string}  $data
+     */
+    private function resolveClient(array $data): User
+    {
+        if (! empty($data['cpf'])) {
+            return $this->tutorIdentityResolver->resolve($data['cpf'], [
+                'name' => $data['name'],
+                'email' => $data['email'] ?? null,
+                'phone' => $data['phone'] ?? null,
+            ])->user;
+        }
+
+        return User::where('email', $data['email'])->first() ?? $this->createTutorAccount($data);
     }
 
     /**

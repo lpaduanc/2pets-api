@@ -21,7 +21,7 @@ final class OrganizationMemberService
     public function listMembers(Organization $organization): Collection
     {
         return $organization->members()
-            ->with('user.professional')
+            ->with(['user.professional', 'serviceAreas'])
             ->orderByDesc('is_active')
             ->orderBy('created_at')
             ->get();

@@ -2,24 +2,24 @@
 
 namespace App\Exceptions\Inventory;
 
-use App\Models\Inventory;
+use App\DataTransferObjects\LockedClinicalStock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
 
 /**
- * O item de estoque vinculado está vencido na data do ato. Nem bloqueio duro nem passagem
+ * O produto (ou lote) vinculado está vencido na data do ato. Nem bloqueio duro nem passagem
  * silenciosa: pede confirmação explícita (`confirm_expired: true`) — decisão clínica do
  * veterinário, não do sistema (docs/vinculo-estoque-aplicacao-clinica.md item 4).
  */
 final class ExpiredBatchException extends RuntimeException
 {
-    public function __construct(Inventory $inventory)
+    public function __construct(LockedClinicalStock $lock)
     {
-        $expiry = $inventory->expiry_date?->format('d/m/Y') ?? 'data desconhecida';
+        $expiry = $lock->expiryDate()?->format('d/m/Y') ?? 'data desconhecida';
 
         parent::__construct(
-            "O lote de \"{$inventory->item_name}\" está vencido desde {$expiry}. Confirme para aplicar mesmo assim."
+            "O lote de \"{$lock->product->name}\" está vencido desde {$expiry}. Confirme para aplicar mesmo assim."
         );
     }
 

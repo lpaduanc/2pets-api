@@ -2,14 +2,21 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use App\Models\Pet;
+use App\Enums\InventoryCategory;
+use App\Enums\StockMovementType;
 use App\Models\Appointment;
 use App\Models\Invoice;
-use App\Models\Inventory;
+use App\Models\Pet;
+use App\Models\Product;
+use App\Models\ProductGroup;
 use App\Models\Service;
+use App\Models\Supplier;
+use App\Models\User;
+use App\Services\Stock\LegacyInventoryClassifier;
+use App\Services\Stock\StockService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class BusinessInsightsSeeder extends Seeder
 {
@@ -44,13 +51,13 @@ class BusinessInsightsSeeder extends Seeder
         // Delete bad data linked to User ID
         Invoice::where('professional_id', $userId)->delete();
         Appointment::where('professional_id', $userId)->delete();
-        Inventory::where('professional_id', $userId)->delete();
+        Product::where('professional_id', $userId)->delete();
         Service::where('professional_id', $userId)->delete();
 
         // Delete existing data linked to Professional ID (for fresh seed)
         Invoice::where('professional_id', $profId)->delete();
         Appointment::where('professional_id', $profId)->delete();
-        Inventory::where('professional_id', $profId)->delete();
+        Product::where('professional_id', $profId)->delete();
         Service::where('professional_id', $profId)->delete();
 
         // Create some client users
@@ -107,15 +114,17 @@ class BusinessInsightsSeeder extends Seeder
             $client = $clients[array_rand($clients)];
             $pet = $client->pets->first();
 
-            if (!$pet)
+            if (! $pet) {
                 continue;
+            }
 
             $daysAgo = rand(0, 365);
             $appointmentDate = now()->subDays($daysAgo);
 
             // Skip if Sunday (just for realism)
-            if ($appointmentDate->dayOfWeek === 0)
+            if ($appointmentDate->dayOfWeek === 0) {
                 continue;
+            }
 
             $type = $appointmentTypes[array_rand($appointmentTypes)];
             $status = $daysAgo > 7 ? 'completed' : $statuses[array_rand($statuses)]; // Past appointments mostly completed
@@ -149,15 +158,15 @@ class BusinessInsightsSeeder extends Seeder
                     'professional_id' => $professional->id,
                     'client_id' => $client->id,
                     'appointment_id' => $appointment->id,
-                    'invoice_number' => 'INV-' . str_pad($i + 1000, 5, '0', STR_PAD_LEFT),
+                    'invoice_number' => 'INV-'.str_pad($i + 1000, 5, '0', STR_PAD_LEFT),
                     'issue_date' => $appointmentDate,
                     'items' => [
                         [
                             'description' => ucfirst($type),
                             'quantity' => 1,
                             'price' => $price,
-                            'total' => $price
-                        ]
+                            'total' => $price,
+                        ],
                     ],
                     'subtotal' => $price,
                     'total' => $price,
@@ -181,28 +190,50 @@ class BusinessInsightsSeeder extends Seeder
             ['item_name' => 'Brinquedo para Cães', 'category' => 'supply', 'quantity' => 20, 'min_quantity' => 10, 'cost_price' => 15.00, 'selling_price' => 30.00],
         ];
 
+        $classifier = new LegacyInventoryClassifier;
+        $stock = app(StockService::class);
+        $supplierId = Supplier::firstOrCreate(
+            ['professional_id' => $user->id, 'organization_id' => null, 'legal_name' => 'Fornecedor Pet Ltda'],
+            ['active' => true],
+        )->id;
+
         foreach ($inventoryItems as $item) {
-            Inventory::create([
-                'professional_id' => $professional->id,
-                'item_name' => $item['item_name'],
-                'category' => $item['category'],
-                'quantity' => $item['quantity'],
-                'unit' => 'unidade',
-                'min_quantity' => $item['min_quantity'],
-                'cost_price' => $item['cost_price'],
-                'selling_price' => $item['selling_price'],
-                'supplier' => 'Fornecedor Pet Ltda',
+            $category = InventoryCategory::from($item['category']);
+            $groupId = ProductGroup::firstOrCreate(
+                ['professional_id' => $user->id, 'organization_id' => null, 'name' => $classifier->groupNameFor($category)],
+                ['active' => true],
+            )->id;
+
+            $product = Product::create([
+                'professional_id' => $user->id,
+                'product_group_id' => $groupId,
+                'last_supplier_id' => $supplierId,
+                'name' => $item['item_name'],
+                'sku' => 'DEMO-'.Str::slug($item['item_name']),
+                'unit_of_sale' => 'UN',
+                'purpose' => $classifier->purposeFor($category),
+                'price' => $item['selling_price'],
+                'average_cost' => $item['cost_price'],
+                'last_cost' => $item['cost_price'],
+                'controls_stock' => true,
+                'track_inventory' => true,
+                'min_stock' => $item['min_quantity'],
                 'expiry_date' => now()->addMonths(rand(1, 24)),
+            ]);
+
+            $stock->in($product, StockMovementType::OPENING_BALANCE, $item['quantity'], [
+                'unit_cost' => $item['cost_price'],
+                'notes' => 'Saldo inicial do seed de demonstração.',
             ]);
         }
 
         $this->command->info('✅ Business insights data seeded successfully!');
-        $this->command->info("📊 Created:");
-        $this->command->info("   - 1 Professional user (professional@2pets.com / password)");
-        $this->command->info("   - 50 Client users with pets");
-        $this->command->info("   - 5 Services");
-        $this->command->info("   - ~350 Appointments (last 12 months)");
-        $this->command->info("   - ~300 Invoices");
-        $this->command->info("   - 8 Inventory items");
+        $this->command->info('📊 Created:');
+        $this->command->info('   - 1 Professional user (professional@2pets.com / password)');
+        $this->command->info('   - 50 Client users with pets');
+        $this->command->info('   - 5 Services');
+        $this->command->info('   - ~350 Appointments (last 12 months)');
+        $this->command->info('   - ~300 Invoices');
+        $this->command->info('   - 8 Products (estoque)');
     }
 }

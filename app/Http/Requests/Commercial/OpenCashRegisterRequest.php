@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Commercial;
 
+use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -16,7 +17,8 @@ class OpenCashRegisterRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user() !== null;
+        return $this->user() !== null
+            && app(CommercialScopeResolver::class)->canOperateCounter($this->user());
     }
 
     /**

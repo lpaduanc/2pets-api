@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
-use App\Models\Inventory;
 use App\Models\Invoice;
+use App\Models\Product;
 use App\Models\Service;
 use App\Services\OpenAIService;
 use Carbon\Carbon;
@@ -154,12 +154,13 @@ class AiBusinessInsightsController extends Controller
 
     private function fetchInventoryMetrics(int $professionalId, Carbon $now): array
     {
-        $row = Inventory::where('professional_id', $professionalId)
+        $row = Product::where('professional_id', $professionalId)
+            ->where('controls_stock', true)
             ->selectRaw(
-                'COUNT(*) FILTER (WHERE quantity <= min_quantity) AS low_stock,
+                'COUNT(*) FILTER (WHERE stock_quantity <= min_stock) AS low_stock,
                  COUNT(*) FILTER (WHERE expiry_date > ? AND expiry_date <= ?) AS expiring_soon,
-                 COALESCE(SUM(quantity * cost_price), 0) AS cost_value,
-                 COALESCE(SUM(quantity * selling_price), 0) AS selling_value',
+                 COALESCE(SUM(stock_quantity * average_cost), 0) AS cost_value,
+                 COALESCE(SUM(stock_quantity * price), 0) AS selling_value',
                 [$now, $now->copy()->addDays(30)]
             )
             ->first();

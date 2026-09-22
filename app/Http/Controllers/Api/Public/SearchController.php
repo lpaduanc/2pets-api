@@ -10,6 +10,7 @@ use App\Http\Requests\Search\PublicProfessionalSearchRequest;
 use App\Http\Resources\ProfessionalSearchCardResource;
 use App\Http\Resources\ProfessionalSearchCollection;
 use App\Models\User;
+use App\Services\Organization\TeamSizeQuery;
 use App\Services\Search\GeoLocationService;
 use App\Services\Search\ProfessionalSearchService;
 use App\Services\Search\SearchConceptPresenter;
@@ -82,6 +83,7 @@ class SearchController extends Controller
             ->with(['professional', 'professional.services']);
 
         $this->applyFeaturedDistance($query, $request);
+        TeamSizeQuery::applyTo($query);
 
         return ProfessionalSearchCardResource::collection($query->limit(10)->get());
     }

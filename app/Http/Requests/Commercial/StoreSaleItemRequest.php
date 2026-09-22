@@ -29,7 +29,10 @@ class StoreSaleItemRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'sellable_type' => ['required', Rule::in(['product', 'service'])],
+            // `package` (doc 10) chegou depois deste Form Request — sem ele, `SaleService::
+            // resolveSellable()` nunca via um pacote: a validação rejeitava antes mesmo de a
+            // regra de negócio ser avaliada (achado desta auditoria).
+            'sellable_type' => ['required', Rule::in(['product', 'service', 'package'])],
             'sellable_id' => ['required', 'integer', 'min:1'],
             'quantity' => ['nullable', 'numeric', 'gt:0', 'max:999999'],
             'unit_price' => ['nullable', 'numeric', 'min:0', 'max:9999999.99'],
@@ -45,7 +48,7 @@ class StoreSaleItemRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'sellable_type.in' => 'Tipo de item inválido. Use "product" ou "service".',
+            'sellable_type.in' => 'Tipo de item inválido. Use "product", "service" ou "package".',
             'quantity.gt' => 'A quantidade deve ser maior que zero.',
         ];
     }

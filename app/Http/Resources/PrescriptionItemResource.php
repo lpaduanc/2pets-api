@@ -40,6 +40,7 @@ class PrescriptionItemResource extends JsonResource
             'quantity_to_dispense' => $this->quantity_to_dispense,
             'instructions_for_tutor' => $this->instructions_for_tutor,
             'is_controlled' => (bool) $this->is_controlled,
+            'starts_at' => $this->starts_at?->toISOString(),
         ];
     }
 }

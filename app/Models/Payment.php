@@ -9,6 +9,9 @@ class Payment extends Model
 {
     protected $fillable = [
         'invoice_id',
+        // Fase 6 — sinal de agendamento (`purpose = deposit`): `invoice_id` fica `null`,
+        // `appointment_id` aponta para o agendamento cobrado.
+        'appointment_id',
         'user_id',
         'gateway',
         'gateway_payment_id',
@@ -35,6 +38,11 @@ class Payment extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function appointment(): BelongsTo
+    {
+        return $this->belongsTo(Appointment::class);
     }
 
     public function user(): BelongsTo

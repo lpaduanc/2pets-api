@@ -136,6 +136,37 @@ class FileUploadService
     }
 
     /**
+     * Upload da assinatura escaneada do profissional (spec 15) — mesmas regras de
+     * `uploadForExam`: MIME real inspecionado (só imagem, sem PDF — é um recorte de
+     * assinatura, não um documento), nunca disco público.
+     *
+     * Returns the relative storage path (persisted em `professionals.signature_image_path`).
+     */
+    public function uploadForProfessionalSignature(UploadedFile $file, int $professionalId): string
+    {
+        $this->validate($file);
+        $this->assertRealMimeTypeAllowed($file);
+        $this->scanForMalware($file);
+
+        $extension = strtolower($file->getClientOriginalExtension());
+        $filename = Str::uuid().'.'.$extension;
+
+        $path = $file->storeAs(
+            "signatures/{$professionalId}",
+            $filename,
+            $this->privateDisk()
+        );
+
+        if ($path === false || $path === null) {
+            throw ValidationException::withMessages([
+                'file' => 'Falha ao salvar a assinatura. Tente novamente.',
+            ]);
+        }
+
+        return $path;
+    }
+
+    /**
      * Disk onde arquivos privados ficam. Em ordem de prioridade:
      *   1. PRIVATE_STORAGE_DISK (override explícito do operador).
      *   2. `s3` — apenas se o pacote league/flysystem-aws-s3-v3 estiver instalado

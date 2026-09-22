@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\Professional;
 use App\Models\Review;
 use App\Models\User;
+use App\Services\Finance\FinancialOverviewService;
 
 /**
  * Orquestra `GET /professional/dashboard/stats`. Move para cá a regra de negócio que antes
@@ -25,6 +26,7 @@ final class ProfessionalDashboardStatsService
         private readonly ProfessionalCatalogCountsService $catalogCounts,
         private readonly ProfessionalOperationalAlertsService $operationalAlerts,
         private readonly ProfessionalDashboardActivityService $activity,
+        private readonly FinancialOverviewService $financial,
     ) {}
 
     /**
@@ -111,9 +113,18 @@ final class ProfessionalDashboardStatsService
             [$window->thisMonth, $window->lastMonth, $window->lastMonthEnd]
         )->first();
 
+        // Receita é TUDO que entrou, não só a fatura do atendimento: o recebido nas vendas do
+        // PDV (produto ou serviço) soma aqui, pelo mesmo recorte de pessoas (doc gap-simplesvet/01).
+        $saleRevenue = $this->financial->saleReceiptsTotal($professionalIds, $window->thisMonth, now());
+        $lastMonthSaleRevenue = $this->financial->saleReceiptsTotal(
+            $professionalIds,
+            $window->lastMonth,
+            $window->lastMonthEnd->copy()->subSecond(),
+        );
+
         return [
-            'monthly_revenue' => (float) $row->monthly_revenue,
-            'last_month_revenue' => (float) $row->last_month_revenue,
+            'monthly_revenue' => round((float) $row->monthly_revenue + $saleRevenue, 2),
+            'last_month_revenue' => round((float) $row->last_month_revenue + $lastMonthSaleRevenue, 2),
             'pending_invoices' => (int) $row->pending_invoices,
         ];
     }

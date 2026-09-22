@@ -52,6 +52,16 @@ final class ProfessionalAttributeFilter
 
     private const SPECIALTIES_COLUMN = 'professionals.specialties';
 
+    /**
+     * Fase 7 do fluxo de agendamento: especialidades da EQUIPE bookável/ativa, espelhadas
+     * pelo dono via `App\Services\Organization\TeamSpecialtyAggregator` — permite uma
+     * clínica aparecer buscando a especialidade de um veterinário da equipe (ex.:
+     * cardiologia), mesmo que o dono não seja ele mesmo cardiologista. `NULL` para quem
+     * não possui organização — o predicado abaixo simplesmente nunca casa nesse caso,
+     * então esta coluna nova não muda em nada o resultado para profissional avulso.
+     */
+    private const TEAM_SPECIALTIES_COLUMN = 'professionals.team_specialties';
+
     public function __construct(
         private readonly SearchVocabulary $vocabulary,
         private readonly FuzzyMatchExpressionBuilder $expressions,
@@ -120,25 +130,33 @@ final class ProfessionalAttributeFilter
     }
 
     /**
+     * Cada forma casa contra a especialidade PRÓPRIA ou a da EQUIPE — mesmo grupo `OR` que
+     * já existia, só com mais um par de predicados por forma. Continua sendo a MESMA
+     * subquery não-correlacionada sobre `professionals`; nenhuma tabela nova entra aqui
+     * (ver `ProfessionalSearchService::applyProfessionalFilters()` e o relato de
+     * performance da Fase 7 — a alternativa com `EXISTS` contra `organization_members` foi
+     * medida e descartada).
+     *
      * @param  list<string>  $forms
      */
     private function matchAnyForm(QueryBuilder $group, array $forms): void
     {
         foreach ($forms as $form) {
-            $group->orWhereRaw($this->formPredicate(), [$form, $form]);
+            $group->orWhereRaw($this->formPredicate(self::SPECIALTIES_COLUMN), [$form, $form]);
+            $group->orWhereRaw($this->formPredicate(self::TEAM_SPECIALTIES_COLUMN), [$form, $form]);
         }
     }
 
-    private function formPredicate(): string
+    private function formPredicate(string $column): string
     {
         $normalized = sprintf(
             self::NORMALIZED_SPECIALTIES,
-            $this->expressions->immutableUnaccent(self::SPECIALTIES_COLUMN),
+            $this->expressions->immutableUnaccent($column),
         );
 
         // `\m`/`\M` = início/fim de palavra no regex do Postgres. É o que impede
         // "cardiologia" de casar dentro de "cardiologiaX" e o que dá precisão ao filtro.
-        return '('.$this->expressions->wordSimilarityMatch(self::SPECIALTIES_COLUMN, WordSimilarityMode::WORD)
+        return '('.$this->expressions->wordSimilarityMatch($column, WordSimilarityMode::WORD)
             ." AND {$normalized} ~ ('\\m' || ? || '\\M'))";
     }
 }

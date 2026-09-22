@@ -2,47 +2,79 @@
 
 namespace App\Services\Booking;
 
+use App\DataTransferObjects\Booking\AvailabilityContext;
 use App\DataTransferObjects\TimeSlot;
 use App\Models\Appointment;
 use App\Models\Availability;
 use App\Models\BlockedTime;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 final class AvailabilityService
 {
+    public function __construct(private readonly StaffTimeOffChecker $staffTimeOffChecker) {}
+
+    /**
+     * `$context` filtra a agenda lida para o local/organização informados (Fase 2 do
+     * fluxo de agendamento) — `null`/vazio preserva o comportamento anterior: qualquer
+     * janela ativa do profissional, sem filtro de estabelecimento.
+     */
     public function getAvailableSlots(
         int $professionalId,
         Carbon $date,
-        ?int $serviceId = null
+        ?int $serviceId = null,
+        ?AvailabilityContext $context = null
     ): Collection {
         $professional = User::findOrFail($professionalId);
+        $context ??= AvailabilityContext::none();
         $serviceDuration = $this->getServiceDuration($serviceId);
 
-        $availability = $this->getAvailabilityForDay($professionalId, $date->dayOfWeek);
-
-        if (! $availability) {
+        if ($this->staffTimeOffChecker->isOnApprovedTimeOff($professionalId, $context->organizationId, $date)) {
             return collect();
         }
 
-        $slots = $this->generateTimeSlots(
-            $date,
-            $availability->start_time,
-            $availability->end_time,
-            $availability->slot_duration,
-            $availability->buffer_time
-        );
+        $windows = $this->getAvailabilityWindowsForDay($professionalId, $date->dayOfWeek, $context);
 
-        return $this->filterAvailableSlots($professionalId, $slots, $serviceDuration);
+        if ($windows->isEmpty()) {
+            return collect();
+        }
+
+        $slots = $windows->flatMap(fn (Availability $window): Collection => $this->generateTimeSlots(
+            $date,
+            $window->start_time,
+            $window->end_time,
+            $window->slot_duration,
+            $window->buffer_time
+        ));
+
+        return $this->filterAvailableSlots($professionalId, $date, $slots, $serviceDuration, $context);
     }
 
-    private function getAvailabilityForDay(int $professionalId, int $dayOfWeek): ?Availability
+    /**
+     * Bug achado pelo frontend (Fase 4): esta consulta usava `->first()`, então um
+     * profissional com DUAS janelas no mesmo dia (ex.: manhã 09:00–12:00 e tarde
+     * 14:00–16:00, o caso mais comum de clínica com intervalo de almoço) tinha a segunda
+     * janela IGNORADA em silêncio — a escrita (Fase 1, `AvailabilityManagementService`) já
+     * aceitava e validava N janelas por dia; só esta leitura pública nunca tinha
+     * acompanhado. `orderBy('start_time')` garante que os slots saiam em ordem
+     * cronológica quando `getAvailableSlots()` concatena as janelas.
+     *
+     * @return Collection<int, Availability>
+     */
+    private function getAvailabilityWindowsForDay(int $professionalId, int $dayOfWeek, AvailabilityContext $context): Collection
     {
         return Availability::where('professional_id', $professionalId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
-            ->first();
+            ->when($context->locationId !== null, fn ($query) => $query->where('location_id', $context->locationId))
+            ->when(
+                $context->locationId === null && $context->organizationId !== null,
+                fn ($query) => $query->where('organization_id', $context->organizationId)
+            )
+            ->orderBy('start_time')
+            ->get();
     }
 
     private function getServiceDuration(?int $serviceId): int
@@ -91,11 +123,13 @@ final class AvailabilityService
 
     private function filterAvailableSlots(
         int $professionalId,
+        Carbon $date,
         Collection $slots,
-        int $serviceDuration
+        int $serviceDuration,
+        AvailabilityContext $context
     ): Collection {
-        $existingAppointments = $this->getExistingAppointments($professionalId, $slots->first()->startTime);
-        $blockedTimes = $this->getBlockedTimes($professionalId, $slots->first()->startTime);
+        $existingAppointments = $this->getExistingAppointments($professionalId, $date);
+        $blockedTimes = $this->getBlockedTimes($professionalId, $date, $context);
 
         return $slots->map(function (TimeSlot $slot) use ($existingAppointments, $blockedTimes, $serviceDuration) {
             $slotEnd = $slot->startTime->copy()->addMinutes($serviceDuration);
@@ -130,15 +164,58 @@ final class AvailabilityService
     /**
      * Same sargability fix as above: "blocked time whose calendar-date range
      * covers $date" becomes a half-open range against `start_datetime`/`end_datetime`.
+     *
+     * Item 21 do backlog gap-simplesvet — corrige o bug de bloqueio amplo: um
+     * `BlockedTime` com `professional_id = null` e `organization_id`/`location_id`
+     * preenchido (bloqueio da empresa/local inteiro) precisa esconder o slot de
+     * QUALQUER profissional daquele escopo, não só de quem tem `professional_id`
+     * batendo — antes desta correção essa cláusula nunca era lida.
      */
-    private function getBlockedTimes(int $professionalId, Carbon $date): Collection
+    private function getBlockedTimes(int $professionalId, Carbon $date, AvailabilityContext $context): Collection
     {
         $startOfDay = $date->copy()->startOfDay();
 
-        return BlockedTime::where('professional_id', $professionalId)
-            ->where('start_datetime', '<', $startOfDay->copy()->addDay())
+        return BlockedTime::where('start_datetime', '<', $startOfDay->copy()->addDay())
             ->where('end_datetime', '>=', $startOfDay)
+            ->where(fn (Builder $query) => $this->scopeToProfessionalOrBroadBlock($query, $professionalId, $context))
             ->get();
+    }
+
+    /**
+     * @param  Builder<BlockedTime>  $query
+     * @return Builder<BlockedTime>
+     */
+    private function scopeToProfessionalOrBroadBlock(Builder $query, int $professionalId, AvailabilityContext $context): Builder
+    {
+        $query->where('professional_id', $professionalId);
+
+        $broadScope = $this->broadBlockScope($context);
+        if ($broadScope !== null) {
+            [$column, $value] = $broadScope;
+            $query->orWhere(fn (Builder $broad) => $broad->whereNull('professional_id')->where($column, $value));
+        }
+
+        return $query;
+    }
+
+    /**
+     * Bloqueio amplo é resolvido pelo local quando informado (mais específico que a
+     * organização); sem contexto nenhum (agenda "solta" pré-Fase 2), não há como saber a
+     * organização/local do profissional aqui — preserva o comportamento anterior.
+     *
+     * @return array{0: string, 1: int}|null
+     */
+    private function broadBlockScope(AvailabilityContext $context): ?array
+    {
+        if ($context->locationId !== null) {
+            return ['location_id', $context->locationId];
+        }
+
+        if ($context->organizationId !== null) {
+            return ['organization_id', $context->organizationId];
+        }
+
+        return null;
     }
 
     private function isTimeBlocked(Carbon $start, Carbon $end, Collection $blockedTimes): bool

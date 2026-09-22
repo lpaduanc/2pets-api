@@ -3,6 +3,7 @@
 namespace App\Services\PetAccess;
 
 use App\DataTransferObjects\VetAccessRequestData;
+use App\Enums\PetVetAccessOrigin;
 use App\Enums\VetAccessLevel;
 use App\Exceptions\PetAccess\DuplicateVetAccessRequestException;
 use App\Exceptions\PetAccess\TutorNotFoundException;
@@ -31,23 +32,29 @@ final class VetAccessRequestService
         private readonly CrmvValidationService $crmvValidationService,
     ) {}
 
-    public function request(User $vet, VetAccessRequestData $data): PetVetAccess
+    /**
+     * `$origin` distingue o handshake normal (`POST pet-vet-access/request`, default) de um
+     * pedido nascido automaticamente em outro fluxo (ex.: paciente novo com tutor já ativo,
+     * `NewPatientVetAccessGrantor`) — mesmo status `pending` e mesma notificação, origem
+     * diferente para auditoria.
+     */
+    public function request(User $vet, VetAccessRequestData $data, PetVetAccessOrigin $origin = PetVetAccessOrigin::TUTOR_AUTHORIZATION): PetVetAccess
     {
         try {
-            return DB::transaction(fn (): PetVetAccess => $this->openPendingRequest($vet, $data));
+            return DB::transaction(fn (): PetVetAccess => $this->openPendingRequest($vet, $data, $origin));
         } catch (UniqueConstraintViolationException $violation) {
             throw $this->translateRace($vet, $data, $violation);
         }
     }
 
-    private function openPendingRequest(User $vet, VetAccessRequestData $data): PetVetAccess
+    private function openPendingRequest(User $vet, VetAccessRequestData $data, PetVetAccessOrigin $origin): PetVetAccess
     {
         $pet = $this->resolvePetWithOwner($data);
         $tutor = $pet->user;
 
         $this->guardAgainstRedundantRequest($pet->id, $vet->id, $data->requestedAccessLevel);
 
-        $access = $this->createPendingAccess($pet, $vet, $tutor, $data);
+        $access = $this->createPendingAccess($pet, $vet, $tutor, $data, $origin);
 
         $this->notifyTutor($access, $pet, $tutor, $vet);
 
@@ -66,12 +73,13 @@ final class VetAccessRequestService
      * `access_level` nasce NULO de propósito: nível concedido é decisão do tutor no aceite, e
      * o que o vet indicou fica separado em `requested_access_level`.
      */
-    private function createPendingAccess(Pet $pet, User $vet, User $tutor, VetAccessRequestData $data): PetVetAccess
+    private function createPendingAccess(Pet $pet, User $vet, User $tutor, VetAccessRequestData $data, PetVetAccessOrigin $origin): PetVetAccess
     {
         return PetVetAccess::create([
             'pet_id' => $pet->id,
             'veterinarian_id' => $vet->id,
             'granted_by' => $tutor->id,
+            'origin' => $origin,
             'access_level' => null,
             'requested_access_level' => $data->requestedAccessLevel,
             'message' => $data->message,

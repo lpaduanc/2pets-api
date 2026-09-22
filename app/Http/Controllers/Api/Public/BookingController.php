@@ -4,53 +4,76 @@ namespace App\Http\Controllers\Api\Public;
 
 use App\DataTransferObjects\BookingRequestDTO;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Booking\BookAppointmentRequest;
+use App\Http\Requests\Booking\ShowAvailabilityDaysRequest;
+use App\Http\Requests\Booking\ShowAvailabilityRequest;
+use App\Services\Booking\AvailabilityAggregationService;
 use App\Services\Booking\AvailabilityService;
+use App\Services\Booking\AvailableDaysCalculator;
 use App\Services\Booking\BookingService;
 use App\Services\Booking\WaitlistService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class BookingController extends Controller
 {
     public function __construct(
         private readonly AvailabilityService $availabilityService,
+        private readonly AvailabilityAggregationService $availabilityAggregationService,
+        private readonly AvailableDaysCalculator $availableDaysCalculator,
         private readonly BookingService $bookingService,
         private readonly WaitlistService $waitlistService
     ) {}
 
-    public function availability(Request $request): JsonResponse
+    /**
+     * Fase 2, item 4: `professional_id` sozinho continua funcionando exatamente como antes
+     * (compatibilidade com o app já publicado). Com `organization_id` e SEM
+     * `professional_id`, o modo é agregado — união dos slots livres de toda a equipe
+     * bookável, cada um já anotado com qual profissional atenderia.
+     */
+    public function availability(ShowAvailabilityRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'professional_id' => 'required|exists:users,id',
-            'date' => 'required|date|after_or_equal:today',
-            'service_id' => 'nullable|exists:services,id',
-        ]);
+        $date = Carbon::parse($request->input('date'));
 
-        $slots = $this->availabilityService->getAvailableSlots(
-            $validated['professional_id'],
-            Carbon::parse($validated['date']),
-            $validated['service_id'] ?? null
-        );
+        $slots = $request->isAggregated()
+            ? $this->availabilityAggregationService->getAggregatedSlots(
+                $request->organizationId(),
+                $date,
+                $request->serviceId(),
+                $request->locationId(),
+            )
+            : $this->availabilityService->getAvailableSlots(
+                $request->professionalId(),
+                $date,
+                $request->serviceId(),
+                $request->context(),
+            );
 
         return response()->json([
-            'data' => $slots->map(fn($slot) => $slot->toArray())->values()
+            'data' => $this->serializeSlots($slots),
         ]);
     }
 
-    public function book(Request $request): JsonResponse
+    /** GET public/booking/availability-days — Fase 2, item 5. */
+    public function availabilityDays(ShowAvailabilityDaysRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'professional_id' => 'required|exists:users,id',
-            'service_id' => 'required|exists:services,id',
-            'pet_id' => 'nullable|exists:pets,id',
-            'appointment_date' => 'required|date|after_or_equal:today',
-            'notes' => 'nullable|string|max:1000',
+        return response()->json([
+            'data' => $this->availableDaysCalculator->daysWithAvailability($request->toQuery()),
         ]);
+    }
 
+    private function serializeSlots(Collection $slots): array
+    {
+        return $slots->map(fn ($slot) => $slot->toArray())->values()->all();
+    }
+
+    public function book(BookAppointmentRequest $request): JsonResponse
+    {
         try {
             $dto = BookingRequestDTO::fromRequest([
-                ...$validated,
+                ...$request->validated(),
                 'client_id' => auth()->id(),
             ]);
 
@@ -63,7 +86,7 @@ class BookingController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 422);
         }
     }
@@ -84,7 +107,7 @@ class BookingController extends Controller
 
         } catch (\Exception $e) {
             return response()->json([
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 422);
         }
     }
@@ -108,7 +131,7 @@ class BookingController extends Controller
 
         } catch (\Exception $e) {
             return response()->json([
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 422);
         }
     }
@@ -140,4 +163,3 @@ class BookingController extends Controller
         ], 201);
     }
 }
-

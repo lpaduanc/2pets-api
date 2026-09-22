@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use App\Contracts\HasDepositSettings;
 use App\DataTransferObjects\Cnpj;
 use App\Enums\OrganizationType;
+use App\Enums\StateRegistrationType;
+use App\Enums\TaxRegime;
 use App\Models\Concerns\HasGeoPoint;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,7 +22,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * Nunca loga: quem loga é um `User` vinculado via `OrganizationMember`. Vet volante não tem
  * `Organization` — continua sendo só pessoa física (`User` + `Professional`).
  */
-class Organization extends Model
+class Organization extends Model implements HasDepositSettings
 {
     use HasFactory, HasGeoPoint, LogsActivity, SoftDeletes;
 
@@ -32,6 +35,8 @@ class Organization extends Model
         'closing_hours',
         'working_days',
         'service_radius_km',
+        'deposit_enabled',
+        'deposit_percentage',
         'services_offered',
         'products_sold',
         'address',
@@ -48,6 +53,15 @@ class Organization extends Model
         'technical_responsible_crmv',
         'technical_responsible_crmv_state',
         'technical_responsible_verified',
+        // Fiscal (doc 05) — `certificate_ref`/`certificate_expires_at` de propósito FORA desta
+        // lista: só o fluxo do cofre externo (security-specialist) escreve neles.
+        'tax_regime',
+        'municipal_registration',
+        'state_registration',
+        'state_registration_type',
+        'cnae_code',
+        'special_tax_regime',
+        'iss_rate',
     ];
 
     /**
@@ -63,7 +77,23 @@ class Organization extends Model
             'latitude' => 'decimal:8',
             'longitude' => 'decimal:8',
             'technical_responsible_verified' => 'boolean',
+            'deposit_enabled' => 'boolean',
+            'deposit_percentage' => 'decimal:2',
+            'tax_regime' => TaxRegime::class,
+            'state_registration_type' => StateRegistrationType::class,
+            'iss_rate' => 'decimal:2',
+            'certificate_expires_at' => 'datetime',
         ];
+    }
+
+    public function depositEnabled(): bool
+    {
+        return (bool) $this->deposit_enabled;
+    }
+
+    public function depositPercentage(): ?float
+    {
+        return $this->deposit_percentage === null ? null : (float) $this->deposit_percentage;
     }
 
     /**
@@ -110,6 +140,11 @@ class Organization extends Model
         return $this->hasMany(Invoice::class);
     }
 
+    /**
+     * @deprecated Estoque migrou para `Product` (`controls_stock=true`) — ver `products()` e
+     *      docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md. Mantido só para
+     *      quem ainda precisa consultar o legado histórico.
+     */
     public function inventories(): HasMany
     {
         return $this->hasMany(Inventory::class);
@@ -123,6 +158,12 @@ class Organization extends Model
     public function blockedTimes(): HasMany
     {
         return $this->hasMany(BlockedTime::class);
+    }
+
+    /** Áreas de atendimento (item 21 do backlog gap-simplesvet). */
+    public function serviceAreas(): HasMany
+    {
+        return $this->hasMany(ServiceArea::class);
     }
 
     public function waitlists(): HasMany

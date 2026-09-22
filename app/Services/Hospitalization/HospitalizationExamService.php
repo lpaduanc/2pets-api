@@ -31,7 +31,7 @@ final class HospitalizationExamService
     ) {}
 
     /**
-     * @param  array{exam_type: string, exam_name: string, exam_date: \Carbon\Carbon, notes: ?string, appointment_id: ?int, service_id: ?int, unit_price: ?float}  $data
+     * @param  array{exam_type: string, exam_name: string, exam_date: \Carbon\Carbon, notes: ?string, appointment_id: ?int, service_id: ?int, unit_price: ?float, exam_type_id: ?int}  $data
      */
     public function createExam(Pet $pet, User $professional, array $data): Exam
     {
@@ -46,6 +46,7 @@ final class HospitalizationExamService
                 examDate: $data['exam_date'],
                 notes: $data['notes'],
                 appointmentId: $data['appointment_id'],
+                examTypeId: $data['exam_type_id'] ?? null,
             );
         }
 
@@ -53,7 +54,7 @@ final class HospitalizationExamService
     }
 
     /**
-     * @param  array{exam_type: string, exam_name: string, exam_date: \Carbon\Carbon, notes: ?string, service_id: ?int, unit_price: ?float}  $data
+     * @param  array{exam_type: string, exam_name: string, exam_date: \Carbon\Carbon, notes: ?string, service_id: ?int, unit_price: ?float, exam_type_id: ?int}  $data
      */
     private function createDuringActiveStay(Hospitalization $hospitalization, User $professional, array $data): Exam
     {
@@ -75,6 +76,7 @@ final class HospitalizationExamService
                 examDate: $data['exam_date'],
                 notes: $data['notes'],
                 appointmentId: $appointment->id,
+                examTypeId: $data['exam_type_id'] ?? null,
             );
 
             $this->chargeService->create($appointment, $professional, [

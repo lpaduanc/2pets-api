@@ -7,6 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
+ * @deprecated Substituído por `StockMovement` (com `balance_after`) — contrato
+ * `docs/gap-simplesvet/contratos/produtos-estoque-consolidado-contrato-api.md`. O histórico
+ * existente foi replay-ado para `stock_movements` pela migration
+ * `2026_11_03_100002_migrate_inventory_data_to_products`
+ * (`App\Services\Stock\LegacyStockLedgerReplay`). Nenhuma escrita nova acontece aqui.
+ *
  * Livro-razão append-only de toda mudança em `inventories.quantity` — docs/vinculo-estoque-
  * aplicacao-clinica.md item 6. Nunca `update()`, nunca `delete()`: correção de um lançamento
  * errado é um novo movimento de ajuste, nunca a edição do antigo.

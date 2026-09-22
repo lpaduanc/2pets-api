@@ -35,7 +35,7 @@ class AppointmentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Appointment::with(['client', 'pet', 'professional', 'invoice:id,appointment_id'])
+        $query = Appointment::with(['client', 'pet', 'professional', 'appointmentType', 'invoice:id,appointment_id'])
             ->forProfessional($request->user()->id);
 
         // Filters
@@ -81,7 +81,7 @@ class AppointmentController extends Controller
             $appointment->update(['price' => $this->servicesWriter->sync($appointment, $services)]);
         }
 
-        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'invoice:id,appointment_id'])))
+        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id'])))
             ->additional(['message' => 'Consulta agendada com sucesso!'])
             ->response()
             ->setStatusCode(201);
@@ -111,7 +111,7 @@ class AppointmentController extends Controller
 
     public function show(Request $request, $id)
     {
-        $appointment = Appointment::with(['client', 'pet', 'professional', 'medicalRecords', 'prescriptions', 'vaccinations', 'services.service', 'invoice:id,appointment_id'])
+        $appointment = Appointment::with(['client', 'pet', 'professional', 'medicalRecords', 'prescriptions', 'vaccinations', 'services.service', 'appointmentType', 'invoice:id,appointment_id'])
             ->where('professional_id', $request->user()->id)
             ->findOrFail($id);
 
@@ -139,7 +139,7 @@ class AppointmentController extends Controller
             $appointment->update(['price' => $this->servicesWriter->sync($appointment, $services)]);
         }
 
-        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'invoice:id,appointment_id'])))
+        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id'])))
             ->additional(['message' => 'Consulta atualizada com sucesso!']);
     }
 
@@ -168,7 +168,7 @@ class AppointmentController extends Controller
 
     public function today(Request $request)
     {
-        $appointments = Appointment::with(['client', 'pet', 'invoice:id,appointment_id'])
+        $appointments = Appointment::with(['client', 'pet', 'appointmentType', 'invoice:id,appointment_id'])
             ->forProfessional($request->user()->id)
             ->today()
             ->orderBy('appointment_time')
@@ -179,7 +179,7 @@ class AppointmentController extends Controller
 
     public function upcoming(Request $request)
     {
-        $appointments = Appointment::with(['client', 'pet', 'invoice:id,appointment_id'])
+        $appointments = Appointment::with(['client', 'pet', 'appointmentType', 'invoice:id,appointment_id'])
             ->forProfessional($request->user()->id)
             ->upcoming()
             ->orderBy('appointment_date')

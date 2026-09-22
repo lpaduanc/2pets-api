@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Appointment;
 
 use App\Enums\ServiceCategory;
+use App\Rules\ScopedAppointmentTypeExists;
+use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,13 +21,15 @@ class StoreWalkInAppointmentRequest extends FormRequest
         return (bool) $this->user();
     }
 
-    public function rules(): array
+    public function rules(CommercialScopeResolver $scope): array
     {
         return [
             'pet_id' => ['required', 'integer', 'exists:pets,id'],
             // Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md
             // §3: qualquer categoria pode virar encaixe, não só as 4 originais.
             'type' => ['required', Rule::enum(ServiceCategory::class)],
+            // Item 14 (achado do frontend) — ver comentário equivalente em `StoreAppointmentRequest`.
+            'appointment_type_id' => ['nullable', 'integer', new ScopedAppointmentTypeExists($this->user(), $scope)],
             'reason' => ['nullable', 'string', 'max:1000'],
             'duration' => ['nullable', 'integer', 'min:15', 'max:480'],
         ];

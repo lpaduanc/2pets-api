@@ -2,6 +2,7 @@
 
 use App\Exceptions\DuplicateRegistrationException;
 use App\Http\Middleware\CheckFeature;
+use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\QueryCountMiddleware;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocaleFromAcceptLanguage;
@@ -19,6 +20,18 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Achado na Fase 4 (notificações): sem isto, o auto-discovery de eventos do Laravel
+    // (ativo por padrão, mesmo sem `EventServiceProvider` no projeto) registra TODO
+    // listener de `app/Listeners` cujo método público tem um Event tipado no primeiro
+    // parâmetro — inclusive os que já são registrados EXPLICITAMENTE em
+    // `AppServiceProvider::boot()` (`Event::subscribe`/`Event::listen`). Resultado medido
+    // com `php artisan event:list`: `SendAppointmentNotification`, `SendReviewNotification`,
+    // `SendReviewInviteNotification` e `DispatchFallbackPushNotification` apareciam
+    // DUAS VEZES cada — toda notificação de agendamento, avaliação e push (Fase 4) estava
+    // sendo enviada em dobro para o usuário, silenciosamente, desde antes desta fase.
+    // Este projeto é 100% explícito em todo outro lugar (nenhum outro evento depende de
+    // convenção); `discover: false` alinha o registro de evento com essa mesma prática.
+    ->withEvents(discover: false)
     ->withMiddleware(function (Middleware $middleware): void {
         // SecurityHeaders only needed for web responses, not API
         $middleware->appendToGroup('web', SecurityHeaders::class);
@@ -41,6 +54,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // Aplicado só na rota do schema de cadastro (`register/professional-schema`)
             // por enquanto — não é um switch global de locale da API. Ver `AppLocale`.
             'locale' => SetLocaleFromAcceptLanguage::class,
+            // Item 22 — gate de rota por permissão Spatie granular. Ver `EnsurePermission`.
+            'permission' => EnsurePermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

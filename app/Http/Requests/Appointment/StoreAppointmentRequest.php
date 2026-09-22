@@ -4,6 +4,8 @@ namespace App\Http\Requests\Appointment;
 
 use App\Enums\ServiceCategory;
 use App\Models\Pet;
+use App\Rules\ScopedAppointmentTypeExists;
+use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Professional\ProfessionalClientsQuery;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -58,7 +60,7 @@ class StoreAppointmentRequest extends FormRequest
         }
     }
 
-    public function rules(): array
+    public function rules(CommercialScopeResolver $scope): array
     {
         return [
             'client_id' => ['required', 'exists:users,id'],
@@ -70,6 +72,9 @@ class StoreAppointmentRequest extends FormRequest
             // §3: `type` é o superconjunto de `ServiceCategory` — `checkup`/`exam` (valores
             // antigos, redundantes/imprecisos) não são mais aceitos em código novo.
             'type' => ['required', Rule::enum(ServiceCategory::class)],
+            // Item 14 (achado do frontend): vínculo OPCIONAL ao cadastro configurável de
+            // "tipo de atendimento" (cor/duração por dono) — nunca confundir com `type` acima.
+            'appointment_type_id' => ['nullable', 'integer', new ScopedAppointmentTypeExists($this->user(), $scope)],
             'reason' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:2000'],
             // `service_id`/`price` únicos: contrato §13.2 os mantém como caminho LEGADO

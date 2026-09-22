@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Enums\AppointmentStatus;
+use App\Enums\DepositStatus;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -20,6 +21,14 @@ class AppointmentResource extends JsonResource
             'appointment_time' => $this->appointment_time?->format('H:i'),
             'duration' => $this->duration,
             'type' => $this->type,
+            // Item 14 (achado do frontend) — metadado OPCIONAL de agenda (nome/cor), nunca a
+            // fonte de `type`/prontuário/faturamento acima. `null` quando não escolhido ou não
+            // carregado (evita N+1 — só populado quando o controller faz `with('appointmentType')`).
+            'appointment_type' => $this->whenLoaded('appointmentType', fn (): ?array => $this->appointmentType === null ? null : [
+                'id' => $this->appointmentType->id,
+                'name' => $this->appointmentType->name,
+                'color' => $this->appointmentType->color,
+            ]),
             'status' => $this->status,
 
             // Details
@@ -29,6 +38,29 @@ class AppointmentResource extends JsonResource
             'cancellation_reason' => $this->cancellation_reason,
             'cancelled_at' => $this->cancelled_at?->toISOString(),
             'confirmed_at' => $this->confirmed_at?->toISOString(),
+
+            // Fila do dia (item 21 do backlog gap-simplesvet) — rótulo derivado de
+            // (status, checked_in_at), ver `Appointment::queueLabel()`.
+            'checked_in_at' => $this->checked_in_at?->toISOString(),
+            'queue_label' => $this->queueLabel(),
+
+            // Sinal (Fase 6) — `deposit_status` sempre presente (default `none`), para o
+            // painel do profissional saber quando um agendamento tem "sinal pendente" sem
+            // precisar de outra chamada. Caminho sem sinal: `deposit_status` é sempre
+            // `none` e `deposit_amount` sempre `null`, idêntico a antes desta fase.
+            //
+            // `tryFrom(... ?? NONE)` em vez de `from()`: `Appointment::create()` sem
+            // `deposit_status` no payload devolve o atributo `null` em memória até um
+            // `refresh()` (o INSERT nem inclui a coluna — quem preenche é o DEFAULT do
+            // banco), e vários controllers que criam agendamento (`AppointmentController::
+            // store`, fluxo de paciente novo, walk-in) não fazem esse refresh antes de
+            // devolver a resposta. Mesma classe de bug já documentada em
+            // `taxonomia-servico-tipo-atendimento.md` — resolvida aqui no Resource, que é o
+            // único ponto por onde toda resposta de agendamento passa, em vez de caçar
+            // cada call site.
+            'deposit_amount' => $this->deposit_amount ? (float) $this->deposit_amount : null,
+            'deposit_status' => $this->deposit_status ?? DepositStatus::NONE->value,
+            'deposit_status_label' => (DepositStatus::tryFrom((string) $this->deposit_status) ?? DepositStatus::NONE)->label(),
 
             // Formatted helpers for the frontend
             'status_label' => $this->getStatusLabel(),

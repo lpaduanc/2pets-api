@@ -290,14 +290,20 @@ class PushNotificationService
             && ($this->serviceAccountJsonPath || $this->serviceAccountJsonBase64);
     }
 
+    /**
+     * Achado junto com a migration ausente de `push_subscriptions`: a chave de upsert
+     * tinha que ser `device_token` sozinho, não `(user_id, device_token)`. Com a
+     * composta, o MESMO aparelho trocando de dono (logout de A, login de B no mesmo
+     * celular) criava uma SEGUNDA linha em vez de reassociar a existente — e como
+     * `device_token` é único entre linhas vivas (mesma migration), essa segunda linha
+     * violaria a constraint em vez de simplesmente atualizar o `user_id`.
+     */
     public function registerDevice(User $user, string $deviceToken, ?string $deviceType = null): void
     {
         PushSubscription::updateOrCreate(
+            ['device_token' => $deviceToken],
             [
                 'user_id' => $user->id,
-                'device_token' => $deviceToken,
-            ],
-            [
                 'device_type' => $deviceType,
                 'last_used_at' => now(),
             ]

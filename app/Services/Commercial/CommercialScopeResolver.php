@@ -3,27 +3,25 @@
 namespace App\Services\Commercial;
 
 use App\Models\Organization;
+use App\Models\OrganizationMember;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
 /**
- * "Quem enxerga qual linha do grupo COMERCIAL" — produto, grupo, marca, forma de pagamento,
- * conta, caixa e venda. Generaliza a regra que `InventoryScopeResolver` já provou em
- * `inventories`, para não reescrever a mesma cláusula em cada controller novo dos docs 01/04/08.
- *
- * `InventoryScopeResolver` NÃO foi substituído por este: ele é tipado em `Inventory`, tem teste
- * próprio e carrega a documentação da regressão de 2026-09-15. Aqui a mesma regra aparece
- * genérica; lá ela continua específica. Fundir os dois é trabalho de uma tarefa própria, não
- * efeito colateral desta.
+ * "Quem enxerga qual linha do grupo COMERCIAL" — produto (inclusive o antigo insumo clínico,
+ * consolidado dentro de `Product`), grupo, marca, forma de pagamento, conta, caixa e venda.
  *
  * A regra, em uma frase: com organização ativa, você vê o que é da organização MAIS o que é
  * seu e ainda não tem organização (órfão); sem nenhuma organização (vet volante), você vê só
  * o que é seu e órfão.
  *
- * @see \App\Services\Inventory\InventoryScopeResolver para o relato completo do porquê da
- *      segunda cláusula (`orWhere` do órfão próprio) existir.
+ * Generalizou uma regra que nasceu em `InventoryScopeResolver` (removido na consolidação de
+ * estoque, docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md — a regressão de
+ * 2026-09-15 que motivou a segunda cláusula abaixo, `orWhere` do órfão próprio, está descrita
+ * em `docs/vinculo-estoque-aplicacao-clinica.md` item 5).
  */
 final class CommercialScopeResolver
 {
@@ -95,6 +93,55 @@ final class CommercialScopeResolver
             'organization_id' => $this->primaryOrganizationId($user),
             'professional_id' => $user->id,
         ];
+    }
+
+    /**
+     * Vínculos ativos (`organization_members`) das organizações do usuário — quem pode ser o
+     * "funcionário responsável" de um item de venda (doc 01 → comissão do doc 09). Vet volante
+     * não tem equipe: coleção vazia.
+     *
+     * @return EloquentCollection<int, OrganizationMember>
+     */
+    public function teamMembers(User $user): EloquentCollection
+    {
+        $organizationIds = $this->activeOrganizationIds($user);
+
+        if ($organizationIds->isEmpty()) {
+            return new EloquentCollection;
+        }
+
+        return OrganizationMember::query()
+            ->whereIn('organization_id', $organizationIds)
+            ->where('is_active', true)
+            ->with('user:id,name')
+            ->get();
+    }
+
+    /**
+     * Ids de `users` da equipe, incluindo o próprio usuário — a base de "cliente de alguém da
+     * clínica" (`ProfessionalClientsQuery::queryForAny`).
+     *
+     * @return list<int>
+     */
+    public function teamUserIds(User $user): array
+    {
+        return $this->teamMembers($user)
+            ->pluck('user_id')
+            ->push($user->id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Pode operar o balcão (abrir caixa, vender)? Profissional cadastrado ou membro ativo de
+     * alguma organização (a recepcionista pode ter conta de tutor). Tutor puro não: o módulo
+     * grava dado financeiro real, e sem esta trava a conta de um tutor ganhava caixa e formas
+     * de pagamento órfãs.
+     */
+    public function canOperateCounter(User $user): bool
+    {
+        return $user->role === 'professional' || $this->activeOrganizationIds($user)->isNotEmpty();
     }
 
     /**

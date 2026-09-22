@@ -22,9 +22,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *   3. `pet.tutor` vem embutido. O model chama a relação de `user`; o contrato da API usa
  *      `tutor`, que é o vocabulário do produto.
  *
- * NUNCA expõe `control_number`/`signature_type`/`signed_at`/`verification_code`/`hash` —
- * colunas preparatórias da fatia de assinatura digital, contrato §2: "não lidas, não expostas
- * nesta fatia".
+ * `signature_type`/`signed_at`/`verification_code` passam a ser expostos a partir da spec 15
+ * (assinatura eletrônica simples) — `control_number`/`hash` continuam fora (RCEV fora de
+ * escopo; hash é detalhe de verificação, não de exibição na tela).
  *
  * Exige `Prescription::RESOURCE_RELATIONS` eager-loaded — `Model::preventLazyLoading()` está
  * ativo fora de produção, então esquecer o eager load falha alto, não em silêncio.
@@ -54,6 +54,9 @@ class PrescriptionResource extends JsonResource
             'warnings' => $this->warnings,
             'is_editable' => $this->isEditable(),
             'issued_at' => $this->issued_at?->toISOString(),
+            'signature_type' => $this->signature_type?->value,
+            'signed_at' => $this->signed_at?->toISOString(),
+            'verification_code' => $this->verification_code,
             'canceled_at' => $this->canceled_at?->toISOString(),
             'canceled_reason' => $this->canceled_reason,
             'canceled_by' => $this->participantPayload($this->canceledBy),

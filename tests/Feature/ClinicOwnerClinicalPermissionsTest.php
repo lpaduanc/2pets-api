@@ -166,7 +166,7 @@ class ClinicOwnerClinicalPermissionsTest extends TestCase
             'medical-records.view.any',
             'prescriptions.view.any',
             'invoices.create',
-            'inventory.view',
+            'products.view',
             'staff.create',
             'reports.view.any',
         ];

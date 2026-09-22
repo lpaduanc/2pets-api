@@ -4,11 +4,11 @@ namespace App\Services\Commercial;
 
 use App\Enums\CashMovementType;
 use App\Enums\CashRegisterStatus;
+use App\Enums\PaymentMethodKind;
 use App\Exceptions\Commercial\CashRegisterAlreadyOpenException;
 use App\Exceptions\Commercial\CashRegisterClosedException;
 use App\Models\CashRegister;
 use App\Models\CashRegisterMovement;
-use App\Models\PaymentMethod;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
@@ -23,7 +23,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class CashRegisterService
 {
-    public function __construct(private readonly CommercialScopeResolver $scope) {}
+    public function __construct(
+        private readonly CommercialScopeResolver $scope,
+        private readonly PaymentMethodProvisioner $paymentMethods,
+    ) {}
 
     /**
      * Abre um caixa para o usuário. O suprimento inicial vira um movimento `supply`, e não só
@@ -262,11 +265,7 @@ final class CashRegisterService
      */
     private function defaultCashMethodId(User $user): ?int
     {
-        return $this->scope->scopeQuery(PaymentMethod::query(), $user)
-            ->active()
-            ->where('kind', \App\Enums\PaymentMethodKind::CASH->value)
-            ->orderBy('display_order')
-            ->value('id');
+        return $this->paymentMethods->methodForKind($user, PaymentMethodKind::CASH)?->id;
     }
 
     private function isUniqueViolation(QueryException $exception): bool

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\NotificationType;
 use App\Models\LostPetAlert;
 use App\Models\User;
+use App\Notifications\Support\FrontendRoute;
 use App\Services\Notification\NotificationService;
 use App\Services\Search\GeoLocationService;
 use Illuminate\Bus\Queueable;
@@ -73,6 +74,12 @@ final class NotifyNearbyUsersOfLostPetAlert implements ShouldQueue
             });
     }
 
+    /**
+     * O destino do toque e calculado POR DESTINATARIO: o menu "Pets Perdidos"
+     * existe nos tres layouts autenticados com prefixo proprio, e mandar todo
+     * mundo para `/tutor/...` faria o guard do router barrar o profissional e a
+     * clinica justamente no alerta mais urgente do app.
+     */
     private function notifyEachUser(Collection $users, LostPetAlert $alert, NotificationService $notificationService): void
     {
         foreach ($users as $user) {
@@ -81,7 +88,8 @@ final class NotifyNearbyUsersOfLostPetAlert implements ShouldQueue
                 NotificationType::LOST_PET_ALERT_NEARBY,
                 'Pet Perdido na sua Região',
                 "{$alert->pet->name} está perdido próximo de você. Ajude a encontrá-lo!",
-                ['alert_id' => $alert->id]
+                ['alert_id' => $alert->id],
+                FrontendRoute::lostPetsFor($user)
             );
         }
     }

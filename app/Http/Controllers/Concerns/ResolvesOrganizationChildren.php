@@ -17,7 +17,7 @@ trait ResolvesOrganizationChildren
     protected function resolveMember(Organization $organization, int $memberId): OrganizationMember
     {
         return $organization->members()
-            ->with(['user.professional', 'organization'])
+            ->with(['user.professional', 'organization', 'serviceAreas'])
             ->findOrFail($memberId);
     }
 

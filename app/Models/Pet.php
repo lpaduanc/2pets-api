@@ -23,6 +23,8 @@ class Pet extends Model
         'breed',
         'breed_id',
         'birth_date',
+        'birthday_month',
+        'birthday_day',
         'gender',
         'weight',
         'size',
@@ -96,6 +98,8 @@ class Pet extends Model
 
     protected $casts = [
         'birth_date' => 'date',
+        'birthday_month' => 'integer',
+        'birthday_day' => 'integer',
         'weight' => 'decimal:2',
         'neutered' => 'boolean',
         'temperament' => 'array',
@@ -161,6 +165,12 @@ class Pet extends Model
     public function dewormings(): HasMany
     {
         return $this->hasMany(PetDeworming::class);
+    }
+
+    /** Planos de protocolo de imunização (vacina/vermífugo/antiparasitário) — spec 13. */
+    public function immunizationPlans(): HasMany
+    {
+        return $this->hasMany(PetImmunizationPlan::class);
     }
 
     public function medications(): HasMany

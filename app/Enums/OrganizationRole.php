@@ -68,4 +68,22 @@ enum OrganizationRole: string
     {
         return array_column(self::cases(), 'value');
     }
+
+    /**
+     * Cargos que podem aparecer como "profissional para escolher" no fluxo de agendamento
+     * de equipe (Fase 2, `OrganizationTeamService`). `RECEPTIONIST` fica fora: atende ao
+     * balcão/telefone, mas nunca é quem presta o serviço agendado.
+     *
+     * @return list<string>
+     */
+    public static function bookableRoles(): array
+    {
+        return [
+            self::OWNER->value,
+            self::VETERINARIAN->value,
+            self::ASSISTANT->value,
+            self::GROOMER->value,
+            self::TECHNICIAN->value,
+        ];
+    }
 }

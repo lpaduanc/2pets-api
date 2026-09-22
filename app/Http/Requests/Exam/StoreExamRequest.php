@@ -4,6 +4,7 @@ namespace App\Http\Requests\Exam;
 
 use App\Enums\HospitalizationStatus;
 use App\Models\Hospitalization;
+use App\Rules\ScopedExamTypeExists;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -30,6 +31,7 @@ class StoreExamRequest extends FormRequest
             'pet_id' => ['required', 'integer', 'exists:pets,id'],
             'exam_type' => ['required', 'string'],
             'exam_name' => ['required', 'string', 'max:255'],
+            'exam_type_id' => ['nullable', 'integer', new ScopedExamTypeExists($this->user())],
             'exam_date' => ['required', 'date'],
             'notes' => ['nullable', 'string'],
             'appointment_id' => ['nullable', 'exists:appointments,id'],

@@ -2,8 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Enums\PaymentPurpose;
 use App\Models\Payment;
 use App\Models\PaymentWebhook;
+use App\Services\Appointment\AppointmentDepositService;
 use App\Services\Payment\PaymentService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,13 +19,14 @@ class ProcessPaymentWebhook implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $backoff = 300; // 5 minutes
 
     public function __construct(
         private readonly int $webhookId
     ) {}
 
-    public function handle(PaymentService $paymentService): void
+    public function handle(PaymentService $paymentService, AppointmentDepositService $depositService): void
     {
         $webhook = PaymentWebhook::findOrFail($this->webhookId);
 
@@ -34,22 +37,30 @@ class ProcessPaymentWebhook implements ShouldQueue
         try {
             $paymentId = $webhook->gateway_payment_id;
 
-            if (!$paymentId) {
+            if (! $paymentId) {
                 Log::warning('Webhook has no payment ID', ['webhook_id' => $webhook->id]);
+
                 return;
             }
 
             $payment = Payment::where('gateway_payment_id', $paymentId)->first();
 
-            if (!$payment) {
+            if (! $payment) {
                 Log::warning('Payment not found for webhook', [
                     'webhook_id' => $webhook->id,
                     'payment_id' => $paymentId,
                 ]);
+
                 return;
             }
 
-            $paymentService->updatePaymentStatus($payment);
+            // Fase 6: sinal de agendamento não tem fatura — nunca passa pelo caminho de
+            // `PaymentService`, que assume `$payment->invoice` existente.
+            if ($payment->purpose === PaymentPurpose::DEPOSIT->value) {
+                $depositService->syncStatusFromGateway($payment);
+            } else {
+                $paymentService->updatePaymentStatus($payment);
+            }
 
             $webhook->update([
                 'processed' => true,
@@ -71,4 +82,3 @@ class ProcessPaymentWebhook implements ShouldQueue
         }
     }
 }
-

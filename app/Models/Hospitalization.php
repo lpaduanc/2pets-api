@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\HospitalizationRiskLevel;
 use App\Enums\HospitalizationStatus;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -33,10 +34,12 @@ class Hospitalization extends Model
         'professional_id',
         'appointment_id',
         'indicating_medical_record_id',
+        'box_id',
         'admission_date',
         'discharge_date',
         'estimated_discharge_date',
         'reason',
+        'risk_level',
         'status',
         'discharge_summary',
         'medications',
@@ -47,6 +50,7 @@ class Hospitalization extends Model
         'discharge_date' => 'date',
         'estimated_discharge_date' => 'date',
         'medications' => 'array',
+        'risk_level' => HospitalizationRiskLevel::class,
     ];
 
     public function getActivitylogOptions(): LogOptions
@@ -81,6 +85,12 @@ class Hospitalization extends Model
     public function indicatingMedicalRecord(): BelongsTo
     {
         return $this->belongsTo(MedicalRecord::class, 'indicating_medical_record_id');
+    }
+
+    /** Box/leito ocupado — catálogo do item 23, nullable (nem toda clínica usa leito nomeado). */
+    public function box(): BelongsTo
+    {
+        return $this->belongsTo(HospitalizationBox::class);
     }
 
     public function progressNotes(): HasMany

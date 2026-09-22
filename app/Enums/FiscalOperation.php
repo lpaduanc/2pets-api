@@ -44,6 +44,30 @@ enum FiscalOperation: string
         return in_array($this, [self::IN_PERSON_CONSUMER, self::IN_PERSON_RESALE], true);
     }
 
+    /**
+     * Documento fiscal que a PARTE DE PRODUTOS desta venda exige (doc 05): NFC-e para o
+     * consumidor final atendido no balcão ou em casa; NF-e para revenda e para o que sai por
+     * transportadora. Serviço é sempre NFS-e, independente da operação.
+     */
+    public function productDocument(): string
+    {
+        return in_array($this, [self::IN_PERSON_CONSUMER, self::DELIVERY_CONSUMER], true) ? 'nfce' : 'nfe';
+    }
+
+    /**
+     * Operações cujos produtos saem em NFC-e — o inverso sai em NF-e. Mesma regra de
+     * `productDocument()`, em forma de lista para a cláusula `whereIn` do filtro de pendência.
+     *
+     * @return list<string>
+     */
+    public static function consumerInvoiceValues(): array
+    {
+        return array_values(array_map(
+            fn (self $operation): string => $operation->value,
+            array_filter(self::cases(), fn (self $operation): bool => $operation->productDocument() === 'nfce'),
+        ));
+    }
+
     /** @return list<string> */
     public static function values(): array
     {

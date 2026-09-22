@@ -28,16 +28,29 @@ final class ProfessionalClientsQuery
      */
     public function query(int $professionalId): Builder
     {
-        return User::where('id', '!=', $professionalId)
-            ->where(function (Builder $query) use ($professionalId) {
-                $query->whereHas('appointmentsAsClient', function ($q) use ($professionalId) {
-                    $q->where('professional_id', $professionalId);
+        return $this->queryForAny([$professionalId]);
+    }
+
+    /**
+     * Mesma definição de `query()`, para um CONJUNTO de profissionais — "cliente de alguém da
+     * equipe". Existe para o balcão da clínica (docs/gap-simplesvet/01-caixa-pdv.md): a
+     * recepcionista vende para o tutor que é cliente do veterinário, não dela. As quatro
+     * fontes são as mesmas; só o `=` vira `IN`.
+     *
+     * @param  list<int>  $professionalIds
+     */
+    public function queryForAny(array $professionalIds): Builder
+    {
+        return User::whereNotIn('id', $professionalIds)
+            ->where(function (Builder $query) use ($professionalIds) {
+                $query->whereHas('appointmentsAsClient', function ($q) use ($professionalIds) {
+                    $q->whereIn('professional_id', $professionalIds);
                 })
-                    ->orWhereHas('invoicesAsClient', function ($q) use ($professionalId) {
-                        $q->where('professional_id', $professionalId);
+                    ->orWhereHas('invoicesAsClient', function ($q) use ($professionalIds) {
+                        $q->whereIn('professional_id', $professionalIds);
                     })
-                    ->orWhereIn('id', $this->tutorIdsWithActiveGrantTo($professionalId))
-                    ->orWhereIn('id', $this->manuallyLinkedClientIds($professionalId));
+                    ->orWhereIn('id', $this->tutorIdsWithActiveGrantTo($professionalIds))
+                    ->orWhereIn('id', $this->manuallyLinkedClientIds($professionalIds));
             });
     }
 
@@ -49,10 +62,11 @@ final class ProfessionalClientsQuery
     /**
      * Subquery-style helper returning tutor IDs whose pets have an active grant for this professional.
      */
-    private function tutorIdsWithActiveGrantTo(int $professionalId)
+    /** @param  list<int>  $professionalIds */
+    private function tutorIdsWithActiveGrantTo(array $professionalIds)
     {
         return PetVetAccess::query()
-            ->where('veterinarian_id', $professionalId)
+            ->whereIn('veterinarian_id', $professionalIds)
             ->active()
             ->join('pets', 'pets.id', '=', 'pet_vet_accesses.pet_id')
             ->distinct()
@@ -60,10 +74,11 @@ final class ProfessionalClientsQuery
     }
 
     /** IDs de cliente com vínculo manual vivo (`professional_clients`, ver `ProfessionalClientController::store`). */
-    private function manuallyLinkedClientIds(int $professionalId)
+    /** @param  list<int>  $professionalIds */
+    private function manuallyLinkedClientIds(array $professionalIds)
     {
         return ProfessionalClient::query()
-            ->where('professional_id', $professionalId)
+            ->whereIn('professional_id', $professionalIds)
             ->pluck('client_id');
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\GeneratedDocumentSignatureType;
 use App\Enums\PrescriptionKind;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -42,9 +43,9 @@ class Prescription extends Model
     /**
      * `issued_at`/`canceled_at`/`canceled_reason`/`canceled_by` ficam FORA de `$fillable` de
      * propósito: só `PrescriptionLifecycleService` (issue/cancel) grava essas colunas, nunca
-     * um `store()`/`update()` de controller. As 5 colunas preparatórias de assinatura digital
-     * (`control_number`, `signature_type`, `signed_at`, `verification_code`, `hash`) também
-     * ficam fora — contrato §2: não lidas, não expostas nesta fatia.
+     * um `store()`/`update()` de controller. O mesmo vale para `signature_type`/`signed_at`/
+     * `verification_code`/`hash` — só `PrescriptionSignatureService::sign()` grava (spec 15).
+     * `control_number` continua fora de escopo (RCEV, doc 02 §4.1).
      */
     protected $casts = [
         'prescription_date' => 'date',
@@ -53,7 +54,16 @@ class Prescription extends Model
         'issued_at' => 'datetime',
         'canceled_at' => 'datetime',
         'kind' => PrescriptionKind::class,
+        // Spec 15 §"Assinatura": reaproveita as colunas preparadas pelo doc 02. Só
+        // `PrescriptionSignatureService::sign()` grava as 4 (nunca `store()`/`update()`).
+        'signature_type' => GeneratedDocumentSignatureType::class,
+        'signed_at' => 'datetime',
     ];
+
+    public function isSigned(): bool
+    {
+        return $this->signed_at !== null;
+    }
 
     public function pet(): BelongsTo
     {

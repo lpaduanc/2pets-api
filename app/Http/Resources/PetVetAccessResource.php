@@ -40,6 +40,12 @@ class PetVetAccessResource extends JsonResource
             // `status` e as datas do handshake faltavam no payload, embora o app filtre por
             // elas (`activeAccessesForPet`/`historyAccessesForPet` no vet-access-store) e a
             // resposta 409 precise delas para dizer se o vínculo está pendente ou concedido.
+            // `origin` — de onde este vínculo NASCEU (nunca muda depois de criado, mesmo que o
+            // nível de acesso mude via `supersede()`). Faltava no payload (achado ao revisar o
+            // front de 19: `me/pending-links` precisa distinguir pedido normal de pedido
+            // automático de paciente novo, `PetVetAccessOrigin::NEW_PATIENT_PENDING_REQUEST`).
+            'origin' => $this->origin?->value,
+            'origin_label' => $this->origin?->label(),
             'status' => $this->status,
             'requested_at' => $this->requested_at?->toISOString(),
             'responded_at' => $this->responded_at?->toISOString(),

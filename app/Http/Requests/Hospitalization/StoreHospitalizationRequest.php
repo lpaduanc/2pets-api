@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Hospitalization;
 
+use App\Enums\HospitalizationRiskLevel;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Contrato docs/atendimento-veterinario/11-internacao-no-fluxo-de-faturamento.md §1/§2/§6 e
@@ -41,6 +43,13 @@ class StoreHospitalizationRequest extends FormRequest
             // indicou internar. Nullable — walk-in de emergência pode não ter um.
             'indicating_medical_record_id' => ['nullable', 'integer', 'exists:medical_records,id'],
             'estimated_discharge_date' => ['nullable', 'date'],
+
+            // Contrato docs/gap-simplesvet/specs/12-internacao-mapa-execucao-spec.md §1/§2:
+            // box e risco são sempre opcionais (regras de negócio 1/2) — a checagem de "box
+            // já ocupado" é regra de aplicação em `HospitalizationBoxOccupancyGuard`, não
+            // expressável aqui.
+            'box_id' => ['nullable', 'integer', 'exists:hospitalization_boxes,id'],
+            'risk_level' => ['nullable', Rule::in(HospitalizationRiskLevel::values())],
 
             'medications' => ['nullable', 'array'],
         ];

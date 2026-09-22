@@ -37,6 +37,7 @@ final class HospitalizationService
         private readonly WalkInAuthorizationGuard $authorizationGuard,
         private readonly ConsultationService $consultationService,
         private readonly AppointmentServicesWriter $servicesWriter,
+        private readonly HospitalizationBoxOccupancyGuard $boxOccupancyGuard,
     ) {}
 
     /**
@@ -46,11 +47,13 @@ final class HospitalizationService
      * (invariante 11 do doc 09); (4) inicia o atendimento (`IN_PROGRESS`); (5) grava a ficha
      * de internação vinculada.
      *
-     * @param  array{pet_id: int, admission_date: string, reason: string, services?: array<int, array{service_id: int, quantity?: ?float, unit_price?: ?float}>, indicating_medical_record_id?: ?int, estimated_discharge_date?: ?string, medications?: ?array<mixed>}  $data
+     * @param  array{pet_id: int, admission_date: string, reason: string, services?: array<int, array{service_id: int, quantity?: ?float, unit_price?: ?float}>, indicating_medical_record_id?: ?int, estimated_discharge_date?: ?string, box_id?: ?int, risk_level?: ?string, medications?: ?array<mixed>}  $data
      */
     public function admit(array $data, User $professional): Hospitalization
     {
         return DB::transaction(function () use ($data, $professional): Hospitalization {
+            $this->boxOccupancyGuard->assertAvailable($data['box_id'] ?? null);
+
             $pet = Pet::findOrFail($data['pet_id']);
             $this->authorizationGuard->assertAuthorized($pet, $professional);
 
@@ -64,9 +67,11 @@ final class HospitalizationService
                 'professional_id' => $professional->id,
                 'appointment_id' => $appointment->id,
                 'indicating_medical_record_id' => $data['indicating_medical_record_id'] ?? null,
+                'box_id' => $data['box_id'] ?? null,
                 'admission_date' => $data['admission_date'],
                 'estimated_discharge_date' => $data['estimated_discharge_date'] ?? null,
                 'reason' => $data['reason'],
+                'risk_level' => $data['risk_level'] ?? null,
                 'status' => HospitalizationStatus::ACTIVE->value,
                 'medications' => $data['medications'] ?? null,
             ]);
@@ -106,10 +111,14 @@ final class HospitalizationService
      * fecham o `Appointment` pelo mesmo `closeWithoutFinalizing()`, sem `mark-as-paid`
      * nenhum disparado daqui (pagamento continua sempre uma ação manual separada).
      *
-     * @param  array{discharge_date?: ?string, estimated_discharge_date?: ?string, reason?: string, status?: string, discharge_summary?: ?string, medications?: ?array<mixed>}  $data
+     * @param  array{discharge_date?: ?string, estimated_discharge_date?: ?string, reason?: string, status?: string, discharge_summary?: ?string, box_id?: ?int, risk_level?: ?string, medications?: ?array<mixed>}  $data
      */
     public function update(Hospitalization $hospitalization, array $data): Hospitalization
     {
+        if (array_key_exists('box_id', $data)) {
+            $this->boxOccupancyGuard->assertAvailable($data['box_id'], $hospitalization->id);
+        }
+
         if ($this->closesStay($data)) {
             $hospitalization->loadMissing('appointment');
             $this->consultationService->closeWithoutFinalizing($hospitalization->appointment);

@@ -3,18 +3,27 @@
 namespace App\Http\Controllers\Api\Commercial;
 
 use App\Enums\DiscountType;
+use App\Enums\FiscalOperation;
+use App\Enums\SaleKind;
+use App\Enums\SaleStatus;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Commercial\StoreSaleItemRequest;
 use App\Http\Requests\Commercial\StoreSaleReceiptRequest;
 use App\Http\Requests\Commercial\StoreSaleRequest;
+use App\Http\Requests\Commercial\UpdateSaleItemRequest;
+use App\Http\Requests\Commercial\UpdateSaleRequest;
 use App\Http\Resources\Commercial\SaleItemResource;
 use App\Http\Resources\Commercial\SaleReceiptResource;
 use App\Http\Resources\Commercial\SaleResource;
+use App\Models\OrganizationMember;
+use App\Models\Product;
 use App\Models\Sale;
+use App\Models\Service;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\SaleService;
+use App\Services\Professional\ProfessionalClientsQuery;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,9 +43,13 @@ class SaleController extends Controller
 
     private const DEFAULT_PER_PAGE = 50;
 
+    /** Teto do catálogo e da busca de clientes do balcão — é autocomplete, não listagem. */
+    private const LOOKUP_LIMIT = 50;
+
     public function __construct(
         private readonly SaleService $sales,
         private readonly CommercialScopeResolver $scope,
+        private readonly ProfessionalClientsQuery $clients,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -67,10 +80,165 @@ class SaleController extends Controller
         return new SaleResource($this->findForUser($request->user(), $id, 'view'));
     }
 
+    /** "Alterar Cliente" / observações da consulta de vendas (doc 01). */
+    public function update(UpdateSaleRequest $request, int $id): SaleResource
+    {
+        $sale = $this->findForUser($request->user(), $id, 'updateDetails');
+
+        return new SaleResource($this->sales->updateDetails($sale, $request->user(), $request->validated()));
+    }
+
+    /**
+     * Tudo que o balcão precisa para montar a tela numa chamada só: a equipe (funcionário
+     * responsável por item → comissão do doc 09) e os rótulos dos enums, para o app não
+     * reimplementar em JavaScript o que o servidor já sabe dizer.
+     */
+    public function formOptions(Request $request): JsonResponse
+    {
+        $staff = $this->scope->teamMembers($request->user())
+            ->sortBy(fn (OrganizationMember $member): string => mb_strtolower((string) $member->user?->name))
+            ->values()
+            ->map(fn (OrganizationMember $member): array => [
+                'id' => $member->id,
+                'name' => $member->user?->name,
+                'role' => $member->role?->value,
+                'role_label' => $member->role?->label(),
+            ]);
+
+        $options = fn (array $cases): array => array_map(
+            fn ($case): array => ['value' => $case->value, 'label' => $case->label()],
+            $cases,
+        );
+
+        return response()->json(['data' => [
+            'staff' => $staff,
+            'fiscal_operations' => $options(FiscalOperation::cases()),
+            'statuses' => $options(SaleStatus::cases()),
+            'kinds' => $options(SaleKind::cases()),
+        ]]);
+    }
+
+    /**
+     * Catálogo do balcão: produtos e serviços ATIVOS da clínica numa lista só. Os dois
+     * endpoints de cadastro (`products`, `services`) têm escopo e formato diferentes — o de
+     * serviços ainda lista só os do próprio usuário —, e a recepção precisa vender o banho
+     * cadastrado pela groomer.
+     */
+    public function catalog(Request $request): JsonResponse
+    {
+        $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'type' => ['nullable', 'in:product,service'],
+        ]);
+
+        $user = $request->user();
+        $term = $request->string('search')->trim()->toString();
+        $type = $request->string('type')->toString();
+        $items = collect();
+
+        if ($type !== 'service') {
+            $products = $this->scope->scopeQuery(Product::query(), $user)
+                ->active()
+                ->with('group:id,name')
+                ->when($term !== '', fn (Builder $q) => $q->where(fn (Builder $inner) => $inner
+                    ->where('name', 'ilike', "%{$term}%")
+                    ->orWhere('code', 'ilike', "%{$term}%")
+                    ->orWhere('sku', 'ilike', "%{$term}%")
+                    ->orWhere('gtin', $term)))
+                ->orderBy('name')
+                ->limit(self::LOOKUP_LIMIT)
+                ->get()
+                ->map(fn (Product $product): array => [
+                    'type' => 'product',
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'code' => $product->code ?? $product->sku,
+                    'price' => (float) $product->price,
+                    'group_name' => $product->group?->name,
+                    'stock_quantity' => $product->stock_quantity,
+                    'controls_stock' => (bool) $product->controls_stock,
+                    'allow_price_override' => (bool) $product->allow_price_override,
+                    'commission_percent' => $product->commissionPercent(),
+                ]);
+
+            $items = $items->concat($products);
+        }
+
+        if ($type !== 'product') {
+            $services = $this->scope->scopeQuery(Service::query(), $user)
+                ->active()
+                ->with('group:id,name')
+                ->when($term !== '', fn (Builder $q) => $q->where(fn (Builder $inner) => $inner
+                    ->where('name', 'ilike', "%{$term}%")
+                    ->orWhere('code', 'ilike', "%{$term}%")))
+                ->orderBy('name')
+                ->limit(self::LOOKUP_LIMIT)
+                ->get()
+                ->map(fn (Service $service): array => [
+                    'type' => 'service',
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'code' => $service->code,
+                    'price' => (float) $service->price,
+                    'group_name' => $service->group?->name,
+                    'stock_quantity' => null,
+                    'controls_stock' => false,
+                    'allow_price_override' => (bool) $service->allow_price_override,
+                    'commission_percent' => $service->commissionPercent(),
+                ]);
+
+            $items = $items->concat($services);
+        }
+
+        return response()->json(['data' => $items->values()]);
+    }
+
+    /**
+     * Busca de cliente do balcão: clientes de QUALQUER pessoa da equipe
+     * (`ProfessionalClientsQuery::queryForAny`), por nome, telefone ou CPF. Nunca busca global
+     * de usuários — mesmo recorte de privacidade do `GET clients`.
+     */
+    public function clients(Request $request): JsonResponse
+    {
+        $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+
+        $term = $request->string('q')->trim()->toString();
+        $digits = preg_replace('/\D/', '', $term);
+
+        $clients = $this->clients->queryForAny($this->scope->teamUserIds($request->user()))
+            ->with('pets:id,user_id,name,species')
+            ->when($term !== '', function (Builder $query) use ($term, $digits): void {
+                $query->where(function (Builder $scoped) use ($term, $digits): void {
+                    $scoped->where('name', 'ilike', "%{$term}%");
+
+                    if (strlen($digits) >= 3) {
+                        $scoped->orWhereRaw("regexp_replace(COALESCE(cpf, ''), '\\D', '', 'g') LIKE ?", ["%{$digits}%"])
+                            ->orWhereRaw("regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') LIKE ?", ["%{$digits}%"]);
+                    }
+                });
+            })
+            ->orderBy('name')
+            ->limit(self::LOOKUP_LIMIT)
+            ->get(['id', 'name', 'phone', 'cpf'])
+            ->map(fn (User $client): array => [
+                'id' => $client->id,
+                'name' => $client->name,
+                'phone' => $client->phone,
+                'cpf' => $client->cpf,
+                'pets' => $client->pets->map(fn ($pet): array => [
+                    'id' => $pet->id,
+                    'name' => $pet->name,
+                    'species' => $pet->species,
+                ])->values(),
+            ]);
+
+        return response()->json(['data' => $clients]);
+    }
+
     public function storeItem(StoreSaleItemRequest $request, int $id): JsonResponse
     {
         $sale = $this->findForUser($request->user(), $id, 'update');
-        $item = $this->sales->addItem($sale, $request->validated());
+        $item = $this->sales->addItem($sale, $request->user(), $request->validated());
 
         return (new SaleItemResource($item))
             ->additional([
@@ -81,6 +249,19 @@ class SaleController extends Controller
             ])
             ->response()
             ->setStatusCode(201);
+    }
+
+    public function updateItem(UpdateSaleItemRequest $request, int $id, int $itemId): JsonResponse
+    {
+        $sale = $this->findForUser($request->user(), $id, 'update');
+        $item = $this->sales->updateItem($sale, $itemId, $request->validated());
+
+        return (new SaleItemResource($item))
+            ->additional([
+                'message' => 'Item atualizado.',
+                'sale' => new SaleResource($sale->fresh(Sale::RESOURCE_RELATIONS)),
+            ])
+            ->response();
     }
 
     public function destroyItem(Request $request, int $id, int $itemId): JsonResponse
@@ -131,10 +312,15 @@ class SaleController extends Controller
         return SaleReceiptResource::collection($sale->receipts()->with('paymentMethod')->get());
     }
 
+    /**
+     * Mantido por compatibilidade com o contrato do doc 01; a conversão de verdade (guardas de
+     * status, validade, link público) é do `QuoteService` — mesmo caminho de
+     * `POST professional/quotes/{id}/convert`.
+     */
     public function convert(Request $request, int $id): JsonResponse
     {
-        $quote = $this->findForUser($request->user(), $id, 'update');
-        $sale = $this->sales->convertQuoteToSale($quote, $request->user());
+        $quote = $this->findForUser($request->user(), $id, 'manageQuote');
+        $sale = app(\App\Services\Commercial\QuoteService::class)->convert($quote, $request->user());
 
         return (new SaleResource($sale))
             ->additional(['message' => 'Orçamento convertido em venda.'])
@@ -191,6 +377,8 @@ class SaleController extends Controller
                 fn (Builder $items) => $items->where('staff_id', $request->integer('staff_id'))
             ))
             // "Contém produtos" / "contém serviços" — filtro por tipo de item do documento.
+            // Pendência de NFC-e / NF-e / NFS-e / "não há pendência" — ver `Sale::scopeFiscalPending`.
+            ->when($request->filled('fiscal_pending'), fn (Builder $q) => $q->fiscalPending($request->string('fiscal_pending')->toString()))
             ->when($request->filled('item_type'), function (Builder $q) use ($request): void {
                 $class = $request->string('item_type')->toString() === 'product'
                     ? \App\Models\Product::class

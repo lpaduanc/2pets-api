@@ -7,7 +7,8 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Conta bancária / operadora / caixa — contrato docs/gap-simplesvet/04. Serve store e update.
+ * Conta bancária/caixa/operadora da clínica — contrato docs/gap-simplesvet/04. Serve store e
+ * update.
  */
 class StoreFinancialAccountRequest extends FormRequest
 {
@@ -32,7 +33,7 @@ class StoreFinancialAccountRequest extends FormRequest
             'account_number' => ['nullable', 'string', 'max:30'],
             'account_digit' => ['nullable', 'string', 'max:2'],
             'allow_quick_entry' => ['nullable', 'boolean'],
-            'opening_balance' => ['nullable', 'numeric', 'min:-9999999.99', 'max:9999999.99'],
+            'opening_balance' => ['nullable', 'numeric'],
             'opening_balance_date' => ['nullable', 'date'],
             'active' => ['nullable', 'boolean'],
         ];

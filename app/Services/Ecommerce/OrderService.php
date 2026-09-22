@@ -19,7 +19,7 @@ final class OrderService
         return DB::transaction(function () use ($cart, $shippingAddress) {
             // Check stock availability
             foreach ($cart->items as $item) {
-                if (!$item->product->hasStock($item->quantity)) {
+                if (! $item->product->hasStock($item->quantity)) {
                     throw new \Exception("Product {$item->product->name} is out of stock");
                 }
             }
@@ -46,7 +46,7 @@ final class OrderService
                     'total_price' => $cartItem->total_price,
                 ]);
 
-                $cartItem->product->decrementStock($cartItem->quantity);
+                $cartItem->product->decrementStock($cartItem->quantity, $order);
             }
 
             $cart->clear();
@@ -67,7 +67,6 @@ final class OrderService
 
     private function generateOrderNumber(): string
     {
-        return '2P-' . date('Ymd') . '-' . strtoupper(Str::random(8));
+        return '2P-'.date('Ymd').'-'.strtoupper(Str::random(8));
     }
 }
-

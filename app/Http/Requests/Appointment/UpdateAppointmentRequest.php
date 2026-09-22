@@ -4,6 +4,8 @@ namespace App\Http\Requests\Appointment;
 
 use App\Enums\AppointmentStatus;
 use App\Enums\ServiceCategory;
+use App\Rules\ScopedAppointmentTypeExists;
+use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -14,7 +16,7 @@ class UpdateAppointmentRequest extends FormRequest
         return true; // Authorization is handled by auth:sanctum middleware
     }
 
-    public function rules(): array
+    public function rules(CommercialScopeResolver $scope): array
     {
         return [
             'appointment_date' => ['sometimes', 'date'],
@@ -22,6 +24,8 @@ class UpdateAppointmentRequest extends FormRequest
             'duration' => ['nullable', 'integer', 'min:15', 'max:480'],
             // Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md §3.
             'type' => ['sometimes', Rule::enum(ServiceCategory::class)],
+            // Item 14 (achado do frontend) — ver comentário equivalente em `StoreAppointmentRequest`.
+            'appointment_type_id' => ['nullable', 'integer', new ScopedAppointmentTypeExists($this->user(), $scope)],
             'status' => ['sometimes', Rule::in($this->settableStatusValues())],
             'reason' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:2000'],

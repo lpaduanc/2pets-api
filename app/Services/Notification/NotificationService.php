@@ -6,12 +6,12 @@ use App\Enums\NotificationChannel;
 use App\Enums\NotificationType;
 use App\Models\NotificationPreference;
 use App\Models\User;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Log;
 
 final class NotificationService
 {
     public function __construct(
-        private readonly PushNotificationService $pushService,
         private readonly WhatsAppService $whatsAppService,
         private readonly SmsService $smsService
     ) {}
@@ -25,12 +25,25 @@ final class NotificationService
      * reativação, ele não deve passar por `sendNotification()` — usa `$user->notify()`
      * diretamente com uma Notification que implemente `BypassesDeactivationGate`.
      */
+    /**
+     * `$actionUrl` e o destino do toque (in-app e push). Opcional porque nem
+     * toda notificacao tem tela propria; quando tem, sem isto ela chega sem
+     * saida — ver {@see \App\Notifications\InAppNotification}.
+     *
+     * `$mail` e o e-mail DE VERDADE deste tipo (uma `Notification` com `toMail()`),
+     * entregue so quando o canal EMAIL estiver ligado para o tipo — mesma regra de
+     * preferencia e de conta desativada dos outros canais. Sem ele, o canal EMAIL
+     * continua no stub (`sendEmail()`): ligar e-mail real para todos os tipos de uma
+     * vez faria lembrete, pagamento e mensagem comecarem a sair sem template revisado.
+     */
     public function sendNotification(
         User $user,
         NotificationType $type,
         string $title,
         string $body,
-        array $data = []
+        array $data = [],
+        ?string $actionUrl = null,
+        ?Notification $mail = null,
     ): void {
         if ($user->isDeactivated()) {
             Log::info('Operational notification suppressed: recipient account is deactivated', [
@@ -43,9 +56,13 @@ final class NotificationService
 
         $channels = $this->getEnabledChannels($user, $type);
 
+        // O push tambem precisa do destino: `usePushNotifications.js` navega por
+        // `notification.data.action_url` quando o usuario toca na bandeja.
+        $payload = $actionUrl === null ? $data : [...$data, 'action_url' => $actionUrl];
+
         foreach ($channels as $channel) {
             try {
-                $this->sendToChannel($channel, $user, $title, $body, $data);
+                $this->sendToChannel($channel, $user, $title, $body, $payload, $mail);
             } catch (\Exception $e) {
                 Log::error("Failed to send notification via {$channel->value}", [
                     'user_id' => $user->id,
@@ -55,21 +72,42 @@ final class NotificationService
             }
         }
 
-        $this->createInAppNotification($user, $type, $title, $body, $data);
+        $this->createInAppNotification($user, $type, $title, $body, $data, $actionUrl);
     }
 
+    /**
+     * As linhas de `notification_preferences` sao OVERRIDES por canal sobre o
+     * default do tipo — nao a lista completa de canais.
+     *
+     * O filtro `where('enabled', true)` que existia aqui fazia um opt-out
+     * desaparecer: desligar o push de `lost_pet_alert_nearby` grava a linha com
+     * `enabled = false`, a consulta voltava vazia, o metodo caia no
+     * `getDefaultChannels()` e o push saia assim mesmo. Pior no outro sentido:
+     * desligar SO o e-mail de um tipo cujo default e `[PUSH, EMAIL]` deixava a
+     * consulta com uma linha (o push) e silenciosamente reduzia o conjunto ao
+     * que estivesse gravado, perdendo canais default nunca tocados pelo usuario.
+     *
+     * @return list<NotificationChannel>
+     */
     private function getEnabledChannels(User $user, NotificationType $type): array
     {
-        $preferences = NotificationPreference::where('user_id', $user->id)
+        $overrides = NotificationPreference::where('user_id', $user->id)
             ->where('notification_type', $type->value)
-            ->where('enabled', true)
-            ->get();
+            ->get()
+            ->keyBy('channel');
 
-        if ($preferences->isEmpty()) {
+        if ($overrides->isEmpty()) {
             return $this->getDefaultChannels($type);
         }
 
-        return $preferences->map(fn ($pref) => NotificationChannel::from($pref->channel))->toArray();
+        $defaults = $this->getDefaultChannels($type);
+
+        return array_values(array_filter(
+            NotificationChannel::cases(),
+            fn (NotificationChannel $channel) => $overrides->has($channel->value)
+                ? (bool) $overrides[$channel->value]->enabled
+                : in_array($channel, $defaults, true)
+        ));
     }
 
     private function getDefaultChannels(NotificationType $type): array
@@ -80,14 +118,19 @@ final class NotificationService
                 NotificationChannel::PUSH,
                 NotificationChannel::EMAIL,
             ],
+            NotificationType::APPOINTMENT_REQUESTED,
             NotificationType::APPOINTMENT_CONFIRMED,
+            NotificationType::APPOINTMENT_REJECTED,
             NotificationType::APPOINTMENT_CANCELLED,
             NotificationType::APPOINTMENT_RESCHEDULED => [
                 NotificationChannel::PUSH,
                 NotificationChannel::EMAIL,
             ],
             NotificationType::PAYMENT_RECEIVED,
-            NotificationType::PAYMENT_FAILED => [
+            NotificationType::PAYMENT_FAILED,
+            NotificationType::QUOTE_RECEIVED,
+            NotificationType::QUOTE_APPROVED,
+            NotificationType::QUOTE_REJECTED => [
                 NotificationChannel::EMAIL,
                 NotificationChannel::PUSH,
             ],
@@ -104,13 +147,22 @@ final class NotificationService
         User $user,
         string $title,
         string $body,
-        array $data
+        array $data,
+        ?Notification $mail = null,
     ): void {
         match ($channel) {
-            NotificationChannel::PUSH => $this->pushService->send($user, $title, $body, $data),
+            // Fase 4: push deixou de ser disparado aqui. `createInAppNotification()`
+            // (fim deste método) grava um `InAppNotification`, cujo `via()` já inclui o
+            // canal `fcm` (`App\Notifications\Channels\FcmChannel`) — mandar por aqui
+            // TAMBÉM duplicaria o push no aparelho do usuário. A checagem de preferência
+            // de push continua valendo: é feita de novo, com a mesma tabela
+            // `notification_preferences`, dentro do `FcmChannel`/`PushPreferenceGate`.
+            NotificationChannel::PUSH => null,
             NotificationChannel::WHATSAPP => $this->whatsAppService->send($user, $body),
             NotificationChannel::SMS => $this->smsService->send($user, $body),
-            NotificationChannel::EMAIL => $this->sendEmail($user, $title, $body, $data),
+            NotificationChannel::EMAIL => $mail !== null && filled($user->email)
+                ? $user->notify($mail)
+                : $this->sendEmail($user, $title, $body, $data),
         };
     }
 
@@ -126,13 +178,15 @@ final class NotificationService
         NotificationType $type,
         string $title,
         string $body,
-        array $data
+        array $data,
+        ?string $actionUrl
     ): void {
         $user->notify(new \App\Notifications\InAppNotification(
             $type,
             $title,
             $body,
-            $data
+            $data,
+            $actionUrl
         ));
     }
 }

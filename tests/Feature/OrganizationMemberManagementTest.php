@@ -6,6 +6,7 @@ use App\Enums\OrganizationRole;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\Professional;
+use App\Models\ServiceArea;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -211,6 +212,83 @@ class OrganizationMemberManagementTest extends TestCase
         $response->assertNoContent();
         $this->assertFalse($firstOwnerMember->fresh()->is_active);
         $this->assertTrue($secondOwnerMember->fresh()->is_active);
+    }
+
+    public function test_member_listing_exposes_the_service_areas_of_each_member(): void
+    {
+        $organization = Organization::factory()->create();
+        $owner = $this->createOwner($organization);
+        $member = OrganizationMember::factory()->for($organization, 'organization')->create([
+            'role' => OrganizationRole::GROOMER->value,
+        ]);
+        $area = ServiceArea::create(['organization_id' => $organization->id, 'name' => 'Banho e Tosa']);
+        $member->serviceAreas()->attach($area->id);
+
+        $response = $this->actingAs($owner, 'sanctum')
+            ->getJson("/api/organizations/{$organization->id}/members");
+
+        $response->assertOk();
+        $payload = collect($response->json('data'))->firstWhere('id', $member->id);
+        $this->assertSame('Banho e Tosa', $payload['service_areas'][0]['name']);
+    }
+
+    public function test_owner_can_grant_a_non_clinical_permission_override_to_a_member(): void
+    {
+        $organization = Organization::factory()->create();
+        $owner = $this->createOwner($organization);
+        $member = OrganizationMember::factory()->for($organization, 'organization')->create([
+            'role' => OrganizationRole::RECEPTIONIST->value,
+        ]);
+
+        $response = $this->actingAs($owner, 'sanctum')
+            ->putJson("/api/organizations/{$organization->id}/members/{$member->id}/permissions", [
+                'permissions' => ['appointments.view.any'],
+            ]);
+
+        $response->assertOk()->assertJsonFragment(['permissions' => ['appointments.view.any']]);
+        $this->assertDatabaseHas('activity_log', [
+            'subject_type' => OrganizationMember::class,
+            'subject_id' => $member->id,
+        ]);
+        $this->assertTrue($member->fresh()->hasPermission('appointments.view.any'));
+    }
+
+    public function test_owner_cannot_grant_a_clinical_act_as_a_permission_override(): void
+    {
+        $organization = Organization::factory()->create();
+        $owner = $this->createOwner($organization);
+        $member = OrganizationMember::factory()->for($organization, 'organization')->create([
+            'role' => OrganizationRole::RECEPTIONIST->value,
+        ]);
+
+        $response = $this->actingAs($owner, 'sanctum')
+            ->putJson("/api/organizations/{$organization->id}/members/{$member->id}/permissions", [
+                'permissions' => ['medical-records.create'],
+            ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('permissions');
+        $this->assertFalse($member->fresh()->hasPermission('medical-records.create'));
+    }
+
+    public function test_a_member_who_is_not_owner_cannot_update_permission_overrides(): void
+    {
+        $organization = Organization::factory()->create();
+        $this->createOwner($organization);
+        $vetUser = User::factory()->tutor()->create();
+        OrganizationMember::factory()->for($organization, 'organization')->create([
+            'user_id' => $vetUser->id,
+            'role' => OrganizationRole::VETERINARIAN->value,
+        ]);
+        $member = OrganizationMember::factory()->for($organization, 'organization')->create([
+            'role' => OrganizationRole::RECEPTIONIST->value,
+        ]);
+
+        $response = $this->actingAs($vetUser, 'sanctum')
+            ->putJson("/api/organizations/{$organization->id}/members/{$member->id}/permissions", [
+                'permissions' => ['appointments.view.any'],
+            ]);
+
+        $response->assertForbidden();
     }
 
     private function createOwner(Organization $organization): User

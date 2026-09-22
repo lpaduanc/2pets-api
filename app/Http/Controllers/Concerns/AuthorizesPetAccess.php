@@ -127,6 +127,27 @@ trait AuthorizesPetAccess
     }
 
     /**
+     * Matriz de visibilidade de auditoria de pet (item 22 do backlog gap-simplesvet):
+     * dono/admin veem tudo; vet com grant ativo só as entradas que ele mesmo causou;
+     * qualquer outro é 403. Compartilhado entre `PetAuditController` e o endpoint
+     * genérico `ActivityLogController` para não duplicar a mesma regra duas vezes.
+     *
+     * @return int|null null = sem restrição (dono/admin); int = restringe ao `causer_id`.
+     */
+    protected function resolvePetAuditVisibility(?User $user, Pet $pet): ?int
+    {
+        $isOwner = $this->isPetOwner($user, $pet);
+        $isAdmin = $user?->hasAnyRole(['admin', 'super_admin']) || $user?->role === 'admin';
+        $hasActiveVetGrant = $user ? $this->hasActiveVetAccess($user->id, $pet->id) : false;
+
+        if (! $isOwner && ! $isAdmin && ! $hasActiveVetGrant) {
+            abort(403, 'Você não tem permissão para ver a auditoria deste pet.');
+        }
+
+        return (! $isOwner && ! $isAdmin) ? $user->id : null;
+    }
+
+    /**
      * Invariante de privacidade docs/atendimento-veterinario/08-consulta-autorizada-por-agendamento.md
      * §B: quem só chegou ao pet por AGENDAMENTO (sem `PetVetAccess`) nunca recebe o cadastro
      * clínico completo embutido numa resposta — só a identidade mínima.

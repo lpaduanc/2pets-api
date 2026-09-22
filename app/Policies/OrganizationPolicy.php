@@ -23,4 +23,14 @@ class OrganizationPolicy
             ->where('is_active', true)
             ->exists();
     }
+
+    /**
+     * `PUT professional/deposit-settings` — Fase 6 do fluxo de agendamento: configurar o
+     * sinal (percentual + liga/desliga) da organização é decisão de negócio do dono, mesma
+     * régua de `manageMembers`.
+     */
+    public function manageDepositSettings(User $user, Organization $organization): bool
+    {
+        return $this->manageMembers($user, $organization);
+    }
 }

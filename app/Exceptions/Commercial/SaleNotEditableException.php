@@ -16,11 +16,19 @@ final class SaleNotEditableException extends RuntimeException
 {
     public function __construct(private readonly Sale $sale)
     {
-        parent::__construct(sprintf(
-            'Venda %s não pode mais ser alterada (situação: %s).',
-            $sale->number ?? $sale->id,
-            mb_strtolower($sale->status->label())
-        ));
+        // Orçamento fora de rascunho cai aqui também (doc 24): a mensagem fala a língua do
+        // orçamento e aponta a saída, que é revisar — não "a venda está paga".
+        parent::__construct($sale->isQuote()
+            ? sprintf(
+                'Orçamento %s não pode mais ser alterado (situação: %s). Crie uma revisão.',
+                $sale->number ?? $sale->id,
+                mb_strtolower((string) $sale->effectiveQuoteStatus()?->label())
+            )
+            : sprintf(
+                'Venda %s não pode mais ser alterada (situação: %s).',
+                $sale->number ?? $sale->id,
+                mb_strtolower($sale->status->label())
+            ));
     }
 
     public function report(): bool
@@ -32,8 +40,9 @@ final class SaleNotEditableException extends RuntimeException
     {
         return response()->json([
             'message' => $this->getMessage(),
-            'code' => 'sale_not_editable',
+            'code' => $this->sale->isQuote() ? 'quote_not_editable' : 'sale_not_editable',
             'status' => $this->sale->status->value,
+            'quote_status' => $this->sale->effectiveQuoteStatus()?->value,
         ], 422);
     }
 }

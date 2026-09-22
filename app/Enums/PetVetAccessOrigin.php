@@ -23,11 +23,20 @@ enum PetVetAccessOrigin: string
      */
     case NEW_PATIENT_SELF_GRANT = 'new_patient_self_grant';
 
+    /**
+     * Vet cadastrou paciente novo (`POST professional/appointments/new-patient`) para um
+     * tutor CPF já com conta ativa e reivindicada — diferente de `NEW_PATIENT_SELF_GRANT`,
+     * aqui existe alguém para aprovar em tempo real, então o vínculo nasce `pending`, não
+     * `accepted` (correção do Achado 2, `docs/gap-simplesvet/specs/19-portal-do-cliente-spec.md`).
+     */
+    case NEW_PATIENT_PENDING_REQUEST = 'new_patient_pending_request';
+
     public function label(): string
     {
         return match ($this) {
             self::TUTOR_AUTHORIZATION => 'Autorizado pelo tutor',
             self::NEW_PATIENT_SELF_GRANT => 'Concedido ao cadastrar paciente novo',
+            self::NEW_PATIENT_PENDING_REQUEST => 'Solicitado ao cadastrar paciente novo',
         };
     }
 }

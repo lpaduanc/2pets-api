@@ -5,8 +5,11 @@ namespace App\Models;
 use App\Enums\PrescriptionFrequency;
 use App\Enums\PrescriptionPharmaceuticalForm;
 use App\Enums\PrescriptionRoute;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Um medicamento dentro de uma `Prescription` — contrato
@@ -39,6 +42,7 @@ class PrescriptionItem extends Model
         'quantity_to_dispense',
         'instructions_for_tutor',
         'is_controlled',
+        'starts_at',
     ];
 
     protected $casts = [
@@ -53,6 +57,7 @@ class PrescriptionItem extends Model
         'frequency_custom_hours' => 'integer',
         'is_continuous_use' => 'boolean',
         'is_controlled' => 'boolean',
+        'starts_at' => 'datetime',
     ];
 
     public function prescription(): BelongsTo
@@ -63,6 +68,41 @@ class PrescriptionItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /** Administrações registradas durante internação — contrato docs/gap-simplesvet/specs/
+     * 12-internacao-mapa-execucao-spec.md. Só populado quando este item pendura numa
+     * prescrição de internação (`hospitalization_care_logs.prescription_item_id`). */
+    public function careLogs(): HasMany
+    {
+        return $this->hasMany(HospitalizationCareLog::class);
+    }
+
+    /**
+     * Próxima dose esperada, SEMPRE calculada em leitura (regra de negócio 4 da spec 12) —
+     * nenhuma linha de execução é persistida. Ancorada na última administração registrada
+     * quando existir; senão, em `starts_at` (quando a prescrição pendura numa internação).
+     * Frequência sem intervalo previsível (dose única/SOS/livre) não tem próxima dose depois
+     * da primeira administração — `null`.
+     */
+    public function nextDueAt(?CarbonInterface $lastGivenAt): ?CarbonInterface
+    {
+        if ($lastGivenAt === null) {
+            return $this->starts_at !== null ? Carbon::instance($this->starts_at) : null;
+        }
+
+        $intervalHours = $this->frequency?->intervalHours($this->frequency_custom_hours);
+
+        if ($intervalHours === null) {
+            return null;
+        }
+
+        return Carbon::instance($lastGivenAt)->addHours($intervalHours);
+    }
+
+    public function isMedicationLate(?CarbonInterface $nextDueAt): bool
+    {
+        return $nextDueAt !== null && $nextDueAt->isPast();
     }
 
     /** Nome exibido em PDF, lembrete e promoção a `PetMedication` — nunca vazio na tela. */

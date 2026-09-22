@@ -86,7 +86,9 @@ class CashRegister extends Model
 
     public function movements(): HasMany
     {
-        return $this->hasMany(CashRegisterMovement::class);
+        // `chaperone`: cada movimento carregado já conhece o seu caixa sem nova query — o
+        // `CashRegisterMovementResource` precisa do status para decidir a conferência cega.
+        return $this->hasMany(CashRegisterMovement::class)->chaperone('cashRegister');
     }
 
     public function sales(): HasMany
@@ -95,9 +97,12 @@ class CashRegister extends Model
     }
 
     /**
-     * Saldo esperado em DINHEIRO na gaveta: abertura + entradas − saídas, contando só o que é
-     * dinheiro vivo. Cartão e Pix não estão na gaveta e por isso não entram aqui — confundir os
-     * dois faria toda conferência acusar sobra.
+     * Saldo esperado em DINHEIRO na gaveta: entradas − saídas, contando só o que é dinheiro
+     * vivo. Cartão e Pix não estão na gaveta e por isso não entram aqui — confundir os dois
+     * faria toda conferência acusar sobra.
+     *
+     * `opening_amount` NÃO é somado à parte: `CashRegisterService::open()` já grava o troco de
+     * abertura como movimento `supply`, e somar os dois contava o troco em dobro.
      */
     public function expectedCashAmount(): float
     {
@@ -109,7 +114,7 @@ class CashRegister extends Model
             ->filter(fn (CashRegisterMovement $movement): bool => $movement->isPhysicalCash())
             ->sum(fn (CashRegisterMovement $movement): float => $movement->signedAmount());
 
-        return round((float) $this->opening_amount + $net, 2);
+        return round((float) $net, 2);
     }
 
     /**

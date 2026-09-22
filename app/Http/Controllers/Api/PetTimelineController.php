@@ -29,7 +29,7 @@ class PetTimelineController extends Controller
         $page = max((int) $request->input('page', 1), 1);
         $perPage = $this->resolvePerPage($request, self::DEFAULT_PER_PAGE);
 
-        $timeline = $this->timelineService->forPet($petModel, $page, $perPage);
+        $timeline = $this->timelineService->forPet($petModel, $page, $perPage, $request->user());
 
         return response()->json([
             'data' => $timeline['items'],

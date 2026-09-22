@@ -44,8 +44,9 @@ class User extends Authenticatable implements HasMedia
         Notifiable {
             notify as private baseNotify;
         }
-        // SoftDeletes coexiste com LGPD anonimização: delete() esconde o registro; anonymize() apaga dados sensíveis in-place.
-        use SoftDeletes;
+
+    // SoftDeletes coexiste com LGPD anonimização: delete() esconde o registro; anonymize() apaga dados sensíveis in-place.
+    use SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -76,6 +77,8 @@ class User extends Authenticatable implements HasMedia
         'employee_count',
         'additional_notes',
         'birth_date',
+        'birthday_month',
+        'birthday_day',
         'email_verified_at',
         'email_verification_token',
         'email_verification_sent_at',
@@ -98,6 +101,28 @@ class User extends Authenticatable implements HasMedia
         'privacy_accepted_at',
         'marketing_consent',
         'data_sharing_consent',
+        // docs/gap-simplesvet/specs/17-crm-mensageria-spec.md: opt-in de campanha por canal,
+        // separado do transacional.
+        'consent_sms_marketing',
+        'consent_whatsapp_marketing',
+        // As 6 chaves abaixo já eram aceitas por `LgpdController::updateConsent()`
+        // (`GRANULAR_KEYS`) mas faltavam aqui — com `preventSilentlyDiscardingAttributes()`
+        // fora de produção, `$user->update([...])` lançava `MassAssignmentException` para
+        // qualquer uma delas. Achado reportado em docs/gap-simplesvet/contratos/17-contrato-api.md,
+        // corrigido em docs/gap-simplesvet/contratos/20-contrato-api.md.
+        'consent_search_visibility',
+        'consent_share_with_vets',
+        'consent_push_notifications',
+        'consent_sms_transactional',
+        'consent_whatsapp_transactional',
+        'consent_analytics',
+        // Fiscal (doc 05) — dados do cliente PESSOA JURÍDICA para nota fiscal, preenchidos
+        // pelo próprio tutor/cliente no perfil dele.
+        'tax_regime',
+        'municipal_registration',
+        'state_registration',
+        'state_registration_type',
+        'foreign_document',
     ];
 
     /**
@@ -122,6 +147,8 @@ class User extends Authenticatable implements HasMedia
             'email_verified_at' => 'datetime',
             'email_verification_sent_at' => 'datetime',
             'birth_date' => 'date',
+            'birthday_month' => 'integer',
+            'birthday_day' => 'integer',
             'password' => 'hashed',
             'profile_completed' => 'boolean',
             'is_suspended' => 'boolean',
@@ -134,6 +161,16 @@ class User extends Authenticatable implements HasMedia
             'privacy_accepted_at' => 'datetime',
             'marketing_consent' => 'boolean',
             'data_sharing_consent' => 'boolean',
+            'consent_sms_marketing' => 'boolean',
+            'consent_whatsapp_marketing' => 'boolean',
+            'consent_search_visibility' => 'boolean',
+            'consent_share_with_vets' => 'boolean',
+            'consent_push_notifications' => 'boolean',
+            'consent_sms_transactional' => 'boolean',
+            'consent_whatsapp_transactional' => 'boolean',
+            'consent_analytics' => 'boolean',
+            'tax_regime' => \App\Enums\TaxRegime::class,
+            'state_registration_type' => \App\Enums\StateRegistrationType::class,
         ];
     }
 
@@ -335,6 +372,16 @@ class User extends Authenticatable implements HasMedia
         return $this->hasMany(Document::class);
     }
 
+    /**
+     * Etiquetas atribuídas a este usuário COMO CLIENTE de um profissional/organização
+     * (`docs/gap-simplesvet/specs/18-segmentacao-clientes-spec.md`) — não confundir com papel
+     * de plataforma. `withTimestamps()` casa com `taggables.created_at/updated_at`.
+     */
+    public function tags(): \Illuminate\Database\Eloquent\Relations\MorphToMany
+    {
+        return $this->morphToMany(Tag::class, 'taggable')->withTimestamps();
+    }
+
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
@@ -452,6 +499,42 @@ class User extends Authenticatable implements HasMedia
     public function isActiveMemberOfOrganization(int $organizationId): bool
     {
         return $this->activeOrganizationMemberships()->where('organization_id', $organizationId)->exists();
+    }
+
+    /**
+     * A exceção pontual concedida pelo dono (`organization_members.permissions`) em QUALQUER
+     * organização em que esta pessoa tenha vínculo ativo hoje, respeitando a blindagem
+     * clínica de `OrganizationMember::hasPermission()` — revisão de segurança, achado Médio 4:
+     * sem este método, o override gravado por `PUT organizations/{org}/members/{member}/permissions`
+     * nunca tinha efeito em `EnsurePermission` nem em `GET me/permissions`.
+     *
+     * Acessar `activeOrganizationMemberships` como propriedade (e não `()`) reaproveita o
+     * cache de relação do Eloquent: a mesma instância de `$user` resolvida pelo Sanctum no
+     * início do request paga a query uma vez só, mesmo com várias chamadas neste método.
+     */
+    public function hasOrganizationPermissionOverride(string $permission): bool
+    {
+        return $this->activeOrganizationMemberships
+            ->contains(fn (OrganizationMember $member): bool => $member->hasPermission($permission));
+    }
+
+    /**
+     * União das exceções pontuais já efetivamente concedidas (pós blindagem clínica) em
+     * todas as organizações ativas desta pessoa — usado por `PermissionSummaryService` para
+     * que `GET me/permissions` reflita a mesma fonte de verdade de `EnsurePermission`.
+     *
+     * @return list<string>
+     */
+    public function organizationPermissionOverrides(): array
+    {
+        return $this->activeOrganizationMemberships
+            ->flatMap(fn (OrganizationMember $member): array => array_values(array_filter(
+                $member->permissions ?? [],
+                fn (string $permission): bool => $member->hasPermission($permission)
+            )))
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

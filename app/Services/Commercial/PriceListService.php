@@ -5,6 +5,7 @@ namespace App\Services\Commercial;
 use App\Models\Product;
 use App\Models\Service;
 use App\Models\User;
+use App\Support\Csv\CsvFormulaGuard;
 use Illuminate\Support\Collection;
 
 /**
@@ -87,12 +88,15 @@ final class PriceListService
         fputcsv($handle, ['Tipo', 'Nome', 'Código', 'Grupo', 'Unidade', 'Estoque', 'Preço'], ';');
 
         foreach ($rows as $row) {
+            // CSV/Formula Injection (revisão de segurança, achado Médio 3): só as colunas de
+            // texto livre cadastradas pelo profissional passam pelo guard — `stock`/`price`
+            // ficam de fora porque são número formatado, nunca fórmula.
             fputcsv($handle, [
                 $row['type'] === 'product' ? 'Produto' : 'Serviço',
-                $row['name'],
-                $row['code'] ?? '',
-                $row['group'] ?? '',
-                $row['unit'],
+                CsvFormulaGuard::sanitize($row['name']),
+                CsvFormulaGuard::sanitize($row['code'] ?? ''),
+                CsvFormulaGuard::sanitize($row['group'] ?? ''),
+                CsvFormulaGuard::sanitize($row['unit']),
                 $row['stock'] ?? '',
                 number_format($row['price'], 2, ',', ''),
             ], ';');

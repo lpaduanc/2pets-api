@@ -19,6 +19,8 @@ class Vaccination extends Model
         'professional_id',
         'appointment_id',
         'inventory_id',
+        'product_id',
+        'product_batch_id',
         'vaccine_name',
         'manufacturer',
         'batch_number',
@@ -60,10 +62,26 @@ class Vaccination extends Model
         return $this->belongsTo(Appointment::class);
     }
 
-    /** Item de estoque debitado por esta dose — nulo é o caso normal (ver item 2 do parecer). */
+    /**
+     * @deprecated Substituído por `product()`/`productBatch()` na consolidação de estoque
+     *      (docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md). Mantido só para
+     *      histórico de linhas migradas antes da troca — não usar em regra de negócio nova.
+     */
     public function inventory(): BelongsTo
     {
         return $this->belongsTo(Inventory::class);
+    }
+
+    /** Produto de estoque debitado por esta dose — nulo é o caso normal (ver item 2 do parecer). */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    /** Lote aplicado — rastreabilidade exigida pela Res. CFMV 1.321/2020 (alterada pela 1.653/2025). */
+    public function productBatch(): BelongsTo
+    {
+        return $this->belongsTo(ProductBatch::class);
     }
 
     public function scopeUpcoming($query)

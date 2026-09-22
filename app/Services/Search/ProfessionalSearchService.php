@@ -5,6 +5,7 @@ namespace App\Services\Search;
 use App\DataTransferObjects\SearchFiltersDTO;
 use App\Models\Professional;
 use App\Models\User;
+use App\Services\Organization\TeamSizeQuery;
 use App\Support\Pagination\ReachableLengthAwarePaginator;
 use Closure;
 use Illuminate\Contracts\Pagination\CursorPaginator;
@@ -165,6 +166,7 @@ final class ProfessionalSearchService
             ->with(['professional', 'professional.services']);
 
         $this->applyDistanceSelect($query, $filters);
+        TeamSizeQuery::applyTo($query);
 
         return $query
             ->orderByRaw('array_position(?::bigint[], users.id)', [$this->pgBigintArrayLiteral($ids)])
@@ -239,6 +241,7 @@ final class ProfessionalSearchService
             ->with(['professional', 'professional.services']);
 
         $this->applyDistanceSelect($query, $filters, $baseProjection);
+        TeamSizeQuery::applyTo($query);
 
         return $query;
     }

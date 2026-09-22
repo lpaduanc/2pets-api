@@ -101,6 +101,7 @@ final class ConsultationService
                 'appointment_time' => now()->format('H:i'),
                 'duration' => $data['duration'] ?? self::DEFAULT_WALK_IN_DURATION_MINUTES,
                 'type' => $data['type'],
+                'appointment_type_id' => $data['appointment_type_id'] ?? null,
                 'status' => AppointmentStatus::CONFIRMED->value,
                 'reason' => $data['reason'] ?? null,
                 'booking_source' => BookingSource::PROFESSIONAL->value,

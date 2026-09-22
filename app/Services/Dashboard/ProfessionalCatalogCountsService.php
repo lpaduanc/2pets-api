@@ -3,8 +3,8 @@
 namespace App\Services\Dashboard;
 
 use App\DataTransferObjects\ProfessionalDashboardScope;
-use App\Models\Inventory;
 use App\Models\MedicalRecord;
+use App\Models\Product;
 use App\Models\Service;
 
 /**
@@ -12,6 +12,10 @@ use App\Models\Service;
  * serviços ativos e estoque. Antes desses três, o controller nunca calculava nada — o front
  * sempre recebia (ou assumia) `0`, que um profissional lê de manhã como "nada crítico" quando
  * na verdade era "não implementado".
+ *
+ * Estoque lê `Product` (`controls_stock=true`) desde a consolidação — antes lia `Inventory`,
+ * que só cobria o insumo clínico; agora o contador reflete o catálogo inteiro do profissional
+ * (docs/gap-simplesvet/specs/produtos-estoque-consolidado-spec.md).
  */
 final class ProfessionalCatalogCountsService
 {
@@ -67,9 +71,10 @@ final class ProfessionalCatalogCountsService
      */
     private function fetchInventoryCounters(array $professionalIds): array
     {
-        $row = Inventory::whereIn('professional_id', $professionalIds)
+        $row = Product::whereIn('professional_id', $professionalIds)
+            ->where('controls_stock', true)
             ->selectRaw(
-                'COUNT(*) FILTER (WHERE quantity <= min_quantity) AS low_stock,
+                'COUNT(*) FILTER (WHERE stock_quantity <= min_stock) AS low_stock,
                  COUNT(*) FILTER (WHERE expiry_date IS NOT NULL AND expiry_date <= ?) AS expiring_soon',
                 [now()->addDays(self::EXPIRY_WARNING_DAYS)]
             )

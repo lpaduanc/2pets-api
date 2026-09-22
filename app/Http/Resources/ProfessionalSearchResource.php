@@ -43,11 +43,25 @@ class ProfessionalSearchResource extends JsonResource
             'is_featured' => (bool) ($professional?->is_featured ?? false),
             'professional_type' => $professional?->professional_type,
             'professional_type_label' => $professional?->professional_type?->label() ?? 'Profissional',
+            // Fase 2 do fluxo de agendamento: `team_size` só existe quando a query passou por
+            // `TeamSizeQuery::applyTo()` — ausente (favoritos, por exemplo), o card assume
+            // "conta unipessoal" em vez de quebrar. `has_team` > 1 porque o próprio dono já
+            // conta como 1 membro (`organization_members` dele mesmo com `role=owner`).
+            'team_size' => (int) ($this->team_size ?? 0),
+            'has_team' => ((int) ($this->team_size ?? 0)) > 1,
             'professional' => [
                 'type' => $professional?->professional_type,
                 'business_name' => $professional?->business_name,
                 'description' => $professional?->description,
                 'specialties' => $professional?->specialties ?? [],
+                // Fase 7 do fluxo de agendamento — especialidades da EQUIPE (dono de
+                // organização só; vazio para conta unipessoal ou membro comum). Explica ao
+                // tutor por que este resultado apareceu numa busca por especialidade que a
+                // pessoa dona da conta não pratica pessoalmente.
+                'team_specialties' => array_values(array_diff(
+                    $professional?->team_specialties ?? [],
+                    $professional?->specialties ?? [],
+                )),
                 'experience_years' => $professional?->experience_years,
                 'crmv' => $professional?->crmv,
                 'crmv_state' => $professional?->crmv_state,

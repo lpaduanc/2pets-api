@@ -86,7 +86,7 @@ class Order extends Model
 
         // Restore stock
         foreach ($this->items as $item) {
-            $item->product->incrementStock($item->quantity);
+            $item->product->incrementStock($item->quantity, $this);
         }
     }
 }

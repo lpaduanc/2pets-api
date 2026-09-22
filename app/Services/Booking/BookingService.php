@@ -2,32 +2,51 @@
 
 namespace App\Services\Booking;
 
+use App\DataTransferObjects\AggregatedTimeSlot;
+use App\DataTransferObjects\Booking\AvailabilityContext;
 use App\DataTransferObjects\BookingRequestDTO;
 use App\Enums\BookingSource;
 use App\Enums\ServiceCategory;
 use App\Events\AppointmentBooked;
 use App\Events\AppointmentCancelled;
-use App\Events\AppointmentConfirmed;
 use App\Events\AppointmentRescheduled;
 use App\Models\Appointment;
+use App\Models\OrganizationMember;
 use App\Models\Service;
+use App\Support\ServiceNameNormalizer;
 use Carbon\Carbon;
 
 final class BookingService
 {
     public function __construct(
-        private readonly AvailabilityService $availabilityService
+        private readonly AvailabilityService $availabilityService,
+        private readonly AvailabilityAggregationService $availabilityAggregationService,
     ) {}
 
+    /**
+     * Fase 2, item 6: `dto->professionalId` pode vir `null` (modo "qualquer profissional
+     * disponível" — `organizationId` obrigatório nesse caso). Sempre que a organização é
+     * informada — profissional escolhido pelo tutor OU resolvido aqui — o servidor confirma
+     * que ele pertence a ela e executa o serviço pedido, nunca confiando só no payload.
+     */
     public function createBooking(BookingRequestDTO $dto): Appointment
     {
         $service = Service::findOrFail($dto->serviceId);
 
         $this->assertServiceIsTutorBookable($service);
-        $this->validateBookingRequest($dto);
+
+        $professionalId = $this->resolveProfessionalId($dto);
+
+        if ($dto->organizationId !== null) {
+            $this->assertProfessionalBelongsToOrganization($professionalId, $dto->organizationId, $service);
+        }
+
+        $this->validateBookingRequest($dto, $professionalId);
 
         $appointment = Appointment::create([
-            'professional_id' => $dto->professionalId,
+            'professional_id' => $professionalId,
+            'organization_id' => $dto->organizationId,
+            'location_id' => $dto->locationId,
             'client_id' => $dto->clientId,
             'pet_id' => $dto->petId,
             'service_id' => $dto->serviceId,
@@ -46,20 +65,6 @@ final class BookingService
         ]);
 
         AppointmentBooked::dispatch($appointment);
-
-        return $appointment;
-    }
-
-    public function confirmBooking(int $appointmentId): Appointment
-    {
-        $appointment = Appointment::findOrFail($appointmentId);
-
-        $appointment->update([
-            'status' => 'scheduled',
-            'confirmed_at' => Carbon::now(),
-        ]);
-
-        AppointmentConfirmed::dispatch($appointment);
 
         return $appointment;
     }
@@ -119,16 +124,96 @@ final class BookingService
         }
     }
 
-    private function validateBookingRequest(BookingRequestDTO $dto): void
+    /**
+     * `dto->professionalId` nulo (modo "qualquer profissional") é resolvido consultando o
+     * modo agregado pelo horário exato pedido — o mesmo cálculo que
+     * `GET /booking/availability` (modo agregado) já expõe ao app, então o profissional
+     * devolvido aqui é sempre um dos que o app já mostrou como livre.
+     */
+    private function resolveProfessionalId(BookingRequestDTO $dto): int
+    {
+        if ($dto->professionalId !== null) {
+            return $dto->professionalId;
+        }
+
+        if ($dto->organizationId === null) {
+            throw new \InvalidArgumentException('Informe professional_id ou organization_id para agendar.');
+        }
+
+        $slots = $this->availabilityAggregationService->getAggregatedSlots(
+            $dto->organizationId,
+            $dto->appointmentDate,
+            $dto->serviceId,
+            $dto->locationId,
+        );
+
+        $matched = $slots->first(
+            fn (AggregatedTimeSlot $slot): bool => $slot->startTime->equalTo($dto->appointmentDate)
+        );
+
+        if ($matched === null) {
+            throw new \InvalidArgumentException('Nenhum profissional da equipe está disponível neste horário.');
+        }
+
+        return $matched->professionalId;
+    }
+
+    /**
+     * Nunca confia no `professional_id`/`organization_id` do payload: confirma que o
+     * profissional (escolhido pelo tutor OU resolvido no modo agregado) é membro ativo
+     * DESTA organização e que o serviço pedido é dele — `services.professional_id` é 1:1.
+     */
+    /**
+     * Achado real (Fase 6): esta checagem comparava `service->professional_id ===
+     * $professionalId` (id exato), enquanto `OrganizationServiceCatalog`/
+     * `OrganizationTeamService` agrupam/filtram "quem oferece este serviço" por NOME
+     * normalizado (`ServiceNameNormalizer`) — os dois critérios discordavam. Numa clínica
+     * onde dois vets cadastram "Consulta Geral" com nomes iguais e ids diferentes (o caso
+     * que o catálogo agrupado existe para cobrir), o app mostra os dois como oferecendo o
+     * mesmo serviço, mas o agendamento rejeitava um deles com 422. Corrigido para usar o
+     * MESMO critério (nome normalizado, dentro da mesma organização) — nunca mais
+     * `professional_id` exato aqui.
+     */
+    private function assertProfessionalBelongsToOrganization(int $professionalId, int $organizationId, Service $service): void
+    {
+        $isActiveMember = OrganizationMember::query()
+            ->where('organization_id', $organizationId)
+            ->where('user_id', $professionalId)
+            ->where('is_active', true)
+            ->exists();
+
+        if (! $isActiveMember) {
+            throw new \InvalidArgumentException('Este profissional não pertence ao estabelecimento informado.');
+        }
+
+        if (! $this->professionalOffersService($professionalId, $organizationId, $service)) {
+            throw new \InvalidArgumentException('Este profissional não executa o serviço selecionado.');
+        }
+    }
+
+    private function professionalOffersService(int $professionalId, int $organizationId, Service $service): bool
+    {
+        $normalizedTarget = ServiceNameNormalizer::normalize($service->name);
+
+        return Service::query()
+            ->where('professional_id', $professionalId)
+            ->where('organization_id', $organizationId)
+            ->where('active', true)
+            ->get()
+            ->contains(fn (Service $candidate): bool => ServiceNameNormalizer::normalize($candidate->name) === $normalizedTarget);
+    }
+
+    private function validateBookingRequest(BookingRequestDTO $dto, int $professionalId): void
     {
         if ($dto->appointmentDate->isPast()) {
             throw new \InvalidArgumentException('Cannot book appointments in the past');
         }
 
         $availableSlots = $this->availabilityService->getAvailableSlots(
-            $dto->professionalId,
+            $professionalId,
             $dto->appointmentDate,
-            $dto->serviceId
+            $dto->serviceId,
+            new AvailabilityContext($dto->organizationId, $dto->locationId),
         );
 
         $isSlotAvailable = $availableSlots->contains(function ($slot) use ($dto) {

@@ -7,6 +7,7 @@ use App\DataTransferObjects\ExamResultValue;
 use App\Enums\ExamResultStatus;
 use App\Models\Exam;
 use App\Models\ExamImage;
+use App\Models\ExamType;
 use App\Models\Pet;
 use App\Models\User;
 use App\Services\FileUploadService;
@@ -26,7 +27,8 @@ final class ExamService
         string $examName,
         \Carbon\Carbon $examDate,
         ?string $notes = null,
-        ?int $appointmentId = null
+        ?int $appointmentId = null,
+        ?int $examTypeId = null
     ): Exam {
         $exam = Exam::create([
             'pet_id' => $pet->id,
@@ -36,6 +38,8 @@ final class ExamService
             'exam_name' => $examName,
             'exam_date' => $examDate,
             'notes' => $notes,
+            'exam_type_id' => $examTypeId,
+            'report_html' => $this->draftReportHtmlFor($examTypeId),
         ]);
 
         // `status` não é passado no INSERT (o valor vem do DEFAULT `'requested'` da coluna,
@@ -43,6 +47,22 @@ final class ExamService
         // devolve `status: null` em vez do valor real, porque o Eloquent não busca de volta
         // colunas com DEFAULT do banco depois do INSERT.
         return $exam->refresh();
+    }
+
+    /**
+     * Laudo pré-montado (apresentação + encerramento) do tipo de exame — regra de negócio 2
+     * da spec 16: só uma SUGESTÃO inicial, sempre editável depois, nunca amarra o exame ao
+     * template do tipo (a cópia é congelada em `exams.report_html` no momento da criação).
+     */
+    private function draftReportHtmlFor(?int $examTypeId): ?string
+    {
+        if ($examTypeId === null) {
+            return null;
+        }
+
+        $examType = ExamType::find($examTypeId);
+
+        return $examType?->draftReportHtml() ?: null;
     }
 
     /**
