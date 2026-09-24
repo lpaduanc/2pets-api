@@ -105,6 +105,25 @@ final class GeoLocationService
     }
 
     /**
+     * `ST_DWithin` com raio vindo de uma COLUNA em km (ex.: `professionals.service_radius_km`)
+     * em vez de um valor fixo. Não casa índice GIST — o raio muda por linha —, então só deve
+     * ser usada como filtro complementar sobre linhas já podadas por `dWithinExpression()`.
+     *
+     * @return array{sql: string, bindings: array<int, float>}
+     */
+    public function dWithinColumnRadiusExpression(
+        string $locationColumn,
+        float $latitude,
+        float $longitude,
+        string $radiusKmColumn
+    ): array {
+        return [
+            'sql' => "ST_DWithin({$locationColumn}, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, {$radiusKmColumn} * 1000)",
+            'bindings' => [$longitude, $latitude],
+        ];
+    }
+
+    /**
      * Gera a expressao SQL para ST_Distance retornando metros.
      *
      * @return array{sql: string, bindings: array<int, float>}

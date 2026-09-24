@@ -32,9 +32,10 @@ trait HasGeoPoint
 
     /**
      * Recalcula a coluna geography quando latitude/longitude mudaram nesta
-     * escrita. Não faz nada se uma das duas estiver ausente — o registro
-     * fica sem `location` até ter as duas coordenadas, igual ao
-     * comportamento anterior do fluxo de cadastro.
+     * escrita. Se uma das duas foi ANULADA, a coluna também é limpa: sem
+     * isso, um endereço novo que não geocodificou deixava o ponto antigo
+     * valendo e o registro aparecia na busca no lugar errado. Num INSERT sem
+     * coordenada não há o que limpar.
      *
      * `wasChanged()` sozinho não cobre o `create()`: o Eloquent só popula
      * `$this->changes` em `performUpdate()` — `performInsert()` nunca chama
@@ -54,11 +55,23 @@ trait HasGeoPoint
         $latitude = $this->{$latitudeColumn};
         $longitude = $this->{$longitudeColumn};
 
-        if ($latitude === null || $longitude === null) {
+        if ($latitude !== null && $longitude !== null) {
+            $this->writeGeoPoint((float) $latitude, (float) $longitude);
+
             return;
         }
 
-        $this->writeGeoPoint((float) $latitude, (float) $longitude);
+        if ($this->wasChanged([$latitudeColumn, $longitudeColumn])) {
+            $this->clearGeoPoint();
+        }
+    }
+
+    private function clearGeoPoint(): void
+    {
+        DB::statement(
+            sprintf('UPDATE %s SET %s = NULL WHERE id = ?', $this->getTable(), $this->geoLocationColumn()),
+            [$this->getKey()]
+        );
     }
 
     /**

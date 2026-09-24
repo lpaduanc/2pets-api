@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\PresentsPublicProfessionalLocation;
 use Illuminate\Http\Request;
 
 /**
@@ -15,39 +16,20 @@ use Illuminate\Http\Request;
  * inteira de profissionais raspável sem conta. Este resource existe só para remover, no
  * caminho público, o que a base não deveria ter exposto.
  *
- * Decisão sobre latitude/longitude: ficam, mas arredondadas — `distance_km` já resolve
- * "perto de você" e o app usa a coordenada para plotar o pin no mapa da busca
- * (`SearchPage.vue`), então remover quebraria essa tela. Arredondar para 3 casas (~110m no
- * equador) tira a precisão de endereço exato — sensível sobretudo para o vet volante, que
- * pode operar de um endereço residencial — sem deixar o mapa impreciso a ponto de atrapalhar.
- *
- * Decisão sobre `address`: fica como está. É informação comercial pública para clínica e
- * petshop (endereço de loja/consultório, já indexado no Google Maps de qualquer forma), e
- * não existe hoje um campo que separe endereço residencial de comercial para tratar o vet
- * volante à parte — inventar essa distinção aqui seria decisão de produto, não bug fix.
+ * Endereço, coordenada e distância seguem `PresentsPublicProfessionalLocation` — a mesma
+ * regra dos cards: ponto fixo publica o endereço comercial; volante só bairro/cidade/UF,
+ * coordenada com 2 casas e distância em degraus de 500 m (decisão de produto, 2026-09-24).
  */
 class PublicProfessionalSearchResource extends ProfessionalSearchResource
 {
-    private const COORDINATE_PRECISION = 3;
+    use PresentsPublicProfessionalLocation;
 
     public function toArray(Request $request): array
     {
         $data = parent::toArray($request);
 
-        unset($data['email'], $data['phone']);
+        unset($data['email'], $data['phone'], $data['distance_km']);
 
-        $data['latitude'] = $this->roundCoordinate($data['latitude']);
-        $data['longitude'] = $this->roundCoordinate($data['longitude']);
-
-        return $data;
-    }
-
-    private function roundCoordinate(mixed $coordinate): ?float
-    {
-        if ($coordinate === null) {
-            return null;
-        }
-
-        return round((float) $coordinate, self::COORDINATE_PRECISION);
+        return [...$data, ...$this->publicLocation($this->professional)];
     }
 }

@@ -6,6 +6,7 @@ use App\DataTransferObjects\SearchFiltersDTO;
 use App\Enums\ProfessionalType;
 use App\Enums\ServiceCategory;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Search\NearbyProfessionalSearchRequest;
 use App\Http\Requests\Search\PublicProfessionalSearchRequest;
 use App\Http\Resources\ProfessionalSearchCardResource;
 use App\Http\Resources\ProfessionalSearchCollection;
@@ -14,6 +15,7 @@ use App\Services\Organization\TeamSizeQuery;
 use App\Services\Search\GeoLocationService;
 use App\Services\Search\ProfessionalSearchService;
 use App\Services\Search\SearchConceptPresenter;
+use App\Services\Search\SearchOriginResolver;
 use App\Services\Search\SearchResultMetaBuilder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -27,16 +29,25 @@ class SearchController extends Controller
         private readonly GeoLocationService $geoLocationService,
         private readonly SearchResultMetaBuilder $searchResultMetaBuilder,
         private readonly SearchConceptPresenter $searchConceptPresenter,
+        private readonly SearchOriginResolver $searchOriginResolver,
     ) {}
 
+    /**
+     * Origem por lat/lng ou por `zip_code` (resolvido aqui para coordenada — CEP inexistente
+     * vira 422, consulta indisponível vira 503, pelas próprias exceções).
+     */
     public function search(PublicProfessionalSearchRequest $request): ProfessionalSearchCollection
     {
-        $filters = SearchFiltersDTO::fromRequest($request->validated());
+        $validated = $request->validated();
+        $origin = $this->searchOriginResolver->placeFor($validated);
+        $filters = SearchFiltersDTO::fromRequest($this->searchOriginResolver->withOrigin($validated, $origin));
 
         // Cursor pagination serve o scroll infinito quando `?cursor=` está presente.
-        return $request->has('cursor')
+        $results = $request->has('cursor')
             ? $this->cursorResults($filters)
             : $this->pagedResults($filters);
+
+        return $results->withOrigin($origin);
     }
 
     private function pagedResults(SearchFiltersDTO $filters): ProfessionalSearchCollection
@@ -55,17 +66,13 @@ class SearchController extends Controller
             ->withSearchMeta($this->searchResultMetaBuilder->forCursor($filters));
     }
 
-    public function nearby(Request $request): AnonymousResourceCollection
+    public function nearby(NearbyProfessionalSearchRequest $request): AnonymousResourceCollection
     {
-        $validated = $request->validate([
-            'latitude' => 'required|numeric|between:-90,90',
-            'longitude' => 'required|numeric|between:-180,180',
-            'radius_km' => 'nullable|integer|min:1|max:100',
-            'limit' => 'nullable|integer|min:1|max:50',
-        ]);
+        $validated = $request->validated();
+        $origin = $this->searchOriginResolver->placeFor($validated);
 
         $filters = SearchFiltersDTO::fromRequest([
-            ...$validated,
+            ...$this->searchOriginResolver->withOrigin($validated, $origin),
             'sort_by' => 'distance',
             'per_page' => $validated['limit'] ?? 10,
         ]);

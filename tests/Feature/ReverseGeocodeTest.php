@@ -12,10 +12,9 @@ use Tests\TestCase;
  * dizendo se deu certo e `status` dizendo por que não. Nunca 5xx — "não há endereço neste
  * ponto" e "não consigo consultar agora" são respostas, não falhas.
  *
- * ⚠️ Cada teste usa uma coordenada DIFERENTE de propósito: `GeocodingService` cacheia por
- * coordenada em `Cache::store('redis')` — store fixo no código, que a suíte não substitui
- * pelo `array` do `phpunit.xml`. Coordenadas distintas garantem chaves distintas e mantêm os
- * testes independentes entre si sem depender de flush.
+ * Cada teste usa uma coordenada diferente: `GeocodingService` cacheia por coordenada (na
+ * suíte, no store `array` — `GEOCODING_CACHE_STORE` do `phpunit.xml`), e chaves distintas
+ * mantêm os testes independentes mesmo dentro de um único processo.
  */
 class ReverseGeocodeTest extends TestCase
 {

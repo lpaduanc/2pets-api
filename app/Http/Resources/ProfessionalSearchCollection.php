@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\DataTransferObjects\Location\ResolvedPlace;
 use App\DataTransferObjects\Search\SearchResultMeta;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\ResourceCollection;
@@ -28,9 +29,22 @@ class ProfessionalSearchCollection extends ResourceCollection
 
     private SearchResultMeta $searchMeta;
 
+    private ?ResolvedPlace $origin = null;
+
     public function withSearchMeta(SearchResultMeta $searchMeta): self
     {
         $this->searchMeta = $searchMeta;
+
+        return $this;
+    }
+
+    /**
+     * Busca por CEP: devolve onde o CEP caiu ("Buscando perto de Centro, Poços de Caldas"),
+     * para o frontend não ter que resolver o mesmo CEP de novo.
+     */
+    public function withOrigin(?ResolvedPlace $origin): self
+    {
+        $this->origin = $origin;
 
         return $this;
     }
@@ -47,7 +61,19 @@ class ProfessionalSearchCollection extends ResourceCollection
     {
         return [
             ...$default,
-            'meta' => [...($default['meta'] ?? []), ...$this->searchMeta->toArray()],
+            'meta' => [...($default['meta'] ?? []), ...$this->searchMeta->toArray(), ...$this->originMeta()],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function originMeta(): array
+    {
+        if ($this->origin === null) {
+            return [];
+        }
+
+        return ['origin' => ['source' => 'zip_code', ...$this->origin->toArray()]];
     }
 }

@@ -46,6 +46,22 @@ final class ProfessionalCapabilityRegistry
         );
     }
 
+    /**
+     * Tipos VOLANTES: atendem em deslocamento, sem endereço físico aberto ao público (hoje só
+     * `vet`). Para eles o raio de atendimento limita a busca e o endereço — que costuma ser
+     * residencial — nunca sai na API pública. Derivado de `has_physical_address`, nunca de
+     * uma lista redigitada.
+     *
+     * @return list<ProfessionalType>
+     */
+    public static function mobileTypes(): array
+    {
+        return array_values(array_map(
+            fn (ProfessionalTypeCapabilities $capabilities): ProfessionalType => $capabilities->type,
+            array_filter(self::all(), fn (ProfessionalTypeCapabilities $capabilities): bool => ! $capabilities->hasPhysicalAddress),
+        ));
+    }
+
     /** @return list<ProfessionalTypeCapabilities> */
     public static function all(): array
     {

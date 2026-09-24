@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Contracts\HasDepositSettings;
 use App\DataTransferObjects\Cnpj;
 use App\Enums\ProfessionalType;
+use App\Support\Registration\ProfessionalCapabilityRegistry;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -178,6 +179,15 @@ class Professional extends Model implements HasDepositSettings
     public function catalogSpecialties(): BelongsToMany
     {
         return $this->belongsToMany(Specialty::class, 'professional_specialty')->withTimestamps();
+    }
+
+    /**
+     * Volante: atende em deslocamento, sem endereço físico aberto ao público (ver
+     * `ProfessionalCapabilityRegistry::mobileTypes()`).
+     */
+    public function isMobile(): bool
+    {
+        return in_array($this->professional_type, ProfessionalCapabilityRegistry::mobileTypes(), true);
     }
 
     public function depositEnabled(): bool

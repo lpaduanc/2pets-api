@@ -35,6 +35,17 @@ return [
         'maps_api_key' => env('GOOGLE_MAPS_API_KEY'),
     ],
 
+    // Cache das respostas de geocoding (30 dias, limite dos termos do Google). Redis por
+    // padrão; a suíte usa `array` (phpunit.xml) para um teste não herdar resposta de outro.
+    'geocoding' => [
+        'cache_store' => env('GEOCODING_CACHE_STORE', 'redis'),
+    ],
+
+    // CEP → endereço (busca por CEP e fallback de localização do tutor). Pública, sem chave.
+    'viacep' => [
+        'base_url' => env('VIACEP_BASE_URL', 'https://viacep.com.br'),
+    ],
+
     // Stripe Payment Gateway
     // O fallback '' é obrigatório: StripeService tipa `private string $secretKey` e conta com
     // `isConfigured()` para operar sem credencial (dev, teste, ambiente sem Stripe). Sem o

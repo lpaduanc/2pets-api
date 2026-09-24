@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
-use App\Services\Location\GeocodingService;
+use App\Services\Location\UserAddressGeocoder;
 use App\Services\Profile\LinkedProfileUpdateService;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -24,13 +24,10 @@ use Illuminate\Validation\ValidationException;
 final class ProfileUpdateService
 {
     /** @var list<string> */
-    private const ADDRESS_FIELDS = ['address', 'city', 'state', 'zip_code'];
-
-    /** @var list<string> */
     private const PASSWORD_INPUT_FIELDS = ['current_password', 'new_password', 'new_password_confirmation'];
 
     public function __construct(
-        private readonly GeocodingService $geocodingService,
+        private readonly UserAddressGeocoder $addressGeocoder,
         private readonly LinkedProfileUpdateService $linkedProfileUpdateService,
     ) {}
 
@@ -47,6 +44,8 @@ final class ProfileUpdateService
             $user->update($userData);
             $this->linkedProfileUpdateService->update($user, $professionalData, $companyData);
         });
+
+        $this->addressGeocoder->scheduleRetryIfFailed($user);
 
         return $user->fresh(['professional', 'company']);
     }
@@ -119,6 +118,9 @@ final class ProfileUpdateService
     }
 
     /**
+     * Endereço alterado → coordenada nova. Falhou? O endereço é salvo mesmo assim, com a
+     * coordenada ANULADA e `geocoding_status = failed` — nunca o ponto do endereço antigo.
+     *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
@@ -128,17 +130,7 @@ final class ProfileUpdateService
             return $data;
         }
 
-        $coordinates = $this->geocodingService->geocode($this->buildFullAddress($user, $data));
-
-        if ($coordinates === null) {
-            return $data;
-        }
-
-        return [
-            ...$data,
-            'latitude' => $coordinates['latitude'],
-            'longitude' => $coordinates['longitude'],
-        ];
+        return [...$data, ...$this->addressGeocoder->coordinateAttributes($this->mergedAddress($user, $data))];
     }
 
     /**
@@ -146,21 +138,20 @@ final class ProfileUpdateService
      */
     private function addressChanged(array $data): bool
     {
-        return array_intersect(self::ADDRESS_FIELDS, array_keys($data)) !== [];
+        return array_intersect(UserAddressGeocoder::ADDRESS_FIELDS, array_keys($data)) !== [];
     }
 
     /**
+     * Endereço completo pós-edição: o que veio no request sobre o que já estava gravado.
+     *
      * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
      */
-    private function buildFullAddress(User $user, array $data): string
+    private function mergedAddress(User $user, array $data): array
     {
-        $parts = array_filter([
-            $data['address'] ?? $user->address,
-            $data['city'] ?? $user->city,
-            $data['state'] ?? $user->state,
-            $data['zip_code'] ?? $user->zip_code,
-        ]);
-
-        return implode(', ', $parts);
+        return [
+            ...$user->only(UserAddressGeocoder::ADDRESS_FIELDS),
+            ...array_intersect_key($data, array_flip(UserAddressGeocoder::ADDRESS_FIELDS)),
+        ];
     }
 }

@@ -29,7 +29,7 @@ class PublicSearchPrivacyTest extends TestCase
 
     private const RAW_LONGITUDE = -46.63330900;
 
-    private function createApprovedProfessional(array $overrides = []): User
+    private function createApprovedProfessional(array $overrides = [], string $professionalType = 'clinic'): User
     {
         $user = User::factory()->professional()->create(array_merge([
             'profile_completed' => true,
@@ -41,7 +41,7 @@ class PublicSearchPrivacyTest extends TestCase
             'longitude' => self::RAW_LONGITUDE,
         ], $overrides));
 
-        Professional::factory()->create(['user_id' => $user->id]);
+        Professional::factory()->create(['user_id' => $user->id, 'professional_type' => $professionalType]);
 
         return $user;
     }
@@ -85,9 +85,29 @@ class PublicSearchPrivacyTest extends TestCase
     }
 
     /**
+     * Mobile professionals (vet volante) often work from home: coordinates drop to 2 decimals
+     * (~1.1 km), the street is withheld and the distance comes in 500 m steps — exact meters
+     * from three search points would trilaterate the address the rounding tried to hide.
+     */
+    public function test_public_search_blurs_the_location_of_a_mobile_professional(): void
+    {
+        $this->createApprovedProfessional(['address' => 'Rua da Casa do Vet', 'number' => '77'], 'vet');
+
+        $data = $this->getJson('/api/public/search?'.http_build_query([
+            'latitude' => self::RAW_LATITUDE + 0.004,
+            'longitude' => self::RAW_LONGITUDE,
+        ]))->assertOk()->json('data.0');
+
+        $this->assertSame(round(self::RAW_LATITUDE, 2), $data['latitude']);
+        $this->assertSame(round(self::RAW_LONGITUDE, 2), $data['longitude']);
+        $this->assertNull($data['address']);
+        $this->assertSame(0, $data['distance_m'] % 500);
+    }
+
+    /**
      * Distância continua resolvida sem a coordenada exata: a precisão cai para ~110m
      * (3 casas decimais), o suficiente para plotar o pin de "perto de você" no mapa da
-     * busca sem devolver o ponto exato do profissional.
+     * busca sem devolver o ponto exato do profissional (ponto fixo — clínica).
      */
     public function test_public_search_rounds_coordinates_instead_of_removing_them(): void
     {

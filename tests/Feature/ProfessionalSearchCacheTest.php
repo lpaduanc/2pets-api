@@ -91,10 +91,12 @@ class ProfessionalSearchCacheTest extends TestCase
         $professionalLatitude = -23.5505;
         $professionalLongitude = -46.6333;
 
+        // Clínica (ponto fixo): distância exata. Volante sai em degraus de 500 m
+        // (`PresentsPublicProfessionalLocation`) e esconderia a diferença que o teste mede.
         $user = $this->createApprovedProfessional([
             'latitude' => $professionalLatitude,
             'longitude' => $professionalLongitude,
-        ]);
+        ], ['professional_type' => 'clinic']);
 
         $searchPointNear = ['latitude' => -23.5510, 'longitude' => -46.6340];
         $searchPointFar = ['latitude' => -23.5540, 'longitude' => -46.6370];

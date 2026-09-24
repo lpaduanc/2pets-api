@@ -38,6 +38,8 @@ class ProfileUpdateTest extends TestCase
 
     public function test_changing_address_triggers_regeocoding_and_updates_location(): void
     {
+        // Sem chave o geocoding nem consulta o provedor (ver `GoogleGeocodingProvider`).
+        config(['services.google.maps_api_key' => 'chave-de-teste']);
         Http::fake([
             'maps.googleapis.com/*' => Http::response([
                 'status' => 'OK',
@@ -280,6 +282,8 @@ class ProfileUpdateTest extends TestCase
 
     public function test_update_with_nested_address_persists_columns_and_triggers_regeocoding(): void
     {
+        // Sem chave o geocoding nem consulta o provedor (ver `GoogleGeocodingProvider`).
+        config(['services.google.maps_api_key' => 'chave-de-teste']);
         Http::fake([
             'maps.googleapis.com/*' => Http::response([
                 'status' => 'OK',

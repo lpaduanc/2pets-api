@@ -34,6 +34,7 @@ final class ProfessionalSearchService
         private readonly ProfessionalSearchCache $professionalSearchCache,
         private readonly ProfessionalTextSearchQuery $professionalTextSearchQuery,
         private readonly ProfessionalAttributeFilter $professionalAttributeFilter,
+        private readonly ServiceRadiusFilter $serviceRadiusFilter,
     ) {}
 
     /**
@@ -166,6 +167,11 @@ final class ProfessionalSearchService
             ->with(['professional', 'professional.services']);
 
         $this->applyDistanceSelect($query, $filters);
+        // Os ids vieram de uma célula da grade de cache (coordenada arredondada, até ~11 km):
+        // um volante perto do centro da célula pode estar fora do alcance do tutor REAL.
+        // Reaplicar aqui, com a coordenada exata, garante que ele nunca apareça — ao custo
+        // raro de uma página com um item a menos.
+        $this->serviceRadiusFilter->apply($query, $filters);
         TeamSizeQuery::applyTo($query);
 
         return $query
@@ -293,6 +299,7 @@ final class ProfessionalSearchService
         );
 
         $query->whereRaw($dWithin['sql'], $dWithin['bindings']);
+        $this->serviceRadiusFilter->apply($query, $filters);
     }
 
     /**

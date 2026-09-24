@@ -70,6 +70,8 @@ class User extends Authenticatable implements HasMedia
         'zip_code',
         'latitude',
         'longitude',
+        'geocoding_status',
+        'geocoded_at',
         'cpf',
         'cnpj',
         'gender',
@@ -156,6 +158,8 @@ class User extends Authenticatable implements HasMedia
             'deactivated_at' => 'datetime',
             'deactivation_reason' => DeactivationReason::class,
             'reactivated_at' => 'datetime',
+            'geocoding_status' => \App\Enums\Location\GeocodingStatus::class,
+            'geocoded_at' => 'datetime',
             // LGPD casts
             'terms_accepted_at' => 'datetime',
             'privacy_accepted_at' => 'datetime',

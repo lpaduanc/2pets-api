@@ -51,3 +51,14 @@ Schedule::command('crm:run-automations')->everyFifteenMinutes()
     ->withoutOverlapping()
     ->onOneServer()
     ->appendOutputTo(storage_path('logs/crm-run-automations.log'));
+
+/**
+ * `geocoding:retry-failed` — endereços salvos sem coordenada (geocoding falhou no cadastro ou
+ * na edição) ficam FORA da busca por proximidade até resolver. Uma vez por dia basta: a
+ * própria fila já retenta cada falha por ~1 h (`GeocodeUserAddress::$backoff`); isto recolhe
+ * o que a fila não cobre (provedor sem chave no momento da falha, tentativas esgotadas).
+ */
+Schedule::command('geocoding:retry-failed')->dailyAt('03:30')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/geocoding-retry.log'));

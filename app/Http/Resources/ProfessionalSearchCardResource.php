@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\PresentsPublicProfessionalLocation;
 use Illuminate\Http\Request;
 
 /**
@@ -30,13 +31,9 @@ use Illuminate\Http\Request;
  */
 class ProfessionalSearchCardResource extends ProfessionalSearchResource
 {
-    /**
-     * Coordenada arredondada: `distance_km` já responde "perto de você" e o app usa o par
-     * lat/lng só para plotar o pin no mapa. Três casas (~110 m) tiram a precisão de endereço
-     * exato — sensível sobretudo para o vet volante, que pode atender do endereço
-     * residencial — sem atrapalhar o mapa. Mesma decisão de `PublicProfessionalSearchResource`.
-     */
-    private const COORDINATE_PRECISION = 3;
+    // Endereço/coordenada/distância: regra de privacidade do volante em
+    // `PresentsPublicProfessionalLocation` (compartilhada com o perfil público).
+    use PresentsPublicProfessionalLocation;
 
     public function toArray(Request $request): array
     {
@@ -44,7 +41,7 @@ class ProfessionalSearchCardResource extends ProfessionalSearchResource
 
         return [
             ...$this->identity($professional),
-            ...$this->location(),
+            ...$this->publicLocation($professional),
             ...$this->reputation($professional),
         ];
     }
@@ -88,27 +85,6 @@ class ProfessionalSearchCardResource extends ProfessionalSearchResource
     /**
      * @return array<string, mixed>
      */
-    private function location(): array
-    {
-        return [
-            'address' => $this->formatAddress(),
-            'city' => $this->city,
-            'state' => $this->state,
-            'latitude' => $this->roundCoordinate($this->latitude),
-            'longitude' => $this->roundCoordinate($this->longitude),
-            // Zero não é falsy aqui: `isset` distingue "não calculado" (busca sem lat/lng,
-            // que produz `NULL::double precision AS distance_km`) de "calculado, deu zero"
-            // (profissional na coordenada exata da busca).
-            'distance_km' => $this->when(
-                isset($this->distance_km),
-                fn () => round($this->distance_km, 2)
-            ),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
     private function reputation(?object $professional): array
     {
         $minPrice = $professional?->services?->where('active', true)->min('price');
@@ -127,14 +103,5 @@ class ProfessionalSearchCardResource extends ProfessionalSearchResource
             'team_size' => (int) ($this->team_size ?? 0),
             'has_team' => ((int) ($this->team_size ?? 0)) > 1,
         ];
-    }
-
-    private function roundCoordinate(mixed $coordinate): ?float
-    {
-        if ($coordinate === null) {
-            return null;
-        }
-
-        return round((float) $coordinate, self::COORDINATE_PRECISION);
     }
 }

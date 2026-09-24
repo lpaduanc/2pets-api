@@ -89,6 +89,7 @@ use App\Http\Controllers\Api\Public\BookingController;
 use App\Http\Controllers\Api\Public\DocumentVerificationController;
 use App\Http\Controllers\Api\Public\MasterDataController;
 use App\Http\Controllers\Api\Public\PetCardController as PublicPetCardController;
+use App\Http\Controllers\Api\Public\PostalCodeController;
 use App\Http\Controllers\Api\Public\ProfessionalController;
 use App\Http\Controllers\Api\Public\QuoteDecisionController;
 use App\Http\Controllers\Api\Public\ReverseGeocodeController;
@@ -197,6 +198,12 @@ Route::prefix('public')->middleware('throttle:reverse-geocode')->group(function 
     Route::get('/reverse-geocode', ReverseGeocodeController::class);
 });
 
+// CEP → coordenada (fallback de localização da busca). Grupo próprio pelo mesmo motivo do
+// reverse geocoding: cada CEP novo pode virar uma chamada PAGA ao Google.
+Route::prefix('public')->middleware('throttle:postal-code')->group(function () {
+    Route::get('/postal-code/{zipCode}', PostalCodeController::class);
+});
+
 Route::prefix('public')->middleware('throttle:30,1')->group(function () {
     Route::get('/professionals/{id}', [ProfessionalController::class, 'show']);
     // Fase 2 do fluxo de agendamento — equipe do estabelecimento (clínica/petshop/etc.).
@@ -272,6 +279,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     // Item 22 — catálogo de permissões do usuário logado, para o app montar
     // menu/UI sem renderizar item que o backend recusaria.
     Route::get('/me/permissions', \App\Http\Controllers\Api\MePermissionsController::class);
+
+    // Última localização confirmada na busca (GPS ou CEP) — padrão da próxima visita.
+    Route::get('/me/search-location', [\App\Http\Controllers\Api\SearchLocationController::class, 'show']);
+    Route::put('/me/search-location', [\App\Http\Controllers\Api\SearchLocationController::class, 'update']);
 
     // Registration Completion
     Route::post('/register/complete-tutor', [RegistrationCompletionController::class, 'completeTutor']);

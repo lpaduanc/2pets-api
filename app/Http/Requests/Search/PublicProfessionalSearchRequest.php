@@ -5,6 +5,7 @@ namespace App\Http\Requests\Search;
 use App\Enums\PetSpecies;
 use App\Enums\ProfessionalType;
 use App\Enums\ServiceCategory;
+use App\Http\Requests\Location\PostalCodeLookupRequest;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -64,6 +65,9 @@ class PublicProfessionalSearchRequest extends FormRequest
         return [
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            // Alternativa à coordenada: o backend resolve o CEP (`SearchOriginResolver`) e a
+            // coordenada resultante entra no DTO e na chave de cache como qualquer outra.
+            'zip_code' => ['nullable', 'string', PostalCodeLookupRequest::ZIP_CODE_RULE],
             'radius_km' => ['nullable', 'integer', 'min:1', 'max:100'],
             'professional_type' => $this->closedListRules(ProfessionalType::class),
             'professional_type.*' => [Rule::enum(ProfessionalType::class)],
@@ -99,6 +103,7 @@ class PublicProfessionalSearchRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'zip_code' => 'CEP',
             'professional_type.*' => 'tipo de profissional',
             'service_category.*' => 'categoria de serviço',
             'specialty.*' => 'especialidade',

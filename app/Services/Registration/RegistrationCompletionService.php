@@ -37,6 +37,7 @@ final class RegistrationCompletionService
     public function completeTutor(User $user, array $data, ?UploadedFile $avatar): User
     {
         $user->update($this->tutorUserData($data));
+        $this->addressResolver->scheduleRetryIfFailed($user);
         $this->attachAvatar($user, $avatar);
 
         return $user->fresh();
@@ -49,6 +50,7 @@ final class RegistrationCompletionService
             $user->update($this->vetUserData($data));
             Professional::create($this->vetProfessionalData($user, $data));
         });
+        $this->addressResolver->scheduleRetryIfFailed($user);
 
         return $user->fresh()->load('professional');
     }
@@ -68,6 +70,7 @@ final class RegistrationCompletionService
     {
         $organization = DB::transaction(function () use ($user, $professionalType, $data): Organization {
             $user->update($this->genericProfessionalUserData($data));
+            $this->addressResolver->scheduleRetryIfFailed($user);
             $professional = Professional::updateOrCreate(
                 ['user_id' => $user->id],
                 $this->genericProfessionalData($professionalType, $data)

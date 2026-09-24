@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\FiscalProviderGateway;
+use App\Contracts\GeocodingProvider;
 use App\Contracts\PaymentGatewayInterface;
 use App\Events\MedicalRecordFinalized;
 use App\Events\ReviewCreated;
@@ -34,6 +35,7 @@ use App\Services\Crm\Automation\InactiveClientTriggerResolver;
 use App\Services\Crm\Automation\MessageAutomationTriggerResolverRegistry;
 use App\Services\Crm\Automation\PostAppointmentFollowupTriggerResolver;
 use App\Services\Crm\Automation\VaccineTriggerResolver;
+use App\Services\Location\Providers\GoogleGeocodingProvider;
 use App\Services\Payment\MercadoPagoService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -89,6 +91,10 @@ class AppServiceProvider extends ServiceProvider
         // ambiente é o fake/log — sem credencial configurada, a emissão "funciona" (grava com
         // status simulado, loga o payload). Trocar para um provedor real é só mudar este bind.
         $this->app->bind(FiscalProviderGateway::class, \App\Services\Fiscal\LogFiscalProviderGateway::class);
+
+        // Geocodificação atrás de contrato: Google é o provedor. Trocar (ex.: Nominatim) é
+        // uma classe nova implementando `GeocodingProvider` + mudar este bind.
+        $this->app->bind(GeocodingProvider::class, GoogleGeocodingProvider::class);
 
         // docs/gap-simplesvet/specs/17-crm-mensageria-spec.md: um resolvedor por gatilho de
         // automação (OCP) — novo gatilho = nova classe implementando
@@ -164,11 +170,17 @@ class AppServiceProvider extends ServiceProvider
      * varrer uma cidade em grade de 100 m exigiria dezenas de milhares de pontos, o que a
      * 10/min leva dias por IP. O cache de 30 dias por coordenada (limite dos Termos do
      * Google) absorve a repetição legítima sem gastar cota nenhuma.
+     *
+     * ── `postal-code`: 20/min por IP ──────────────────────────────────────────────────
+     * Mesma natureza do reverse geocoding (CEP novo = geocoding pago), com folga maior
+     * porque é caminho de erro: quem cai no fallback de CEP pode errar a digitação algumas
+     * vezes. CEP repetido não gasta cota — ViaCEP e geocoding cacheiam por 30 dias.
      */
     private function registerRateLimiters(): void
     {
         RateLimiter::for('public-search', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('reverse-geocode', fn (Request $request): Limit => Limit::perMinute(10)->by($request->ip()));
+        RateLimiter::for('postal-code', fn (Request $request): Limit => Limit::perMinute(20)->by($request->ip()));
     }
 
     /**
