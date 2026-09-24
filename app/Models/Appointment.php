@@ -8,10 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Appointment extends Model
 {
-    use SoftDeletes;
+    use LogsActivity, SoftDeletes;
 
     protected $fillable = [
         'professional_id',
@@ -61,6 +63,25 @@ class Appointment extends Model
         'deposit_amount' => 'decimal:2',
         'checked_in_at' => 'datetime',
     ];
+
+    /**
+     * Activity log restrito ao ciclo de vida (status + carimbos de tempo relacionados),
+     * nunca `logFillable()` puro: `notes`/`reason` podem carregar anotação interna do
+     * profissional que o tutor não veria em outra tela, e o feed de atividade do tutor
+     * (`TutorActivityFeedService`) lê exatamente estas entradas para "consulta confirmada/
+     * cancelada/reagendada". Antes desta trait, nenhuma mudança de agendamento aparecia na
+     * Início do tutor além do que os 3 últimos registros por `created_at` mostravam.
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly([
+                'status', 'appointment_date', 'appointment_time', 'confirmed_at',
+                'cancelled_at', 'cancellation_reason', 'checked_in_at', 'deposit_status',
+            ])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
 
     public function professional(): BelongsTo
     {

@@ -83,6 +83,18 @@ final class FrontendRoute
         return "/tutor/pets/{$petId}/authorized-vets";
     }
 
+    /** Aba "Resumo" do perfil do pet — destino padrão de alterações no cadastro do pet. */
+    public static function tutorPetOverview(int $petId): string
+    {
+        return "/tutor/pets/{$petId}/overview";
+    }
+
+    /** Aba "Saúde" do perfil do pet — destino de vacina/vermífugo/medicação/cirurgia/exame/internação. */
+    public static function tutorPetHealth(int $petId): string
+    {
+        return "/tutor/pets/{$petId}/health";
+    }
+
     /**
      * Builds an absolute link to the frontend app for e-mail actions.
      *

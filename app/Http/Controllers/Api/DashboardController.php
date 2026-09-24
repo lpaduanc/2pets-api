@@ -7,11 +7,22 @@ use App\Models\Appointment;
 use App\Models\Pet;
 use App\Models\PetDeworming;
 use App\Models\Vaccination;
+use App\Services\Dashboard\TutorActivityFeedService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    /**
+     * Default e teto de `?activity_limit=` do feed "Atividade Recente" — sem teto, um tutor
+     * antigo com anos de histórico poderia pedir um `LIMIT` gigante em 4 fontes de uma vez.
+     */
+    private const DEFAULT_ACTIVITY_LIMIT = 5;
+
+    private const MAX_ACTIVITY_LIMIT = 20;
+
+    public function __construct(private readonly TutorActivityFeedService $activityFeedService) {}
+
     /**
      * Get dashboard statistics and data for tutor
      */
@@ -67,7 +78,7 @@ class DashboardController extends Controller
         $healthAlerts = $this->getHealthAlerts($userId);
 
         // Recent activity
-        $recentActivity = $this->getRecentActivity($userId);
+        $recentActivity = $this->activityFeedService->recentActivity($user, $this->resolveActivityLimit($request));
 
         // Health score (percentage of up-to-date vaccines/dewormings)
         $healthScore = $this->calculateHealthScore($userId);
@@ -114,6 +125,21 @@ class DashboardController extends Controller
         ];
     }
 
+    /**
+     * Carbon 3 devolve `diffInDays()` como float ("vence em 1.86 dias"): conta-se
+     * em dias de calendário, do início de hoje ao início do vencimento.
+     */
+    private function formatDueIn(\DateTimeInterface $dueDate): string
+    {
+        $days = (int) now()->startOfDay()->diffInDays(\Carbon\Carbon::instance($dueDate)->startOfDay());
+
+        return match ($days) {
+            0 => 'hoje',
+            1 => 'amanhã',
+            default => "em {$days} dias",
+        };
+    }
+
     private function getHealthAlerts(int $userId): array
     {
         $alerts = [];
@@ -132,7 +158,7 @@ class DashboardController extends Controller
             $alerts[] = [
                 'type' => 'vaccine',
                 'icon' => 'vaccines',
-                'message' => "Vacina {$v->vaccine_name} de {$v->pet->name} vence em ".now()->diffInDays($v->next_dose_date).' dias',
+                'message' => "Vacina {$v->vaccine_name} de {$v->pet->name} vence ".$this->formatDueIn($v->next_dose_date),
                 'date' => $v->next_dose_date->format('d/m/Y'),
                 'severity' => 'warning',
             ];
@@ -152,7 +178,7 @@ class DashboardController extends Controller
             $alerts[] = [
                 'type' => 'vaccine_overdue',
                 'icon' => 'warning',
-                'message' => "Vacina {$v->vaccine_name} de {$v->pet->name} esta vencida!",
+                'message' => "Vacina {$v->vaccine_name} de {$v->pet->name} está vencida!",
                 'date' => $v->next_dose_date->format('d/m/Y'),
                 'severity' => 'danger',
             ];
@@ -170,7 +196,7 @@ class DashboardController extends Controller
             $alerts[] = [
                 'type' => 'deworming',
                 'icon' => 'medication',
-                'message' => "Vermifugo de {$d->pet->name} vence em ".now()->diffInDays($d->next_date).' dias',
+                'message' => "Vermífugo de {$d->pet->name} vence ".$this->formatDueIn($d->next_date),
                 'date' => $d->next_date->format('d/m/Y'),
                 'severity' => 'warning',
             ];
@@ -179,55 +205,18 @@ class DashboardController extends Controller
         return $alerts;
     }
 
-    private function getRecentActivity(int $userId): array
+    /**
+     * `?activity_limit=` do feed "Atividade Recente" — valor fora da faixa cai no default,
+     * nunca em erro 422 (é um parâmetro de exibição, não uma entrada validável de negócio).
+     */
+    private function resolveActivityLimit(Request $request): int
     {
-        $activities = [];
-
-        // Recent appointments
-        $recentAppts = Appointment::where('client_id', $userId)
-            ->orderBy('created_at', 'desc')
-            ->limit(3)
-            ->get();
-
-        foreach ($recentAppts as $appt) {
-            $activities[] = [
-                'type' => 'appointment',
-                'icon' => 'event',
-                'title' => 'Consulta '.($appt->status === 'confirmed' ? 'confirmada' : ($appt->status === 'pending' ? 'agendada' : $appt->status)),
-                'description' => $appt->service_name ?? 'Consulta',
-                'time' => $appt->created_at->diffForHumans(),
-                'created_at' => $appt->created_at->toISOString(),
-            ];
+        $requested = (int) $request->input('activity_limit', self::DEFAULT_ACTIVITY_LIMIT);
+        if ($requested < 1) {
+            return self::DEFAULT_ACTIVITY_LIMIT;
         }
 
-        // Recent notifications (from DB)
-        try {
-            $notifications = DB::table('notifications')
-                ->where('notifiable_id', $userId)
-                ->where('notifiable_type', 'App\\Models\\User')
-                ->orderBy('created_at', 'desc')
-                ->limit(5)
-                ->get();
-
-            foreach ($notifications as $notif) {
-                $data = json_decode($notif->data, true);
-                $activities[] = [
-                    'type' => $data['type'] ?? 'notification',
-                    'icon' => $this->getActivityIcon($data['type'] ?? ''),
-                    'title' => $data['title'] ?? 'Notificacao',
-                    'description' => $data['message'] ?? '',
-                    'time' => \Carbon\Carbon::parse($notif->created_at)->diffForHumans(),
-                    'created_at' => $notif->created_at,
-                ];
-            }
-        } catch (\Exception $e) {
-            // notifications table may not exist yet
-        }
-
-        // Sort by time and limit
-        usort($activities, fn ($a, $b) => ($b['created_at'] ?? '') <=> ($a['created_at'] ?? ''));
-
-        return array_slice($activities, 0, 5);
+        return min($requested, self::MAX_ACTIVITY_LIMIT);
     }
 
     private function calculateHealthScore(int $userId): int
@@ -253,18 +242,5 @@ class DashboardController extends Controller
         $upToDate = (int) $row->up_to_date;
 
         return (int) round(($upToDate / $totalVaccines) * 100);
-    }
-
-    private function getActivityIcon(string $type): string
-    {
-        return match ($type) {
-            'vaccine_reminder', 'vaccine_overdue' => 'vaccines',
-            'deworming_reminder' => 'medication',
-            'payment_confirmed' => 'payments',
-            'payment_failed' => 'error',
-            'review_published' => 'star',
-            'welcome' => 'celebration',
-            default => 'notifications',
-        };
     }
 }
