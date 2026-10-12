@@ -110,7 +110,14 @@ final class NotificationService
         ));
     }
 
-    private function getDefaultChannels(NotificationType $type): array
+    /**
+     * Canais que um tipo usa quando o usuario nunca mexeu na preferencia. Publico porque
+     * `NotificationController::getPreferences()` precisa mostrar ESTE default na tela —
+     * mostrar tudo ligado mentia sobre o que de fato sai (ex.: SMS, que nenhum tipo usa).
+     *
+     * @return list<NotificationChannel>
+     */
+    public function getDefaultChannels(NotificationType $type): array
     {
         return match ($type) {
             NotificationType::APPOINTMENT_REMINDER_24H,

@@ -124,4 +124,78 @@ class NotificationListTest extends TestCase
 
         $response->assertJsonPath('data.0.message', 'Mensagem legada gravada antes da correção do BUG 2.');
     }
+
+    /**
+     * O painel do sino pede `per_page=5` e lê o contador de não lidas da MESMA resposta —
+     * duas requisições separadas podiam discordar entre si.
+     */
+    public function test_index_honours_per_page_and_reports_unread_count(): void
+    {
+        $tutor = User::factory()->tutor()->create();
+
+        foreach (range(1, 7) as $i) {
+            $tutor->notify(new InAppNotification(NotificationType::NEW_MESSAGE, "Mensagem {$i}", 'Corpo'));
+        }
+        $tutor->notifications()->latest()->first()->markAsRead();
+
+        Sanctum::actingAs($tutor);
+
+        $this->getJson('/api/notifications?per_page=5')
+            ->assertOk()
+            ->assertJsonCount(5, 'data')
+            ->assertJsonPath('meta.unread_count', 6);
+    }
+
+    public function test_unread_returns_only_the_count(): void
+    {
+        $tutor = User::factory()->tutor()->create();
+        $other = User::factory()->tutor()->create();
+
+        $tutor->notify(new InAppNotification(NotificationType::NEW_MESSAGE, 'A', 'Corpo'));
+        $tutor->notify(new InAppNotification(NotificationType::NEW_MESSAGE, 'B', 'Corpo'));
+        $other->notify(new InAppNotification(NotificationType::NEW_MESSAGE, 'C', 'Corpo'));
+
+        Sanctum::actingAs($tutor);
+
+        $this->getJson('/api/notifications/unread')
+            ->assertOk()
+            ->assertExactJson(['count' => 2]);
+    }
+
+    /**
+     * A tela de preferências mostrava todo canal ligado sem nada gravado — inclusive SMS,
+     * que nenhum tipo usa. O default exibido precisa ser o que de fato sai.
+     */
+    public function test_preferences_reflect_the_real_default_channels(): void
+    {
+        $tutor = User::factory()->tutor()->create();
+
+        Sanctum::actingAs($tutor);
+
+        $this->getJson('/api/notifications/preferences')
+            ->assertOk()
+            ->assertJsonPath('data.new_message.channels.push.enabled', true)
+            ->assertJsonPath('data.new_message.channels.email.enabled', false)
+            ->assertJsonPath('data.new_message.channels.sms.enabled', false)
+            ->assertJsonPath('data.appointment_confirmed.channels.email.enabled', true);
+    }
+
+    public function test_preferences_reject_unknown_type_or_channel(): void
+    {
+        $tutor = User::factory()->tutor()->create();
+
+        Sanctum::actingAs($tutor);
+
+        $this->putJson('/api/notifications/preferences', [
+            'preferences' => [
+                ['notification_type' => 'vaccine_reminders', 'channel' => 'email', 'enabled' => true],
+            ],
+        ])->assertUnprocessable();
+
+        $this->putJson('/api/notifications/preferences', [
+            'preferences' => [
+                ['notification_type' => 'new_message', 'channel' => 'pombo', 'enabled' => true],
+            ],
+        ])->assertUnprocessable();
+    }
 }
