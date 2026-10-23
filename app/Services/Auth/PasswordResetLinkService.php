@@ -2,6 +2,7 @@
 
 namespace App\Services\Auth;
 
+use App\Notifications\Support\FrontendRoute;
 use App\Mail\ResetPasswordMail;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -43,8 +44,7 @@ final class PasswordResetLinkService
     private function sendMail(User $user, string $token): void
     {
         try {
-            $appUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
-            $resetUrl = $appUrl.'/reset-password?email='.urlencode($user->email).'&token='.urlencode($token);
+            $resetUrl = FrontendRoute::absoluteFor($user, FrontendRoute::RESET_PASSWORD).'?email='.urlencode($user->email).'&token='.urlencode($token);
 
             Mail::to($user->email)->send(new ResetPasswordMail($user->name, $resetUrl));
         } catch (Throwable $failure) {

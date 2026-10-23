@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Organization;
+use App\Notifications\Support\FrontendRoute;
 use App\Models\OrganizationInvitation;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -54,8 +55,6 @@ class OrganizationInvitationMail extends Mailable
 
     private function buildAcceptUrl(string $token): string
     {
-        $appUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
-
-        return "{$appUrl}/organization-invitations/{$token}";
+        return FrontendRoute::professionalBaseUrl()."/organization-invitations/{$token}";
     }
 }

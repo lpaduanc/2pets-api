@@ -83,7 +83,7 @@
             <p>Obrigado por se cadastrar. Para começar a usar sua conta, por favor verifique seu endereço de email
                 clicando no botão abaixo.</p>
 
-            <a href="{{ config('app.frontend_url', 'http://localhost:9000') }}/verify-email?token={{ $token }}"
+            <a href="{{ $verificationUrl }}"
                 class="btn">Verificar Email</a>
 
             <p>Se você não criou uma conta, pode ignorar este email.</p>

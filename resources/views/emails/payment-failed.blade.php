@@ -19,7 +19,7 @@
     <table cellpadding="0" cellspacing="0" style="margin: 0 auto;">
         <tr>
             <td style="background-color: #6C63FF; border-radius: 8px;">
-                <a href="{{ config('app.frontend_url') }}/tutor/wallet" style="display: inline-block; padding: 14px 32px; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 16px;">
+                <a href="{{ \App\Notifications\Support\FrontendRoute::absolute('/tutor/wallet') }}" style="display: inline-block; padding: 14px 32px; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 16px;">
                     Verificar dados de pagamento
                 </a>
             </td>

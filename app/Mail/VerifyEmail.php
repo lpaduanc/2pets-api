@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Notifications\Support\FrontendRoute;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -45,7 +46,13 @@ class VerifyEmail extends Mailable
     {
         return new Content(
             view: 'emails.verify-email',
+            with: ['verificationUrl' => $this->verificationUrl()],
         );
+    }
+
+    private function verificationUrl(): string
+    {
+        return FrontendRoute::absoluteFor($this->user, FrontendRoute::VERIFY_EMAIL).'?token='.$this->token;
     }
 
     /**

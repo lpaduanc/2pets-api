@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Notifications\Support\FrontendRoute;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
@@ -230,8 +231,7 @@ class AuthController extends Controller
         );
 
         try {
-            $appUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
-            $resetUrl = $appUrl.'/reset-password?email='.urlencode($user->email).'&token='.urlencode($token);
+            $resetUrl = FrontendRoute::absoluteFor($user, FrontendRoute::RESET_PASSWORD).'?email='.urlencode($user->email).'&token='.urlencode($token);
 
             Mail::to($user->email)->send(new ResetPasswordMail($user->name, $resetUrl));
         } catch (\Exception $e) {

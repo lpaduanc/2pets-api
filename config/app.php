@@ -67,7 +67,9 @@ return [
     |
     */
 
-    'frontend_url' => env('FRONTEND_URL', 'http://localhost:9200'),
+    'frontend_tutor_url' => env('FRONTEND_TUTOR_URL', 'http://localhost:9200'),
+
+    'frontend_pro_url' => env('FRONTEND_PRO_URL', 'http://localhost:9300'),
 
     /*
     |--------------------------------------------------------------------------

@@ -2,6 +2,8 @@
 
 namespace App\Notifications\Support;
 
+use App\Models\User;
+
 /**
  * Centralized frontend deep-link paths used by notification `action_url` (in-app) and
  * `toMail()->action()` (e-mail) targets.
@@ -13,6 +15,11 @@ namespace App\Notifications\Support;
  */
 final class FrontendRoute
 {
+    private const TUTOR_ROLE = 'tutor';
+
+    /** Path prefixes served by the professional app (port 9300); everything else is the tutor app. */
+    private const PROFESSIONAL_APP_PREFIXES = ['/professional', '/company', '/admin', '/accept-invitation', '/documento'];
+
     public const TUTOR_DASHBOARD = '/tutor/dashboard';
 
     public const TUTOR_HEALTH = '/tutor/health';
@@ -26,6 +33,10 @@ final class FrontendRoute
     public const TUTOR_PETS_ADD = '/tutor/pets/add';
 
     public const TUTOR_VET_ACCESS_REQUESTS = '/tutor/vets/solicitacoes';
+
+    public const VERIFY_EMAIL = '/verify-email';
+
+    public const RESET_PASSWORD = '/reset-password';
 
     public const PROFESSIONAL_DASHBOARD = '/professional/dashboard';
 
@@ -53,7 +64,7 @@ final class FrontendRoute
      * freelancer, staff de clinica) cai no layout profissional, que e onde o
      * router ja os coloca.
      */
-    public static function lostPetsFor(\App\Models\User $user): string
+    public static function lostPetsFor(User $user): string
     {
         return match ($user->role) {
             'tutor' => self::TUTOR_LOST_PETS,
@@ -104,6 +115,42 @@ final class FrontendRoute
      */
     public static function absolute(string $path): string
     {
-        return rtrim((string) config('app.frontend_url'), '/').$path;
+        return self::baseUrlForPath($path).$path;
+    }
+
+    /**
+     * Absolute link for a path whose app depends on who receives it (e.g. e-mail
+     * verification, password reset), not on the path itself.
+     */
+    public static function absoluteFor(User $user, string $path): string
+    {
+        return self::baseUrlFor($user).$path;
+    }
+
+    /** Tutor app for `users.role = tutor`; professional app for every other role. */
+    public static function baseUrlFor(User $user): string
+    {
+        return $user->role === self::TUTOR_ROLE ? self::tutorBaseUrl() : self::professionalBaseUrl();
+    }
+
+    public static function tutorBaseUrl(): string
+    {
+        return rtrim((string) config('app.frontend_tutor_url'), '/');
+    }
+
+    public static function professionalBaseUrl(): string
+    {
+        return rtrim((string) config('app.frontend_pro_url'), '/');
+    }
+
+    private static function baseUrlForPath(string $path): string
+    {
+        foreach (self::PROFESSIONAL_APP_PREFIXES as $prefix) {
+            if ($path === $prefix || str_starts_with($path, $prefix.'/') || str_starts_with($path, $prefix.'?')) {
+                return self::professionalBaseUrl();
+            }
+        }
+
+        return self::tutorBaseUrl();
     }
 }

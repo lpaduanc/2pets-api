@@ -2,6 +2,7 @@
 
 namespace App\Services\Professional;
 
+use App\Notifications\Support\FrontendRoute;
 use App\Mail\PetRegisteredMail;
 use App\Models\ConsentLog;
 use App\Models\Pet;
@@ -53,9 +54,7 @@ final class NewPatientNotificationService
 
     private function buildContinuationUrl(string $plainToken): string
     {
-        $appUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
-
-        return "{$appUrl}/register/continue/{$plainToken}";
+        return FrontendRoute::absolute("/register/continue/{$plainToken}");
     }
 
     /**

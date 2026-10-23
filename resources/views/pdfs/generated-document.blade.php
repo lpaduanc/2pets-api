@@ -44,7 +44,7 @@
     <div class="verification">
         Assinatura eletrônica simples — nome, CRMV, data/hora e hash do conteúdo (não é
         assinatura digital com certificado ICP-Brasil). Verifique a autenticidade em
-        {{ config('app.frontend_url', config('app.url')) }}/documentos/verificar/{{ $document->verification_code }}
+        {{ \App\Notifications\Support\FrontendRoute::professionalBaseUrl() }}/documentos/verificar/{{ $document->verification_code }}
         — código {{ $document->verification_code }}.
     </div>
 @endif

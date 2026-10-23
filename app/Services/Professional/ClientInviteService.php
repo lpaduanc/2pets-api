@@ -2,6 +2,7 @@
 
 namespace App\Services\Professional;
 
+use App\Notifications\Support\FrontendRoute;
 use App\Exceptions\Professional\ClientAlreadyActiveException;
 use App\Exceptions\Professional\ClientWithoutEmailException;
 use App\Mail\ClientInviteMail;
@@ -52,9 +53,7 @@ final class ClientInviteService
 
     private function buildContinuationUrl(string $plainToken): string
     {
-        $appUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
-
-        return "{$appUrl}/register/continue/{$plainToken}";
+        return FrontendRoute::absolute("/register/continue/{$plainToken}");
     }
 
     /**

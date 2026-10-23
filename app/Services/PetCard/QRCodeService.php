@@ -2,6 +2,8 @@
 
 namespace App\Services\PetCard;
 
+use App\Notifications\Support\FrontendRoute;
+
 final class QRCodeService
 {
     public function generateQRCodeUrl(string $data): string
@@ -23,9 +25,7 @@ final class QRCodeService
      */
     public function generatePetCardUrl(string $publicId): string
     {
-        $frontendUrl = rtrim(config('app.frontend_url') ?? config('app.url'), '/');
-
-        return "{$frontendUrl}/pet-card/{$publicId}";
+        return FrontendRoute::absolute("/pet-card/{$publicId}");
     }
 
     public function generateQRCodeSvg(string $data, int $size = 200): string
