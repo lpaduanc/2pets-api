@@ -62,3 +62,13 @@ Schedule::command('geocoding:retry-failed')->dailyAt('03:30')
     ->withoutOverlapping()
     ->onOneServer()
     ->appendOutputTo(storage_path('logs/geocoding-retry.log'));
+
+/**
+ * Carteira do tutor — lança os gastos recorrentes vencidos. 06:00 UTC = 03:00 em São Paulo:
+ * quando o tutor abre o app de manhã, a ração do mês já está lá. O comando é idempotente
+ * (índice único por recorrência + dia), então uma execução repetida não duplica nada.
+ */
+Schedule::command('wallet:generate-recurring')->dailyAt('06:00')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/wallet-recurring.log'));
