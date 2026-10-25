@@ -394,6 +394,20 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
     Route::get('/pets/{pet}/weights', [PetWeightController::class, 'index']);
     Route::post('/pets/{pet}/weights', [PetWeightController::class, 'store']);
 
+    // Carteira do tutor — gastos com os pets. Só o próprio tutor lê e escreve; faturas pagas
+    // pelo 2pets entram no resumo sozinhas (ver `WalletSummaryService`).
+    Route::prefix('wallet')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Wallet\WalletController::class, 'index']);
+        Route::get('/catalog', [\App\Http\Controllers\Api\Wallet\WalletController::class, 'catalog']);
+        Route::post('/expenses', [\App\Http\Controllers\Api\Wallet\TutorExpenseController::class, 'store']);
+        Route::match(['put', 'patch'], '/expenses/{id}', [\App\Http\Controllers\Api\Wallet\TutorExpenseController::class, 'update'])->whereNumber('id');
+        Route::delete('/expenses/{id}', [\App\Http\Controllers\Api\Wallet\TutorExpenseController::class, 'destroy'])->whereNumber('id');
+        Route::post('/expenses/{id}/repeat', [\App\Http\Controllers\Api\Wallet\TutorExpenseController::class, 'repeat'])->whereNumber('id');
+        Route::get('/recurring', [\App\Http\Controllers\Api\Wallet\TutorRecurringExpenseController::class, 'index']);
+        Route::patch('/recurring/{id}', [\App\Http\Controllers\Api\Wallet\TutorRecurringExpenseController::class, 'update'])->whereNumber('id');
+        Route::delete('/recurring/{id}', [\App\Http\Controllers\Api\Wallet\TutorRecurringExpenseController::class, 'destroy'])->whereNumber('id');
+    });
+
     // Fluxo de atendimento — leitura compartilhada tutor + vet autorizado (contrato
     // docs/atendimento-veterinario/01-contrato-api-e-taxonomia.md §1 "Leitura"). Fora do
     // prefixo `professional`: quem lê aqui pode ser o dono do pet.
