@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\AddressSuggestionProvider;
 use App\Contracts\FiscalProviderGateway;
 use App\Contracts\GeocodingProvider;
 use App\Contracts\PaymentGatewayInterface;
@@ -35,7 +36,12 @@ use App\Services\Crm\Automation\InactiveClientTriggerResolver;
 use App\Services\Crm\Automation\MessageAutomationTriggerResolverRegistry;
 use App\Services\Crm\Automation\PostAppointmentFollowupTriggerResolver;
 use App\Services\Crm\Automation\VaccineTriggerResolver;
+use App\Services\Location\Providers\ChainAddressSuggestionProvider;
+use App\Services\Location\Providers\ChainGeocodingProvider;
 use App\Services\Location\Providers\GoogleGeocodingProvider;
+use App\Services\Location\Providers\GooglePlacesSuggestionProvider;
+use App\Services\Location\Providers\NominatimGeocodingProvider;
+use App\Services\Location\Providers\PhotonSuggestionProvider;
 use App\Services\Payment\MercadoPagoService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -46,6 +52,28 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
+    /**
+     * Nome do serviço de mapas em `services.geocoding.providers` → implementação. A ordem de
+     * prioridade NÃO vem daqui: vem da config.
+     *
+     * @var array<string, class-string<GeocodingProvider>>
+     */
+    private const GEOCODING_PROVIDERS = [
+        'google' => GoogleGeocodingProvider::class,
+        'nominatim' => NominatimGeocodingProvider::class,
+    ];
+
+    /**
+     * Mesmo papel de `GEOCODING_PROVIDERS`, para o autocomplete de endereço — e na mesma config:
+     * `google` liga os dois. Nominatim fica de fora de propósito (política proíbe autocomplete).
+     *
+     * @var array<string, class-string<AddressSuggestionProvider>>
+     */
+    private const ADDRESS_SUGGESTION_PROVIDERS = [
+        'google' => GooglePlacesSuggestionProvider::class,
+        'photon' => PhotonSuggestionProvider::class,
+    ];
+
     /**
      * Modelos de dado de referencia com cache de 24h (Fase 9 do plano de
      * otimizacao) — cada um ganha seu proprio contador de versao via
@@ -92,9 +120,16 @@ class AppServiceProvider extends ServiceProvider
         // status simulado, loga o payload). Trocar para um provedor real é só mudar este bind.
         $this->app->bind(FiscalProviderGateway::class, \App\Services\Fiscal\LogFiscalProviderGateway::class);
 
-        // Geocodificação atrás de contrato: Google é o provedor. Trocar (ex.: Nominatim) é
-        // uma classe nova implementando `GeocodingProvider` + mudar este bind.
-        $this->app->bind(GeocodingProvider::class, GoogleGeocodingProvider::class);
+        // Geocodificação atrás de contrato: os provedores ATIVOS em `services.geocoding.providers`,
+        // na ordem da config, viram uma cadeia com fallback. Provedor novo = classe implementando
+        // `GeocodingProvider` + uma entrada em `GEOCODING_PROVIDERS` e na config. O autocomplete
+        // de endereço segue o mesmo molde, com `ADDRESS_SUGGESTION_PROVIDERS`.
+        $this->app->bind(GeocodingProvider::class, fn (): GeocodingProvider => new ChainGeocodingProvider(
+            $this->enabledMapProviders(self::GEOCODING_PROVIDERS)
+        ));
+        $this->app->bind(AddressSuggestionProvider::class, fn (): AddressSuggestionProvider => new ChainAddressSuggestionProvider(
+            $this->enabledMapProviders(self::ADDRESS_SUGGESTION_PROVIDERS)
+        ));
 
         // docs/gap-simplesvet/specs/17-crm-mensageria-spec.md: um resolvedor por gatilho de
         // automação (OCP) — novo gatilho = nova classe implementando
@@ -156,20 +191,27 @@ class AppServiceProvider extends ServiceProvider
      * outro mecanismo (exigir conta para paginação profunda, por exemplo), não um número
      * menor aqui.
      *
-     * ── `reverse-geocode`: 10/min por IP ──────────────────────────────────────────────
-     * Seis vezes mais apertado que a busca, e por um motivo diferente: cada chamada pode
-     * virar uma requisição PAGA ao Google Maps Platform. Aqui o throttle não protege
-     * servidor, protege fatura.
+     * ── `reverse-geocode`: 30/min por IP ──────────────────────────────────────────────
+     * Metade da busca, e por um motivo diferente: cada chamada pode virar uma requisição
+     * PAGA ao Google Maps Platform (ou consumir a cota de 1 req/s do Nominatim público).
+     * Aqui o throttle não protege servidor, protege fatura e a cota do provedor gratuito.
      *
-     * 10/min é generoso para o uso real e mesquinho para abuso. O uso real é UMA chamada por
-     * sessão: o app pede a localização, mostra a modal de confirmação e pronto. Os outros 9
-     * cobrem o usuário que troca de posição no mapa, recarrega a página ou tem duas abas
-     * abertas — folga suficiente para ninguém legítimo ver 429.
+     * Era 10/min quando o uso era UMA chamada por sessão (a modal de confirmação da
+     * geolocalização). O seletor de local em mapa do app do tutor mudou isso: o pino fica
+     * fixo no centro e o app pede o endereço a cada parada do arrasto. Mesmo com debounce de
+     * ~700 ms e coordenada arredondada a 5 casas no front, ajustar o ponto com calma passa
+     * de 10 paradas num minuto — e o tutor que está nesse fluxo muitas vezes está numa
+     * emergência (viajando com o pet, IP/VPN posicionando errado), o pior lugar para um 429.
      *
-     * Do outro lado, 10/min impede que a rota vire um proxy gratuito do Geocoding API:
-     * varrer uma cidade em grade de 100 m exigiria dezenas de milhares de pontos, o que a
-     * 10/min leva dias por IP. O cache de 30 dias por coordenada (limite dos Termos do
-     * Google) absorve a repetição legítima sem gastar cota nenhuma.
+     * 30/min ainda impede que a rota vire proxy gratuito do Geocoding API: varrer uma cidade
+     * em grade de 100 m exige dezenas de milhares de pontos, o que leva dias por IP. O cache
+     * de 30 dias por coordenada absorve a repetição legítima sem gastar cota nenhuma.
+     *
+     * ── `address-search`: 60/min por IP ───────────────────────────────────────────────
+     * Autocomplete do seletor de mapa: uma chamada por pausa na digitação, então uma busca
+     * legítima gasta várias em poucos segundos — o mesmo teto da busca pública. O custo por
+     * chamada (Places Text Search pago, Photon público de boa-fé) é contido pelo mínimo de 3
+     * caracteres, pelo cache de 1 dia por texto e pelo limite de 8 itens.
      *
      * ── `postal-code`: 20/min por IP ──────────────────────────────────────────────────
      * Mesma natureza do reverse geocoding (CEP novo = geocoding pago), com folga maior
@@ -179,8 +221,28 @@ class AppServiceProvider extends ServiceProvider
     private function registerRateLimiters(): void
     {
         RateLimiter::for('public-search', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
-        RateLimiter::for('reverse-geocode', fn (Request $request): Limit => Limit::perMinute(10)->by($request->ip()));
+        RateLimiter::for('reverse-geocode', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+        RateLimiter::for('address-search', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('postal-code', fn (Request $request): Limit => Limit::perMinute(20)->by($request->ip()));
+    }
+
+    /**
+     * Os serviços de mapas ATIVOS em `services.geocoding.providers`, na ordem da config, que
+     * tenham implementação no mapa recebido — ligar/desligar é config, não código.
+     *
+     * @template TProvider of object
+     *
+     * @param  array<string, class-string<TProvider>>  $implementations
+     * @return list<TProvider>
+     */
+    private function enabledMapProviders(array $implementations): array
+    {
+        return collect(config('services.geocoding.providers', []))
+            ->filter(fn (array $settings, string $name): bool => ($settings['enabled'] ?? false) && isset($implementations[$name]))
+            ->keys()
+            ->map(fn (string $name): object => $this->app->make($implementations[$name]))
+            ->values()
+            ->all();
     }
 
     /**

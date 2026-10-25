@@ -37,8 +37,34 @@ return [
 
     // Cache das respostas de geocoding (30 dias, limite dos termos do Google). Redis por
     // padrão; a suíte usa `array` (phpunit.xml) para um teste não herdar resposta de outro.
+    // `providers`: liga/desliga cada serviço de mapas. A ORDEM aqui é a prioridade — o
+    // primeiro ativo que responder ganha (ver `ChainGeocodingProvider`). Google ativo sem
+    // `GOOGLE_MAPS_API_KEY` é pulado sozinho. A mesma lista vale para o autocomplete de
+    // endereço (`address-search`): `google` liga o Places junto com o Geocoding; `photon` só
+    // serve autocomplete e `nominatim` só geocoding (a política dele proíbe autocomplete).
     'geocoding' => [
         'cache_store' => env('GEOCODING_CACHE_STORE', 'redis'),
+        'providers' => [
+            'google' => ['enabled' => (bool) env('GEOCODING_GOOGLE_ENABLED', true)],
+            'nominatim' => ['enabled' => (bool) env('GEOCODING_NOMINATIM_ENABLED', false)],
+            'photon' => ['enabled' => (bool) env('GEOCODING_PHOTON_ENABLED', false)],
+        ],
+    ],
+
+    // Photon (komoot) — autocomplete sobre o OpenStreetMap. Sem chave; User-Agent identificado
+    // como no Nominatim (cortesia com a instância pública). Ver `PhotonSuggestionProvider`.
+    'photon' => [
+        'base_url' => env('PHOTON_BASE_URL', 'https://photon.komoot.io'),
+        'user_agent' => env('PHOTON_USER_AGENT', env('NOMINATIM_USER_AGENT', '2pets/1.0 (contato@2pets.com.br)')),
+    ],
+
+    // Nominatim (OpenStreetMap). A política da instância pública exige User-Agent com contato
+    // e no máximo 1 req/s — ver `NominatimGeocodingProvider`.
+    'nominatim' => [
+        'base_url' => env('NOMINATIM_BASE_URL', 'https://nominatim.openstreetmap.org'),
+        'user_agent' => env('NOMINATIM_USER_AGENT', '2pets/1.0 (contato@2pets.com.br)'),
+        'email' => env('NOMINATIM_EMAIL'),
+        'min_interval_seconds' => (int) env('NOMINATIM_MIN_INTERVAL_SECONDS', 1),
     ],
 
     // CEP → endereço (busca por CEP e fallback de localização do tutor). Pública, sem chave.

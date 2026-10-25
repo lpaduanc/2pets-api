@@ -7,6 +7,7 @@ use App\Jobs\GeocodeUserAddress;
 use App\Models\User;
 use App\Services\Location\UserAddressGeocoder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -94,6 +95,37 @@ class AddressGeocodingFailureTest extends TestCase
         $this->assertSame(GeocodingStatus::RESOLVED, $user->geocoding_status);
         $this->assertEqualsWithDelta(-21.7878, (float) $user->latitude, 0.0001);
         $this->assertNotNull(DB::table('users')->where('id', $user->id)->value('location'));
+    }
+
+    /**
+     * Bairro que o mapa não conhece (o OSM de Poços usa "Região Urbana Homogênea IX"): a
+     * busca completa volta vazia e a segunda, sem o bairro, resolve.
+     */
+    public function test_an_unknown_neighborhood_falls_back_to_the_address_without_it(): void
+    {
+        $this->configureGeocoding();
+        Http::fake(['maps.googleapis.com/*' => function (Request $request) {
+            return str_contains($request['address'], 'Centro')
+                ? Http::response(['status' => 'ZERO_RESULTS', 'results' => []])
+                : Http::response(['status' => 'OK', 'results' => [['geometry' => ['location' => ['lat' => -21.79, 'lng' => -46.56]]]]]);
+        }]);
+        $user = $this->professionalWithFailedAddress();
+
+        (new GeocodeUserAddress($user->id))->handle(app(UserAddressGeocoder::class));
+
+        $this->assertSame(GeocodingStatus::RESOLVED, $user->fresh()->geocoding_status);
+        Http::assertSentCount(2);
+    }
+
+    public function test_a_resolved_full_address_does_not_send_the_fallback_query(): void
+    {
+        $this->configureGeocoding();
+        $this->fakeGoogleAnswer(-21.7878, -46.5613);
+        $user = $this->professionalWithFailedAddress();
+
+        (new GeocodeUserAddress($user->id))->handle(app(UserAddressGeocoder::class));
+
+        Http::assertSentCount(1);
     }
 
     public function test_the_retry_job_throws_so_the_queue_backs_off_when_it_still_fails(): void

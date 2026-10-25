@@ -40,7 +40,7 @@ final class UserAddressGeocoder
             return $this->attributes(null, null, null);
         }
 
-        $coordinates = $this->geocodingService->geocode($this->fullAddress($address));
+        $coordinates = $this->firstCoordinates($address);
 
         return $coordinates === null
             ? $this->attributes(null, null, GeocodingStatus::FAILED)
@@ -82,6 +82,28 @@ final class UserAddressGeocoder
         }
 
         GeocodeUserAddress::dispatch($user->id)->afterCommit();
+    }
+
+    /**
+     * Tenta o endereço completo e, se não resolver, o mesmo endereço SEM o bairro.
+     *
+     * O bairro digitado pelo usuário nem sempre é o nome que o mapa conhece — em Poços de
+     * Caldas o OpenStreetMap usa "Região Urbana Homogênea IX" onde o morador escreve
+     * "Funcionários", e o Nominatim devolve zero resultado para a busca inteira. Rua, número,
+     * cidade e UF bastam para achar o ponto. A segunda consulta só sai quando a primeira falha.
+     *
+     * @param  array<string, mixed>  $address
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private function firstCoordinates(array $address): ?array
+    {
+        $coordinates = $this->geocodingService->geocode($this->fullAddress($address));
+
+        if ($coordinates !== null || blank($address['neighborhood'] ?? null)) {
+            return $coordinates;
+        }
+
+        return $this->geocodingService->geocode($this->fullAddress([...$address, 'neighborhood' => null]));
     }
 
     /**

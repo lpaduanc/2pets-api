@@ -85,6 +85,7 @@ use App\Http\Controllers\Api\Professional\BlockedTimeController as ProfessionalB
 use App\Http\Controllers\Api\ProfessionalClientController;
 use App\Http\Controllers\Api\ProfessionalDashboardController;
 use App\Http\Controllers\Api\ProfessionalLegalProfileController;
+use App\Http\Controllers\Api\Public\AddressSearchController;
 use App\Http\Controllers\Api\Public\BookingController;
 use App\Http\Controllers\Api\Public\DocumentVerificationController;
 use App\Http\Controllers\Api\Public\MasterDataController;
@@ -192,10 +193,17 @@ Route::prefix('public')->middleware('throttle:public-search')->group(function ()
 
 // Reverse geocoding — grupo PRÓPRIO, e não dentro de um dos grupos acima. Middleware de
 // grupo SOMA: aninhar `throttle:reverse-geocode` num grupo que já tem `throttle:30,1`
-// manteria o teto de 30 valendo em paralelo, e o limite apertado (10/min) não teria efeito.
-// Mesma armadilha documentada no grupo da busca.
+// faria os dois limites valerem juntos, e o contador do grupo seria dividido com as outras
+// rotas dele — o arrasto do mapa esgotaria a cota da página do profissional. Mesma armadilha
+// documentada no grupo da busca.
 Route::prefix('public')->middleware('throttle:reverse-geocode')->group(function () {
     Route::get('/reverse-geocode', ReverseGeocodeController::class);
+});
+
+// Autocomplete de endereço do seletor de mapa. Grupo próprio pelo mesmo motivo: cada texto
+// novo pode virar uma chamada PAGA ao Google Places.
+Route::prefix('public')->middleware('throttle:address-search')->group(function () {
+    Route::get('/address-search', AddressSearchController::class);
 });
 
 // CEP → coordenada (fallback de localização da busca). Grupo próprio pelo mesmo motivo do

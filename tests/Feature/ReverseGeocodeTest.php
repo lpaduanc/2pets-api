@@ -125,6 +125,21 @@ class ReverseGeocodeTest extends TestCase
     }
 
     /**
+     * 30/min por IP: o seletor de mapa pede o endereço a cada parada do arrasto (ver
+     * `AppServiceProvider::registerRateLimiters()`). Sem chave, nenhuma chamada vai à rede.
+     */
+    public function test_it_is_throttled_at_30_requests_per_minute(): void
+    {
+        config(['services.google.maps_api_key' => '']);
+
+        foreach (range(1, 30) as $attempt) {
+            $this->getJson("/api/public/reverse-geocode?latitude=-21.{$attempt}&longitude=-46.5")->assertOk();
+        }
+
+        $this->getJson('/api/public/reverse-geocode?latitude=-21.99&longitude=-46.5')->assertTooManyRequests();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function googleSuccessPayload(): array

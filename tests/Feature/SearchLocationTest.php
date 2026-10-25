@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -69,6 +70,41 @@ class SearchLocationTest extends TestCase
         Sanctum::actingAs(User::factory()->tutor()->create());
 
         $this->getJson('/api/me/search-location')->assertExactJson(['data' => null]);
+    }
+
+    /**
+     * Origens do seletor de mapa: ponto arrastado/buscado (`map`) e endereço do cadastro
+     * (`profile`). A coluna `source` é string(20) sem check no banco, então basta o enum.
+     */
+    #[DataProvider('mapPickerSourceProvider')]
+    public function test_it_accepts_the_map_picker_sources(string $source): void
+    {
+        Sanctum::actingAs(User::factory()->tutor()->create());
+
+        $this->putJson('/api/me/search-location', ['latitude' => -21.7857, 'longitude' => -46.5658, 'source' => $source])
+            ->assertOk();
+
+        $this->getJson('/api/me/search-location')->assertJsonPath('data.source', $source);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function mapPickerSourceProvider(): array
+    {
+        return [
+            'mapa arrastado ou autocomplete' => ['map'],
+            'endereço do cadastro' => ['profile'],
+        ];
+    }
+
+    public function test_it_rejects_an_unknown_source(): void
+    {
+        Sanctum::actingAs(User::factory()->tutor()->create());
+
+        $this->putJson('/api/me/search-location', ['latitude' => -21.78, 'longitude' => -46.56, 'source' => 'ip'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['source']);
     }
 
     public function test_it_validates_the_payload(): void

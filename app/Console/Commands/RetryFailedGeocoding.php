@@ -24,7 +24,7 @@ class RetryFailedGeocoding extends Command
     public function handle(UserAddressGeocoder $addressGeocoder): int
     {
         if (! $addressGeocoder->isConfigured()) {
-            $this->error('Nenhum provedor de geocoding configurado (GOOGLE_MAPS_API_KEY vazia).');
+            $this->error('Nenhum provedor de geocoding ativo e configurado (GOOGLE_MAPS_API_KEY vazia e Nominatim desligado).');
 
             return self::FAILURE;
         }
