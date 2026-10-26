@@ -58,6 +58,13 @@ return [
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET', ''),
     ],
 
+    // Cosmos/Bluesoft — dados e foto de produto por EAN para o catálogo global
+    // (`catalog:fetch-images`). Sem token o comando aborta e nada é enfileirado.
+    'cosmos' => [
+        'token' => env('COSMOS_TOKEN'),
+        'base_url' => env('COSMOS_BASE_URL', 'https://api.cosmos.bluesoft.com.br'),
+    ],
+
     // Firebase Cloud Messaging (HTTP v1 API)
     // Legacy server_key is DEPRECATED by Google as of June 2024. Kept here only
     // so PushNotificationService can detect and warn legacy configurations.
