@@ -71,6 +71,9 @@ return [
 
     'frontend_pro_url' => env('FRONTEND_PRO_URL', 'http://localhost:9300'),
 
+    // 2pets Admin (backoffice da equipe) — destino do "Voltar ao admin" da impersonação.
+    'frontend_admin_url' => env('FRONTEND_ADMIN_URL', 'http://localhost:9400'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

@@ -25,6 +25,8 @@ return [
         'http://localhost:9000',  // 2pets-app (legacy)
         'http://localhost:9200',  // 2pets-app tutor (Docker)
         'http://localhost:9300',  // 2pets-app profissional
+        'http://localhost:9400',  // 2pets-admin (backoffice da equipe)
+        'http://127.0.0.1:9400',
         'http://127.0.0.1:9300',
         'http://127.0.0.1:5173',
         'http://127.0.0.1:5174',
