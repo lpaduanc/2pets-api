@@ -1390,3 +1390,6 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::delete('/users/{id}', [AdminController::class, 'deleteUser']);
     });
 });
+
+// 2pets Admin (backoffice da equipe) e a sessão impersonada que ele abre nos apps.
+require __DIR__.'/backoffice.php';

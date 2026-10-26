@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Mail\ResetPasswordMail;
 use App\Models\User;
+use App\Services\Backoffice\ImpersonationService;
 use App\Services\Organization\UserRoleReconciler;
 use App\Services\Registration\RegistrationContinuationTokenService;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
@@ -23,6 +25,7 @@ class AuthController extends Controller
     public function __construct(
         private readonly UserRoleReconciler $roleReconciler,
         private readonly RegistrationContinuationTokenService $continuationTokenService,
+        private readonly ImpersonationService $impersonation,
     ) {}
 
     public function register(RegisterRequest $request)
@@ -202,7 +205,13 @@ class AuthController extends Controller
     {
         $user = $request->user()->load(['roles', 'professional', 'media', 'activeOrganizationMemberships.organization']);
 
-        return new UserResource($user);
+        // `impersonation` fica FORA do `data`: os apps desembrulham só o `data` como usuário, e o
+        // banner "Acessando como…" lê este bloco (null fora de sessão aberta pelo 2pets Admin).
+        return (new UserResource($user))->additional([
+            'impersonation' => $this->impersonation->describe(
+                $user->currentAccessToken() instanceof PersonalAccessToken ? $user->currentAccessToken() : null
+            ),
+        ]);
     }
 
     public function forgotPassword(Request $request)

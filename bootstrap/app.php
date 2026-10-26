@@ -56,6 +56,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'locale' => SetLocaleFromAcceptLanguage::class,
             // Item 22 — gate de rota por permissão Spatie granular. Ver `EnsurePermission`.
             'permission' => EnsurePermission::class,
+            // Rotas `/backoffice/*` do 2pets Admin. Ver `EnsureBackofficeAccess`.
+            'backoffice' => \App\Http\Middleware\EnsureBackofficeAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

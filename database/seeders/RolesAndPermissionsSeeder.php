@@ -273,6 +273,13 @@ class RolesAndPermissionsSeeder extends Seeder
             // --- Auditoria / impersonação (item 22) ---
             'audit-log.view.any',
             'impersonation.manage',
+
+            // --- 2pets Admin (backoffice) — ver App\Enums\BackofficePermission ---
+            'backoffice.users.view',
+            'backoffice.users.manage',
+            'backoffice.users.create',
+            'backoffice.catalog.manage',
+            'backoffice.team.manage',
         ];
 
         // Create all permissions for the 'web' guard
@@ -623,7 +630,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'impersonation.manage',
         ]);
 
-        // 8. Super Admin — gets ALL permissions
+        // 8. Suporte do 2pets Admin — sem permissão pelo papel: cada membro da equipe recebe as
+        // suas diretamente (tela "Equipe"), ver App\Enums\BackofficeRole.
+        Role::findOrCreate('support', 'web');
+
+        // 9. Super Admin — gets ALL permissions
         $superAdmin = Role::findOrCreate('super_admin', 'web');
         $superAdmin->syncPermissions(Permission::all());
     }
