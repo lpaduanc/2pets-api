@@ -35,6 +35,7 @@ class DatabaseSeeder extends Seeder
             // leem mais `vaccine_catalog` diretamente (contrato 13).
             ImmunizationProductSeeder::class,
             FoodBrandSeeder::class,
+            CatalogProductSeeder::class,
             SpecialtySeeder::class,
             FoodAllergySeeder::class,
             DietaryRestrictionSeeder::class,

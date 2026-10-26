@@ -1388,6 +1388,13 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('/users/{id}/deactivate', [AdminController::class, 'deactivateUser']);
         Route::post('/users/{id}/reactivate', [AdminController::class, 'reactivateUser']);
         Route::delete('/users/{id}', [AdminController::class, 'deleteUser']);
+
+        // Catálogo global de produtos pet (curado pela plataforma, lido pelas clínicas)
+        Route::get('/catalog-products', [\App\Http\Controllers\Api\Admin\CatalogProductController::class, 'index']);
+        Route::get('/catalog-brands', [\App\Http\Controllers\Api\Admin\CatalogProductController::class, 'brands']);
+        Route::post('/catalog-products/fetch-images', [\App\Http\Controllers\Api\Admin\CatalogProductController::class, 'fetchImages']);
+        Route::put('/catalog-products/{id}', [\App\Http\Controllers\Api\Admin\CatalogProductController::class, 'update']);
+        Route::post('/catalog-products/{id}/image', [\App\Http\Controllers\Api\Admin\CatalogProductController::class, 'uploadImage']);
     });
 });
 
