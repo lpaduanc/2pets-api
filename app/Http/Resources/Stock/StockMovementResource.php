@@ -18,7 +18,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class StockMovementResource extends JsonResource
 {
-    public const RESOURCE_RELATIONS = ['product:id,name,unit_of_sale', 'batch:id,batch_code,expires_at', 'reason:id,name', 'user:id,name'];
+    public const RESOURCE_RELATIONS = ['product:id,name,unit_of_sale,decimal_places_allowed', 'batch:id,batch_code,expires_at', 'reason:id,name', 'user:id,name'];
 
     private const REFERENCE_LABELS = [
         Sale::class => ['sale', 'Venda'],
@@ -38,6 +38,7 @@ class StockMovementResource extends JsonResource
                 'id' => $this->product->id,
                 'name' => $this->product->name,
                 'unit_of_sale' => $this->product->unit_of_sale,
+                'decimal_places_allowed' => (int) $this->product->decimal_places_allowed,
             ] : null),
             'product_id' => $this->product_id,
             'batch' => $this->whenLoaded('batch', fn () => $this->batch ? [
@@ -50,8 +51,8 @@ class StockMovementResource extends JsonResource
             'direction' => $this->direction->value,
             'quantity' => $this->quantity,
             'signed_quantity' => $this->signedQuantity(),
-            'unit_cost' => (float) $this->unit_cost,
-            'total_cost' => (float) $this->total_cost,
+            'unit_cost' => $this->unit_cost,
+            'total_cost' => $this->total_cost,
             'balance_after' => $this->balance_after,
             'reason' => $this->whenLoaded('reason', fn () => $this->reason ? ['id' => $this->reason->id, 'name' => $this->reason->name] : null),
             'reference' => $this->referencePayload(),

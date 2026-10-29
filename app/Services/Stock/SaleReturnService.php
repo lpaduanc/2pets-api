@@ -12,6 +12,8 @@ use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
 use App\Models\User;
 use App\Services\Commercial\CashRegisterService;
+use App\Support\Money\Money;
+use App\Support\Money\Quantity;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -50,37 +52,53 @@ final class SaleReturnService
                 'user_id' => $user->id,
             ]);
 
-            $total = 0.0;
+            $total = Money::zero();
             $saleItems = $sale->items()->with('sellable')->get()->keyBy('id');
+            // O que o cliente PAGOU por linha: total da linha menos a parte dela no desconto do
+            // cabeçalho (rateio pelo maior resto). Devolver pelo total da linha devolveria o
+            // desconto junto — 10% sobre R$ 100 pagos R$ 90 e devolvidos R$ 100.
+            $paidPerItem = $sale->setRelation('items', $saleItems->values())->netItemTotals();
 
             foreach ($items as $entry) {
                 $saleItem = $saleItems->get((int) $entry['sale_item_id']);
                 abort_if($saleItem === null, 422, 'Item não pertence a esta venda.');
 
-                $quantity = (int) $entry['quantity'];
-                $available = (int) ceil((float) $saleItem->quantity) - $this->returnedQuantity($saleItem->id);
-                abort_if($quantity < 1 || $quantity > $available, 422, sprintf(
-                    'Quantidade inválida para "%s": %d disponível(is) para devolução.',
+                $quantity = Quantity::of($entry['quantity']);
+                $returned = $this->returnedQuantity($saleItem->id);
+                $available = Quantity::of($saleItem->quantity)->minus($returned);
+                abort_if(! $quantity->isPositive() || $quantity->isGreaterThan($available), 422, sprintf(
+                    'Quantidade inválida para "%s": %s disponível(is) para devolução.',
                     $saleItem->description,
-                    max(0, $available)
+                    $available->max(0)->toBigDecimal()->strippedOfTrailingZeros()
                 ));
 
-                // Preço efetivo da linha (já com o desconto do item), não o de tabela.
-                $unitPrice = round($saleItem->calculateTotal() / max((float) $saleItem->quantity, 1), 2);
-                $lineTotal = round($unitPrice * $quantity, 2);
-                $total += $lineTotal;
+                abort_if(
+                    $saleItem->sellable instanceof Product && ! $saleItem->sellable->acceptsQuantity($quantity),
+                    422,
+                    sprintf('"%s" é vendido em unidades inteiras.', $saleItem->description)
+                );
+
+                // Valor pelo rateio acumulado da linha (já com o desconto do item), não o de tabela.
+                $lineTotal = $saleItem->refundFor($returned, $quantity, $paidPerItem[$saleItem->id]);
+                $total = $total->plus($lineTotal);
+
+                $productBack = $saleItem->sellable instanceof Product
+                    ? SaleReturnItem::returnedForProduct($sale->id, $saleItem->sellable->getKey())
+                    : Quantity::zero();
 
                 SaleReturnItem::create([
                     'sale_return_id' => $return->id,
                     'sale_item_id' => $saleItem->id,
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'total' => $lineTotal,
+                    'quantity' => $quantity->toString(),
+                    'unit_price' => $saleItem->netUnitPrice(),
+                    'total' => $lineTotal->toString(),
                 ]);
 
                 if ($saleItem->movesStock() && $saleItem->sellable instanceof Product) {
+                    // Volta com o valor que saiu na venda (rateio acumulado por produto).
                     $this->stock->in($saleItem->sellable, StockMovementType::RETURN_IN, $quantity, [
-                        'unit_cost' => (float) $saleItem->unit_cost,
+                        'unit_cost' => $saleItem->unit_cost,
+                        'total_cost' => $this->stock->returningValue($saleItem->sellable, $sale, StockMovementType::SALE_OUT, $productBack, $quantity),
                         'reference' => $return,
                         'user' => $user,
                         'notes' => 'Devolução da venda '.($sale->number ?? $sale->id),
@@ -88,7 +106,7 @@ final class SaleReturnService
                 }
             }
 
-            $return->update(['total' => round($total, 2)]);
+            $return->update(['total' => $total->toString()]);
 
             if ($refundMethod === RefundMethod::CASH) {
                 $this->refundInCash($sale, $return, $user);
@@ -98,9 +116,9 @@ final class SaleReturnService
         });
     }
 
-    public function returnedQuantity(int $saleItemId): int
+    public function returnedQuantity(int $saleItemId): Quantity
     {
-        return (int) SaleReturnItem::query()->where('sale_item_id', $saleItemId)->sum('quantity');
+        return Quantity::of(SaleReturnItem::query()->where('sale_item_id', $saleItemId)->sum('quantity'));
     }
 
     private function refundInCash(Sale $sale, SaleReturn $return, User $user): void

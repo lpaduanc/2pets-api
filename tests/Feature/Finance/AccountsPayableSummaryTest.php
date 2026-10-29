@@ -5,7 +5,7 @@ namespace Tests\Feature\Finance;
 use App\Models\FinancialCategory;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Carbon;
+use Illuminate\Support\Carbon;
 use Tests\Feature\Commercial\Concerns\BuildsCounterFixtures;
 use Tests\TestCase;
 

@@ -2,6 +2,9 @@
 
 namespace App\Enums;
 
+use App\Support\Money\Decimal;
+use App\Support\Money\Money;
+
 /**
  * `sales.discount_type` — `ven_cha_tipodesconto` do SimplesVet.
  *
@@ -28,10 +31,16 @@ enum DiscountType: string
     /** Desconto em reais sobre um subtotal, na moeda, já arredondado. */
     public function amountFor(float $subtotal, float $value): float
     {
+        return $this->moneyFor(Money::of($subtotal), (string) Decimal::of($value))->toFloat();
+    }
+
+    /** Mesma regra de `amountFor`, exata: desconto em valor nunca passa do subtotal; percentual, de 100%. */
+    public function moneyFor(Money $subtotal, string $value): Money
+    {
         return match ($this) {
-            self::NONE => 0.0,
-            self::AMOUNT => round(min($value, $subtotal), 2),
-            self::PERCENT => round($subtotal * (min($value, 100) / 100), 2),
+            self::NONE => Money::zero(),
+            self::AMOUNT => Money::of($value)->min($subtotal),
+            self::PERCENT => $subtotal->percentage(Decimal::of($value)->isGreaterThan(100) ? '100' : $value),
         };
     }
 

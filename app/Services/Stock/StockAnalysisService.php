@@ -76,8 +76,9 @@ final class StockAnalysisService
 
         return $products->map(function (Product $product) use ($stats, $now): array {
             $row = $stats->get($product->id);
-            $stock = (int) $product->stock_quantity;
-            $demand = (int) ($row->window_out ?? 0);
+            // Projeção (dias de cobertura), não valor praticado: float basta e não trunca fração.
+            $stock = (float) $product->stock_quantity;
+            $demand = (float) ($row->window_out ?? 0);
             $dailyOut = round($demand / self::WINDOW_DAYS, 4);
             $coverage = $dailyOut > 0 ? round(max($stock, 0) / $dailyOut, 1) : null;
             $firstIn = $row?->first_in_at ? CarbonImmutable::parse($row->first_in_at) : null;
@@ -89,10 +90,11 @@ final class StockAnalysisService
                 'product' => $product,
                 'situation' => $situation,
                 'stock_quantity' => $stock,
-                'min_stock' => (int) $product->min_stock,
+                'min_stock' => (float) $product->min_stock,
                 'max_stock' => $product->max_stock,
                 'average_cost' => (float) $product->average_cost,
-                'capital' => round(max($stock, 0) * (float) $product->average_cost, 2),
+                // Capital parado = valor exato do estoque; saldo negativo não tem capital.
+                'capital' => max(0.0, (float) $product->stock_value),
                 'daily_out' => $dailyOut,
                 'coverage_days' => $coverage,
                 'last_out_at' => $lastOut?->toIso8601String(),
@@ -122,7 +124,7 @@ final class StockAnalysisService
 
     private function situationFor(
         Product $product,
-        int $stock,
+        float $stock,
         ?float $coverage,
         ?CarbonImmutable $firstIn,
         ?CarbonImmutable $lastOut,
@@ -130,7 +132,7 @@ final class StockAnalysisService
     ): StockSituation {
         $leadTime = $product->lastSupplier?->lead_time_days ?: self::RESTOCK_COVERAGE_DAYS;
 
-        if ($stock <= (int) $product->min_stock || ($coverage !== null && $coverage < $leadTime)) {
+        if ($stock <= (float) $product->min_stock || ($coverage !== null && $coverage < $leadTime)) {
             return StockSituation::RESTOCK;
         }
 

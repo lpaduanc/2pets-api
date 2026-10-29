@@ -4,6 +4,9 @@ namespace App\Services\Import;
 
 use App\Contracts\Import\ImportRowValidator;
 use App\Models\DataImport;
+use App\Support\Money\Decimal;
+use App\Support\Money\Quantity;
+use InvalidArgumentException;
 
 /**
  * Valida/normaliza uma linha de importação de produtos (item 26 do backlog gap-simplesvet).
@@ -30,8 +33,8 @@ final class ProductImportValidator implements ImportRowValidator
             $errors[] = 'Nome do produto é obrigatório.';
         }
 
-        $price = $this->parseOptionalDecimal($row['price'] ?? '', 'Preço', $errors);
-        $averageCost = $this->parseOptionalDecimal($row['average_cost'] ?? '', 'Custo', $errors);
+        $price = $this->parseUnitValue($row['price'] ?? '', 'Preço', $errors);
+        $averageCost = $this->parseUnitValue($row['average_cost'] ?? '', 'Custo', $errors);
         $markupPercent = $this->parseOptionalDecimal($row['markup_percent'] ?? '', 'Markup', $errors);
         if ($price === null && $markupPercent === null) {
             $errors[] = 'Informe o preço de venda ou um markup para calculá-lo a partir do custo.';
@@ -51,7 +54,7 @@ final class ProductImportValidator implements ImportRowValidator
                 'price' => $price,
                 'average_cost' => $averageCost,
                 'markup_percent' => $markupPercent,
-                'stock_quantity' => $this->parseStockQuantity($row['stock_quantity'] ?? ''),
+                'stock_quantity' => $this->parseStockQuantity($row['stock_quantity'] ?? '', $errors),
             ],
             'errors' => $errors,
         ];
@@ -74,10 +77,48 @@ final class ProductImportValidator implements ImportRowValidator
         return $value;
     }
 
-    private function parseStockQuantity(string $rawQuantity): int
+    /**
+     * Saldo exato da planilha (até 4 casas) — antes era `round()` para inteiro: 1,25 kg virava 1.
+     * Mais casas do que o estoque guarda é erro da linha, nunca arredondamento.
+     *
+     * @param  list<string>  $errors
+     */
+    private function parseStockQuantity(string $rawQuantity, array &$errors): string
     {
-        $quantity = $this->formatParser->parseDecimal($rawQuantity);
+        $quantity = $this->formatParser->parseDecimalString($rawQuantity);
 
-        return $quantity === null ? 0 : max(0, (int) round($quantity));
+        if ($quantity === null) {
+            return '0';
+        }
+
+        try {
+            return Quantity::of($quantity)->max(0)->toString();
+        } catch (InvalidArgumentException) {
+            $errors[] = 'Estoque com mais de 4 casas decimais.';
+
+            return '0';
+        }
+    }
+
+    /**
+     * Preço e custo unitário com no máximo 2 casas (regra do dono do produto); mais é erro da linha.
+     *
+     * @param  list<string>  $errors
+     */
+    private function parseUnitValue(string $rawValue, string $fieldLabel, array &$errors): ?string
+    {
+        if (trim($rawValue) === '') {
+            return null;
+        }
+
+        $value = $this->formatParser->parseDecimalString($rawValue);
+
+        if ($value === null || Decimal::of($value)->strippedOfTrailingZeros()->getScale() > 2) {
+            $errors[] = "{$fieldLabel} inválido.";
+
+            return null;
+        }
+
+        return $value;
     }
 }

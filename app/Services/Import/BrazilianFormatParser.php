@@ -27,6 +27,17 @@ final class BrazilianFormatParser
     }
 
     /** `1.234,56` → `1234.56`. Ponto de milhar removido antes de trocar a vírgula decimal. */
+    /**
+     * Mesmo formato de `parseDecimal`, mas devolve o texto decimal exato ("1250.5") — para
+     * quantidade, preço e custo, que não podem passar por float (docs/gap-petflow 0.2).
+     */
+    public function parseDecimalString(string $value): ?string
+    {
+        $normalized = str_replace(',', '.', str_replace('.', '', trim($value)));
+
+        return $normalized !== '' && is_numeric($normalized) ? $normalized : null;
+    }
+
     public function parseDecimal(string $value): ?float
     {
         $value = trim($value);

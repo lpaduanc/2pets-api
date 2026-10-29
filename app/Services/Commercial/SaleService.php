@@ -30,6 +30,9 @@ use App\Models\User;
 use App\Services\Finance\SaleFinancialEntryRecorder;
 use App\Services\Professional\ProfessionalClientsQuery;
 use App\Services\Stock\StockService;
+use App\Support\Money\Decimal;
+use App\Support\Money\Money;
+use App\Support\Money\Quantity;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -158,7 +161,7 @@ final class SaleService
         $sellable = $this->resolveSellable($user, $attributes['sellable_type'], (int) $attributes['sellable_id']);
         $this->assertPackageHasPet($sale, $sellable);
         $this->assertStaffBelongsToSale($sale, $attributes['staff_id'] ?? null);
-        $quantity = round((float) ($attributes['quantity'] ?? 1), 3);
+        $quantity = $this->acceptedQuantity($sellable, $attributes['quantity'] ?? 1);
         $unitPrice = $this->resolveUnitPrice($sellable, $attributes);
 
         return DB::transaction(function () use ($sale, $sellable, $attributes, $quantity, $unitPrice): SaleItem {
@@ -168,10 +171,10 @@ final class SaleService
                 'sellable_id' => $sellable->getKey(),
                 'description' => $attributes['description'] ?? $sellable->sellableName(),
                 'staff_id' => $attributes['staff_id'] ?? null,
-                'quantity' => $quantity,
+                'quantity' => $quantity->toString(),
                 'unit_price' => $unitPrice,
                 'unit_cost' => $sellable->unitCost(),
-                'discount' => round((float) ($attributes['discount'] ?? 0), 2),
+                'discount' => Money::of($attributes['discount'] ?? 0)->toString(),
                 'commission_percent' => $sellable->commissionPercent(),
             ]);
 
@@ -203,18 +206,18 @@ final class SaleService
         }
 
         if (array_key_exists('quantity', $attributes)) {
-            $item->quantity = round((float) $attributes['quantity'], 3);
+            $item->quantity = $this->acceptedQuantity($item->sellable, $attributes['quantity'])->toString();
         }
 
         if (array_key_exists('discount', $attributes)) {
-            $item->discount = round((float) ($attributes['discount'] ?? 0), 2);
+            $item->discount = Money::of($attributes['discount'] ?? 0)->toString();
         }
 
         if (array_key_exists('unit_price', $attributes) && $attributes['unit_price'] !== null) {
             $item->unit_price = $item->sellable instanceof Sellable
                 ? $this->resolveUnitPrice($item->sellable, $attributes)
                 // Item cujo cadastro sumiu: sem cadastro não há regra de preço a proteger.
-                : round((float) $attributes['unit_price'], 2);
+                : (string) Decimal::of($attributes['unit_price']);
         }
 
         return DB::transaction(function () use ($sale, $item): SaleItem {
@@ -279,13 +282,15 @@ final class SaleService
             throw ValidationException::withMessages(['account_id' => 'Conta não encontrada nesta clínica.']);
         }
 
-        $amount = round((float) $attributes['amount'], 2);
+        // Valor que troca de mão: o Form Request já recusa mais de 2 casas, então nada é arredondado.
+        $amount = Money::of($attributes['amount'])->toFloat();
         abort_if($amount <= 0, 422, 'O valor do recebimento deve ser maior que zero.');
 
         // Troco é do balcão, não da venda: o app manda só o que abate o saldo. Aceitar mais
         // que o devido registraria dinheiro que voltou para o bolso do cliente como receita.
+        // Tolerância de um centavo comparada exata: em float, 100,01 − 100,00 dá 0,0100000000000051.
         abort_if(
-            $amount - $sale->amountDue() > 0.01,
+            Money::of($amount)->minus($sale->amountDueMoney())->isGreaterThan('0.01'),
             422,
             sprintf('O valor recebido (R$ %s) é maior que o saldo da venda (R$ %s).', number_format($amount, 2, ',', '.'), number_format($sale->amountDue(), 2, ',', '.'))
         );
@@ -308,7 +313,7 @@ final class SaleService
                 'installments' => (int) ($attributes['installments'] ?? 1),
                 'received_at' => $receivedAt,
                 'operator_fee' => $fee,
-                'net_amount' => round($amount - $fee, 2),
+                'net_amount' => $method->netFor($amount),
                 // Só quem passa por adquirente espera depósito. Dinheiro na gaveta não tem
                 // "previsão de liquidação", e preencher com a data de hoje faria a tela de
                 // conciliação listar toda venda em dinheiro como pendente.
@@ -331,7 +336,7 @@ final class SaleService
                 $sale->cash_register_id ??= $register->id;
             }
 
-            $sale->paid_amount = round((float) $sale->receipts()->sum('amount'), 2);
+            $sale->paid_amount = Money::of($sale->receipts()->sum('amount'))->toString();
             $sale->status = $sale->isFullyPaid() ? SaleStatus::PAID : SaleStatus::UNPAID;
 
             if ($sale->status === SaleStatus::PAID) {
@@ -602,28 +607,46 @@ final class SaleService
     /**
      * @param  array<string, mixed>  $attributes
      */
-    private function resolveUnitPrice(Sellable $sellable, array $attributes): float
+    private function resolveUnitPrice(Sellable $sellable, array $attributes): string
     {
-        $cataloguePrice = $sellable->sellableUnitPrice();
+        $cataloguePrice = Decimal::of($sellable->sellableUnitPrice());
 
         if (! array_key_exists('unit_price', $attributes) || $attributes['unit_price'] === null) {
-            return $cataloguePrice;
+            return (string) $cataloguePrice;
         }
 
-        $requested = round((float) $attributes['unit_price'], 2);
+        // Preço como digitado (2 casas; o Form Request recusa mais) — nunca arredondado.
+        $requested = Decimal::of($attributes['unit_price']);
 
-        // Um centavo de tolerância: o front manda o preço que leu, e 89.90 pode voltar como
-        // 89.899999 depois de um `toFixed` mal arredondado. Recusar isso seria recusar o
-        // preço do próprio cadastro.
-        if (abs($requested - $cataloguePrice) <= 0.01) {
-            return $cataloguePrice;
+        // Comparação exata: o front manda o preço como texto decimal (`UnitPriceInput`), sem o
+        // ruído de float que justificava a antiga tolerância de um centavo — que trocava um
+        // preço legítimo (89,905) pelo do cadastro (89,90) sem avisar.
+        if ($requested->isEqualTo($cataloguePrice)) {
+            return (string) $cataloguePrice;
         }
 
         if (! $sellable->allowsPriceOverride()) {
-            throw new PriceOverrideNotAllowedException($sellable, $requested);
+            throw new PriceOverrideNotAllowedException($sellable, $requested->toFloat());
         }
 
-        return $requested;
+        return (string) $requested;
+    }
+
+    /**
+     * Quantidade que o item aceita: produto por unidade recusa fração (doc 0.2 do
+     * docs/gap-petflow/PLANO.md); serviço e pacote aceitam o que o Form Request deixou passar.
+     */
+    private function acceptedQuantity(?Sellable $sellable, mixed $value): Quantity
+    {
+        $quantity = Quantity::of($value);
+
+        if ($sellable instanceof Product && ! $sellable->acceptsQuantity($quantity)) {
+            throw ValidationException::withMessages([
+                'quantity' => sprintf('"%s" é vendido em unidades inteiras; não aceita %s.', $sellable->name, $quantity->toBigDecimal()->strippedOfTrailingZeros()),
+            ]);
+        }
+
+        return $quantity;
     }
 
     /**
@@ -653,8 +676,8 @@ final class SaleService
     private function deductStock(Sale $sale, User $user): void
     {
         foreach ($this->stockItems($sale) as $item) {
-            $this->stock->out($item->sellable, StockMovementType::SALE_OUT, (int) ceil((float) $item->quantity), [
-                'unit_cost' => (float) $item->unit_cost,
+            // Quantidade exata vendida — antes era `ceil()`: 1,25 kg de ração baixava 2 kg.
+            $this->stock->out($item->sellable, StockMovementType::SALE_OUT, $item->quantity, [
                 'reference' => $sale,
                 'user' => $user,
                 'occurred_at' => $sale->sold_at,
@@ -670,16 +693,27 @@ final class SaleService
      */
     private function restoreStock(Sale $sale, User $user): void
     {
-        foreach ($this->stockItems($sale) as $item) {
-            $returned = (int) SaleReturnItem::query()->where('sale_item_id', $item->id)->sum('quantity');
-            $quantity = (int) ceil((float) $item->quantity) - $returned;
+        $back = [];
 
-            if ($quantity < 1) {
+        foreach ($this->stockItems($sale) as $item) {
+            $returned = Quantity::of(SaleReturnItem::query()->where('sale_item_id', $item->id)->sum('quantity'));
+            $quantity = Quantity::of($item->quantity)->minus($returned);
+
+            if (! $quantity->isPositive()) {
                 continue;
             }
 
+            // Volta com o valor que SAIU nesta venda (rateio acumulado por produto), não com o
+            // custo congelado no item: se o médio mudou entre lançar e finalizar, o congelado
+            // criaria ou sumiria valor no estoque.
+            $productId = $item->sellable->getKey();
+            $back[$productId] ??= SaleReturnItem::returnedForProduct($sale->id, $productId);
+            $value = $this->stock->returningValue($item->sellable, $sale, StockMovementType::SALE_OUT, $back[$productId], $quantity);
+            $back[$productId] = $back[$productId]->plus($quantity);
+
             $this->stock->in($item->sellable, StockMovementType::RETURN_IN, $quantity, [
-                'unit_cost' => (float) $item->unit_cost,
+                'unit_cost' => $item->unit_cost,
+                'total_cost' => $value,
                 'reference' => $sale,
                 'user' => $user,
                 'notes' => 'Cancelamento da venda '.($sale->number ?? $sale->id),

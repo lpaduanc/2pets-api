@@ -56,7 +56,21 @@ class ProductImportValidatorTest extends TestCase
         ], $this->importFor($this->professional));
 
         $this->assertTrue($result['valid']);
-        $this->assertSame(1234.56, $result['normalized']['price']);
+        // Texto decimal exato, não float (docs/gap-petflow 0.2).
+        $this->assertSame('1234.56', $result['normalized']['price']);
+    }
+
+    public function test_fractional_stock_is_kept_exact_not_rounded(): void
+    {
+        // Antes: `round()` para inteiro — 1,25 kg virava 1.
+        $result = $this->validator->validate([
+            'name' => 'Ração a granel',
+            'price' => '32,90',
+            'stock_quantity' => '1,25',
+        ], $this->importFor($this->professional));
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame('1.2500', $result['normalized']['stock_quantity']);
     }
 
     public function test_row_without_price_or_markup_is_invalid(): void

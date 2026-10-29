@@ -21,9 +21,9 @@ class UpdateSaleItemRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'quantity' => ['sometimes', 'numeric', 'gt:0', 'max:999999'],
-            'unit_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999.99'],
-            'discount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999.99'],
+            'quantity' => ['sometimes', 'numeric', 'decimal:0,4', 'gt:0', 'max:999999'],
+            'unit_price' => ['sometimes', 'nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
+            'discount' => ['sometimes', 'nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             'staff_id' => ['sometimes', 'nullable', 'integer'],
         ];
     }

@@ -21,7 +21,7 @@ final class PriceOverrideNotAllowedException extends RuntimeException
         parent::__construct(sprintf(
             '"%s" não permite alteração de preço na venda. Preço cadastrado: R$ %s.',
             $sellable->sellableName(),
-            number_format($sellable->sellableUnitPrice(), 2, ',', '.')
+            number_format((float) $sellable->sellableUnitPrice(), 2, ',', '.')
         ));
     }
 

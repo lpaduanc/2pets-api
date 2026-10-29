@@ -66,7 +66,7 @@ class StockCountController extends Controller
         $data = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'distinct'],
-            'items.*.counted_quantity' => ['present', 'nullable', 'integer', 'min:0'],
+            'items.*.counted_quantity' => ['present', 'nullable', 'numeric', 'decimal:0,4', 'min:0'],
         ]);
 
         $count = $this->counts->addCount($this->find($request, $id), $request->user(), $data['items']);
@@ -98,7 +98,7 @@ class StockCountController extends Controller
 
     private function loadFull(StockCount $count): StockCount
     {
-        return $count->load(['responsible:id,name', 'items' => fn ($q) => $q->with('product:id,name,gtin,code,unit_of_sale')->orderBy('id')])
+        return $count->load(['responsible:id,name', 'items' => fn ($q) => $q->with('product:id,name,gtin,code,unit_of_sale,decimal_places_allowed')->orderBy('id')])
             ->loadCount(['items', 'items as items_counted_count' => fn ($q) => $q->whereNotNull('counted_quantity')]);
     }
 }

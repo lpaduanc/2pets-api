@@ -156,6 +156,8 @@ class SaleController extends Controller
                     'price' => (float) $product->price,
                     'group_name' => $product->group?->name,
                     'stock_quantity' => $product->stock_quantity,
+                    'unit_of_sale' => $product->unit_of_sale,
+                    'decimal_places_allowed' => (int) $product->decimal_places_allowed,
                     'controls_stock' => (bool) $product->controls_stock,
                     'allow_price_override' => (bool) $product->allow_price_override,
                     'commission_percent' => $product->commissionPercent(),

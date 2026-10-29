@@ -78,7 +78,7 @@ class PurchaseOrderController extends Controller
         $data = $request->validate([
             'items' => ['required', 'array', 'min:1'],
             'items.*.purchase_order_item_id' => ['required', 'integer', 'distinct'],
-            'items.*.quantity' => ['required', 'integer', 'min:0'],
+            'items.*.quantity' => ['required', 'numeric', 'decimal:0,4', 'min:0'],
         ]);
 
         $purchase = $this->orders->receive($this->find($request, $id), $request->user(), $data['items']);

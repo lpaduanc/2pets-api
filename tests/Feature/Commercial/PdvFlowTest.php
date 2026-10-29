@@ -72,7 +72,7 @@ class PdvFlowTest extends TestCase
 
         $this->assertSame(2, SaleReceipt::where('sale_id', $saleId)->count());
         $this->assertSame(2, CashRegisterMovement::where('cash_register_id', $registerId)->where('type', 'sale_receipt')->count());
-        $this->assertSame(9, $product->fresh()->stock_quantity);
+        $this->assertSame('9.0000', $product->fresh()->stock_quantity);
 
         // Fechamento: esperado × contado por forma, diferença gravada.
         $closed = $this->postJson("/api/professional/cash-registers/{$registerId}/close", [

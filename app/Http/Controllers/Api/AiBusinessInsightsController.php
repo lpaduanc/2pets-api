@@ -159,8 +159,8 @@ class AiBusinessInsightsController extends Controller
             ->selectRaw(
                 'COUNT(*) FILTER (WHERE stock_quantity <= min_stock) AS low_stock,
                  COUNT(*) FILTER (WHERE expiry_date > ? AND expiry_date <= ?) AS expiring_soon,
-                 COALESCE(SUM(stock_quantity * average_cost), 0) AS cost_value,
-                 COALESCE(SUM(stock_quantity * price), 0) AS selling_value',
+                 COALESCE(SUM(GREATEST(stock_value, 0)), 0) AS cost_value,
+                 COALESCE(SUM(GREATEST(stock_quantity, 0) * price), 0) AS selling_value',
                 [$now, $now->copy()->addDays(30)]
             )
             ->first();

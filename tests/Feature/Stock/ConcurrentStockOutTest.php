@@ -39,9 +39,9 @@ class ConcurrentStockOutTest extends TestCase
         app(StockService::class)->out($requestA, StockMovementType::SALE_OUT, 2);
         $second = app(StockService::class)->out($requestB, StockMovementType::SALE_OUT, 3);
 
-        $this->assertSame(5, $second[0]->balance_after);
-        $this->assertSame(5, $product->fresh()->stock_quantity);
-        $this->assertSame(5, $requestB->stock_quantity, 'o model de quem chamou volta com o saldo novo');
+        $this->assertSame('5.0000', $second[0]->balance_after);
+        $this->assertSame('5.0000', $product->fresh()->stock_quantity);
+        $this->assertSame('5.0000', $requestB->stock_quantity, 'o model de quem chamou volta com o saldo novo');
         $this->assertNotEmpty(
             array_filter($queries, fn (string $sql) => str_contains($sql, 'from "products"') && str_contains($sql, 'for update')),
             'a saída precisa travar a linha do produto'

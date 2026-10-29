@@ -43,8 +43,8 @@ class NfeXmlImportTest extends TestCase
             ->assertJsonPath('duplicate_purchase_id', null)
             ->assertJsonCount(2, 'items');
 
-        $response->assertJsonPath('items.0.quantity', 5)
-            ->assertJsonPath('items.0.unit_cost', 100)
+        $response->assertJsonPath('items.0.quantity', '5.0000')
+            ->assertJsonPath('items.0.unit_cost', '100.00')
             ->assertJsonPath('items.0.batch', 'L2026A')
             ->assertJsonPath('items.0.expires_at', '2027-06-01')
             ->assertJsonPath('items.0.match.product_id', $racao->id)
@@ -52,7 +52,7 @@ class NfeXmlImportTest extends TestCase
             // "SEM GTIN" não é código de barras; item novo exige decisão.
             ->assertJsonPath('items.1.gtin', null)
             ->assertJsonPath('items.1.match', null)
-            ->assertJsonPath('items.1.total_cost', 100);
+            ->assertJsonPath('items.1.total_cost', '100.00');
 
         $this->assertSame(0, Purchase::count());
         $this->assertSame(0, Supplier::count());

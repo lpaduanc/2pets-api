@@ -25,9 +25,9 @@ class StoreStockMovementRequest extends FormRequest
         return [
             'product_id' => ['required', 'integer'],
             'type' => ['required', Rule::in(array_map(fn (StockMovementType $t) => $t->value, StockMovementType::manual()))],
-            'quantity' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'quantity' => ['required', 'numeric', 'decimal:0,4', 'gt:0', 'max:1000000'],
             'reason_id' => ['nullable', 'integer'],
-            'unit_cost' => ['nullable', 'numeric', 'min:0'],
+            'unit_cost' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
             'batch_id' => ['nullable', 'integer'],
             'batch_code' => ['nullable', 'string', 'max:60'],
             'expires_at' => ['nullable', 'date'],

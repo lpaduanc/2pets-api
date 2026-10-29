@@ -54,8 +54,8 @@ class InventoryProductConsolidationServiceTest extends TestCase
         $this->assertSame('Vacinas', $product->group->name);
         $this->assertTrue($product->controls_stock);
         $this->assertTrue($product->track_batches);
-        $this->assertSame(20, $product->stock_quantity);
-        $this->assertSame(20, ProductBatch::where('legacy_inventory_id', $inventory->id)->firstOrFail()->quantity);
+        $this->assertSame('20.0000', $product->stock_quantity);
+        $this->assertSame('20.0000', ProductBatch::where('legacy_inventory_id', $inventory->id)->firstOrFail()->quantity);
     }
 
     public function test_equipment_item_migrates_without_controlling_stock_or_entering_price_list(): void
@@ -75,7 +75,7 @@ class InventoryProductConsolidationServiceTest extends TestCase
 
         $this->assertFalse($product->controls_stock);
         $this->assertFalse($product->show_in_price_list);
-        $this->assertSame(1, $product->stock_quantity);
+        $this->assertSame('1.0000', $product->stock_quantity);
         $this->assertSame(0, ProductBatch::where('product_id', $product->id)->count());
     }
 
@@ -101,9 +101,9 @@ class InventoryProductConsolidationServiceTest extends TestCase
 
         $this->assertSame(1, Product::where('professional_id', $vet->id)->count());
         $product = Product::where('legacy_inventory_id', $first->id)->firstOrFail();
-        $this->assertSame(15, $product->stock_quantity);
-        $this->assertSame(10, ProductBatch::where('legacy_inventory_id', $first->id)->value('quantity'));
-        $this->assertSame(5, ProductBatch::where('legacy_inventory_id', $second->id)->value('quantity'));
+        $this->assertSame('15.0000', $product->stock_quantity);
+        $this->assertSame('10.0000', ProductBatch::where('legacy_inventory_id', $first->id)->value('quantity'));
+        $this->assertSame('5.0000', ProductBatch::where('legacy_inventory_id', $second->id)->value('quantity'));
     }
 
     public function test_movement_history_is_replayed_and_reconciled_to_the_original_balance(): void
@@ -131,7 +131,7 @@ class InventoryProductConsolidationServiceTest extends TestCase
         $this->service->migrate();
 
         $product = Product::where('legacy_inventory_id', $inventory->id)->firstOrFail();
-        $this->assertSame(12, $product->stock_quantity);
+        $this->assertSame('12.0000', $product->stock_quantity);
         $this->assertSame(2, $product->stockMovements()->count());
     }
 

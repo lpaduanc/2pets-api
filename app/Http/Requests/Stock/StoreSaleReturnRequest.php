@@ -24,7 +24,7 @@ class StoreSaleReturnRequest extends FormRequest
             'refund_method' => ['required', Rule::enum(RefundMethod::class)],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sale_item_id' => ['required', 'integer', 'distinct'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.quantity' => ['required', 'numeric', 'decimal:0,4', 'gt:0'],
         ];
     }
 }

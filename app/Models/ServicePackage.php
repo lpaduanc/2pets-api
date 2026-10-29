@@ -102,9 +102,9 @@ class ServicePackage extends Model implements Sellable
         return $this->name;
     }
 
-    public function sellableUnitPrice(): float
+    public function sellableUnitPrice(): string
     {
-        return (float) $this->price;
+        return (string) ($this->price ?? '0');
     }
 
     /**
@@ -130,9 +130,9 @@ class ServicePackage extends Model implements Sellable
     }
 
     /** Sem custo de mercadoria, mesmo raciocínio de `Service::unitCost()`. */
-    public function unitCost(): float
+    public function unitCost(): string
     {
-        return 0.0;
+        return '0';
     }
 
     public function appearsInPriceList(): bool

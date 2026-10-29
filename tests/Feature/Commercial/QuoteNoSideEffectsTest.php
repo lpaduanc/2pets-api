@@ -38,8 +38,8 @@ class QuoteNoSideEffectsTest extends TestCase
         $this->assertNull($quote->sold_at);
         $this->assertSame('approved', $quote->quote_status->value);
 
-        $this->assertSame(10, $food->fresh()->stock_quantity);
-        $this->assertSame(5, $collar->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $food->fresh()->stock_quantity);
+        $this->assertSame('5.0000', $collar->fresh()->stock_quantity);
         $this->assertSame(0, SaleReceipt::count());
         $this->assertSame(0, CashRegisterMovement::where('cash_register_id', $registerId)->whereIn('type', ['sale_receipt', 'refund'])->count());
     }

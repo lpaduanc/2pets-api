@@ -7,6 +7,8 @@ use App\Models\Product;
 use App\Models\StockCount;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Support\Money\Quantity;
+use Brick\Math\BigDecimal;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -45,7 +47,7 @@ final class StockCountService
             $count->items()->insert($products->map(fn (Product $product): array => [
                 'stock_count_id' => $count->id,
                 'product_id' => $product->id,
-                'system_quantity' => (int) $product->stock_quantity,
+                'system_quantity' => $product->stock_quantity,
                 'counted_quantity' => null,
                 'difference' => null,
                 'adjusted' => false,
@@ -78,13 +80,19 @@ final class StockCountService
 
                     $item = $count->items()->make([
                         'product_id' => $product->id,
-                        'system_quantity' => (int) $product->stock_quantity,
+                        'system_quantity' => $product->stock_quantity,
                     ]);
                 }
 
-                $counted = $entry['counted_quantity'];
-                $item->counted_quantity = $counted;
-                $item->difference = $counted === null ? null : $counted - $item->system_quantity;
+                $counted = $entry['counted_quantity'] === null ? null : Quantity::of($entry['counted_quantity']);
+                abort_if(
+                    $counted !== null && ! ($item->product ?? Product::find($item->product_id))?->acceptsQuantity($counted),
+                    422,
+                    'Quantidade contada com mais casas decimais do que o produto aceita.'
+                );
+
+                $item->counted_quantity = $counted?->toString();
+                $item->difference = $counted?->minus(Quantity::of($item->system_quantity))->toString();
                 $item->save();
             }
         });
@@ -99,12 +107,12 @@ final class StockCountService
         return DB::transaction(function () use ($count, $user): StockCount {
             $correct = 0;
             $adjusted = 0;
-            $value = 0.0;
+            $value = BigDecimal::zero();
 
             $items = $count->items()->whereNotNull('counted_quantity')->with('product')->orderBy('product_id')->get();
 
             foreach ($items as $item) {
-                if ($item->difference === 0 || $item->product === null) {
+                if (Quantity::of($item->difference)->isZero() || $item->product === null) {
                     $correct++;
 
                     continue;
@@ -112,15 +120,17 @@ final class StockCountService
 
                 // Aplica a DIFERENÇA sobre o saldo atual, não o número contado: venda feita
                 // durante a contagem já saiu do saldo e não pode ser "desfeita" pelo ajuste.
-                $target = (int) $item->product->fresh()->stock_quantity + $item->difference;
-                $movement = $this->stock->adjustTo($item->product, $target, [
+                $target = Quantity::of($item->product->fresh()->stock_quantity)->plus(Quantity::of($item->difference));
+                $movements = $this->stock->adjustTo($item->product, $target, [
                     'reference' => $count,
                     'user' => $user,
                     'notes' => 'Inventário #'.$count->id,
                 ]);
 
-                if ($movement !== null) {
-                    $value += $item->difference * (float) $movement->unit_cost;
+                // Valor exato do ajuste, com sinal: sobra entra, falta sai. Soma TODOS os
+                // movimentos — falta que atravessa lotes sai em vários pedaços.
+                foreach ($movements as $movement) {
+                    $value = $value->plus(BigDecimal::of($movement->total_cost)->multipliedBy($movement->direction->sign()));
                 }
 
                 $item->update(['adjusted' => true]);
@@ -132,7 +142,7 @@ final class StockCountService
                 'closed_at' => now(),
                 'items_correct' => $correct,
                 'items_adjusted' => $adjusted,
-                'adjustment_value' => round($value, 2),
+                'adjustment_value' => (string) $value,
             ]);
 
             return $count->fresh();

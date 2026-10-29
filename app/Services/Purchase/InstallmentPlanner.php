@@ -3,6 +3,7 @@
 namespace App\Services\Purchase;
 
 use App\Services\Finance\DueDateService;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 
 /**
@@ -23,13 +24,10 @@ final class InstallmentPlanner
      */
     public function plan(float $total, int $count, CarbonImmutable $firstDueDate, int $intervalDays = 30, ?int $organizationId = null): array
     {
-        $count = max(1, $count);
-        $totalCents = (int) round($total * 100);
-        $baseCents = intdiv($totalCents, $count);
+        $amounts = Money::of($total)->splitInInstallments(max(1, $count), remainderOnLast: true);
         $plan = [];
 
-        for ($i = 0; $i < $count; $i++) {
-            $cents = $i === $count - 1 ? $totalCents - ($baseCents * ($count - 1)) : $baseCents;
+        foreach ($amounts as $i => $amount) {
             $due = $intervalDays === 30
                 ? $firstDueDate->addMonthsNoOverflow($i)
                 : $firstDueDate->addDays($intervalDays * $i);
@@ -37,7 +35,7 @@ final class InstallmentPlanner
             $plan[] = [
                 'number' => $i + 1,
                 'due_date' => $this->rollToBusinessDay($due, $organizationId)->toDateString(),
-                'amount' => $cents / 100,
+                'amount' => $amount->toFloat(),
             ];
         }
 

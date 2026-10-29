@@ -7,6 +7,7 @@ use App\Models\CashRegisterMovement;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Services\Stock\StockService;
+use App\Support\Money\Quantity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Feature\Commercial\Concerns\BuildsCounterFixtures;
 use Tests\TestCase;
@@ -37,14 +38,14 @@ class SaleStockIntegrationTest extends TestCase
         $saleId = $this->paidSale(2);
 
         $out = StockMovement::where('type', 'sale_out')->sole();
-        $this->assertSame(2, $out->quantity);
-        $this->assertSame(8, $out->balance_after);
+        $this->assertSame('2.0000', $out->quantity);
+        $this->assertSame('8.0000', $out->balance_after);
         $this->assertSame($saleId, $out->reference_id);
-        $this->assertSame(8, $this->product->fresh()->stock_quantity);
+        $this->assertSame('8.0000', $this->product->fresh()->stock_quantity);
 
         $this->actingAs($this->owner, 'sanctum')->postJson("/api/professional/sales/{$saleId}/cancel", ['reason' => 'Cliente desistiu'])->assertOk();
 
-        $this->assertSame(10, $this->product->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $this->product->fresh()->stock_quantity);
         $this->assertSame(['opening_balance', 'sale_out', 'return_in'], StockMovement::orderBy('id')->pluck('type')->map->value->all());
         $this->assertLedger();
     }
@@ -60,7 +61,7 @@ class SaleStockIntegrationTest extends TestCase
             'items' => [['sale_item_id' => $itemId, 'quantity' => 1]],
         ])->assertCreated()->assertJsonPath('data.total', 45);
 
-        $this->assertSame(8, $this->product->fresh()->stock_quantity);
+        $this->assertSame('8.0000', $this->product->fresh()->stock_quantity);
         $this->assertTrue(CashRegisterMovement::where('type', 'refund')->where('amount', 45)->exists());
 
         // Não devolve mais do que foi vendido.
@@ -69,11 +70,11 @@ class SaleStockIntegrationTest extends TestCase
             'items' => [['sale_item_id' => $itemId, 'quantity' => 3]],
         ])->assertStatus(422);
 
-        $this->getJson('/api/professional/sale-returns/sale-lookup?number=1')->assertJsonPath('data.items.0.returned_quantity', 1);
+        $this->getJson('/api/professional/sale-returns/sale-lookup?number=1')->assertJsonPath('data.items.0.returned_quantity', '1.0000');
 
         // Cancelamento só devolve as 2 unidades que ainda estavam com o cliente.
         $this->actingAs($this->owner, 'sanctum')->postJson("/api/professional/sales/{$saleId}/cancel", ['reason' => 'Cancelada'])->assertOk();
-        $this->assertSame(10, $this->product->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $this->product->fresh()->stock_quantity);
         $this->assertLedger();
     }
 
@@ -95,8 +96,8 @@ class SaleStockIntegrationTest extends TestCase
     private function assertLedger(): void
     {
         $sum = StockMovement::where('product_id', $this->product->id)->get()
-            ->sum(fn (StockMovement $m) => $m->signedQuantity());
+            ->reduce(fn (Quantity $total, StockMovement $m) => $total->plus($m->signedQuantity()), Quantity::zero());
 
-        $this->assertSame((int) $this->product->fresh()->stock_quantity, (int) $sum);
+        $this->assertSame($this->product->fresh()->stock_quantity, $sum->toString());
     }
 }

@@ -83,7 +83,7 @@ class PurchaseReceiveTest extends TestCase
             ->json('data.id');
 
         // Rascunho não mexe em estoque nem cria dívida.
-        $this->assertSame(10, $product->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $product->fresh()->stock_quantity);
         $this->assertSame(0, Purchase::find($purchaseId)->installments()->count());
 
         $this->postJson("/api/professional/purchases/{$purchaseId}/receive")
@@ -95,7 +95,7 @@ class PurchaseReceiveTest extends TestCase
             ->assertJsonPath('data.installments.2.amount', 59.34);
 
         $product->refresh();
-        $this->assertSame(15, $product->stock_quantity);
+        $this->assertSame('15.0000', $product->stock_quantity);
         $this->assertSame(22.0, (float) $product->average_cost); // (10×20 + 5×26) / 15
         $this->assertSame(26.0, (float) $product->last_cost);
         $this->assertSame(39.0, (float) $product->price);
@@ -103,10 +103,10 @@ class PurchaseReceiveTest extends TestCase
         $this->assertSame($this->supplier->id, $product->last_supplier_id);
 
         $created = Product::where('name', 'Petisco dental')->sole();
-        $this->assertSame(12, $created->stock_quantity);
+        $this->assertSame('12.0000', $created->stock_quantity);
         $this->assertSame(4.0, (float) $created->average_cost);
         $this->assertSame(8.0, (float) $created->price);
-        $this->assertSame(12, $created->batches()->where('batch_code', 'PD1')->value('quantity'));
+        $this->assertSame('12.0000', $created->batches()->where('batch_code', 'PD1')->value('quantity'));
 
         $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('type', 'purchase_in')->count());
         $this->assertTrue(SupplierProduct::where('supplier_id', $this->supplier->id)->where('supplier_product_code', 'X-9')->where('product_id', $product->id)->exists());
@@ -143,7 +143,7 @@ class PurchaseReceiveTest extends TestCase
             ->assertJsonPath('data.installments.1.status', 'cancelled');
 
         $product->refresh();
-        $this->assertSame(10, $product->stock_quantity);
+        $this->assertSame('10.0000', $product->stock_quantity);
         $this->assertSame(20.0, (float) $product->average_cost);
         // Estorno é movimento novo; o de entrada continua no livro.
         $this->assertSame(['opening_balance', 'purchase_in', 'return_out'], StockMovement::where('product_id', $product->id)->orderBy('id')->pluck('type')->map->value->all());

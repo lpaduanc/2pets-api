@@ -39,6 +39,7 @@ class StockCountResource extends JsonResource
                     'gtin' => $item->product->gtin,
                     'code' => $item->product->code,
                     'unit_of_sale' => $item->product->unit_of_sale,
+                    'decimal_places_allowed' => (int) $item->product->decimal_places_allowed,
                 ] : null,
                 'product_id' => $item->product_id,
                 'system_quantity' => $item->system_quantity,

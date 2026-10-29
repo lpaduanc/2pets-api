@@ -22,7 +22,7 @@ interface Sellable
     public function sellableName(): string;
 
     /** Preço sugerido no balcão, antes de qualquer desconto. */
-    public function sellableUnitPrice(): float;
+    public function sellableUnitPrice(): string;
 
     /**
      * `false` bloqueia preço diferente do cadastrado — critério de aceite do doc 08
@@ -37,7 +37,7 @@ interface Sellable
     public function movesStock(): bool;
 
     /** Custo unitário usado na base de comissão `margin` (doc 09). */
-    public function unitCost(): float;
+    public function unitCost(): string;
 
     public function appearsInPriceList(): bool;
 }

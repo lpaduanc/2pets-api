@@ -49,15 +49,16 @@ class StoreProductRequest extends FormRequest
             // item 4): liga este produto à identidade clínica do calendário (vacina/vermífugo).
             'immunization_product_id' => ['nullable', 'integer', 'exists:immunization_products,id'],
 
-            'price' => ['required_without_all:markup_percent', 'nullable', 'numeric', 'min:0', 'max:9999999.99'],
-            'average_cost' => ['nullable', 'numeric', 'min:0'],
-            'last_cost' => ['nullable', 'numeric', 'min:0'],
+            'price' => ['required_without_all:markup_percent', 'nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
+            'average_cost' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
+            'last_cost' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
             'markup_percent' => ['nullable', 'numeric', 'min:-100', 'max:100000'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
 
-            'stock_quantity' => ['nullable', 'integer', 'min:0'],
-            'min_stock' => ['nullable', 'integer', 'min:0'],
-            'max_stock' => ['nullable', 'integer', 'min:0', 'gte:min_stock'],
+            'stock_quantity' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],
+            'min_stock' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],
+            'max_stock' => ['nullable', 'numeric', 'decimal:0,4', 'min:0', 'gte:min_stock'],
+            'decimal_places_allowed' => ['nullable', 'integer', 'between:0,4'],
             'expiry_date' => ['nullable', 'date'],
 
             'show_in_price_list' => ['nullable', 'boolean'],

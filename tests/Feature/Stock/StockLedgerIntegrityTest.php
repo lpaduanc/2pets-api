@@ -33,11 +33,11 @@ class StockLedgerIntegrityTest extends TestCase
             ])->assertCreated()->json('data.id');
 
         $product = Product::findOrFail($id);
-        $this->assertSame(7, $product->stock_quantity);
+        $this->assertSame('7.0000', $product->stock_quantity);
 
         $movement = StockMovement::where('product_id', $id)->sole();
         $this->assertSame(StockMovementType::OPENING_BALANCE, $movement->type);
-        $this->assertSame(7, $movement->balance_after);
+        $this->assertSame('7.0000', $movement->balance_after);
         $this->assertLedgerMatches($product);
     }
 
@@ -49,11 +49,11 @@ class StockLedgerIntegrityTest extends TestCase
         $this->actingAs($this->owner, 'sanctum')
             ->putJson("/api/professional/products/{$product->id}", ['stock_quantity' => 6])
             ->assertOk()
-            ->assertJsonPath('data.stock_quantity', 6);
+            ->assertJsonPath('data.stock_quantity', '6.0000');
 
         $last = StockMovement::where('product_id', $product->id)->latest('id')->first();
         $this->assertSame(StockMovementType::ADJUSTMENT_OUT, $last->type);
-        $this->assertSame(4, $last->quantity);
+        $this->assertSame('4.0000', $last->quantity);
         $this->assertSame($this->owner->id, $last->user_id);
         $this->assertLedgerMatches($product);
     }
@@ -70,11 +70,11 @@ class StockLedgerIntegrityTest extends TestCase
 
         $this->postJson('/api/professional/stock-movements', [
             'product_id' => $product->id, 'type' => 'loss', 'quantity' => 3, 'reason_id' => $reasonId, 'notes' => 'Pacote rasgado',
-        ])->assertCreated()->assertJsonPath('data.0.balance_after', 7)->assertJsonPath('data.0.total_cost', 37.5);
+        ])->assertCreated()->assertJsonPath('data.0.balance_after', '7.0000')->assertJsonPath('data.0.total_cost', '37.50');
 
         $kardex = $this->getJson("/api/professional/products/{$product->id}/stock-movements")->assertOk();
-        $this->assertSame([7, 10], array_column($kardex->json('data'), 'balance_after'));
-        $kardex->assertJsonPath('product.stock_quantity', 7);
+        $this->assertSame(['7.0000', '10.0000'], array_column($kardex->json('data'), 'balance_after'));
+        $kardex->assertJsonPath('product.stock_quantity', '7.0000');
 
         $this->getJson('/api/professional/stock-movements?other_exits=1')->assertOk()->assertJsonCount(1, 'data');
         $this->assertLedgerMatches($product);
@@ -98,7 +98,7 @@ class StockLedgerIntegrityTest extends TestCase
 
         $this->assertSame([], $movements);
         $this->assertSame(0, StockMovement::count());
-        $this->assertSame(0, $product->fresh()->stock_quantity);
+        $this->assertSame('0.0000', $product->fresh()->stock_quantity);
     }
 
     public function test_another_clinic_cannot_see_or_move_the_stock(): void

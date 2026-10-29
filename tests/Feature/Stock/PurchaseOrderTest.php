@@ -33,7 +33,7 @@ class PurchaseOrderTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.purchase_order_id', $order['id'])
-            ->assertJsonPath('data.items.0.quantity', 4)
+            ->assertJsonPath('data.items.0.quantity', '4.0000')
             ->json('data.id');
 
         // O pedido só muda quando a COMPRA é efetivada.
@@ -43,14 +43,14 @@ class PurchaseOrderTest extends TestCase
 
         $this->getJson("/api/professional/purchase-orders/{$order['id']}")
             ->assertJsonPath('data.status', 'partially_received')
-            ->assertJsonPath('data.items.0.received_quantity', 4)
-            ->assertJsonPath('data.items.0.pending_quantity', 6);
-        $this->assertSame(4, $product->fresh()->stock_quantity);
+            ->assertJsonPath('data.items.0.received_quantity', '4.0000')
+            ->assertJsonPath('data.items.0.pending_quantity', '6.0000');
+        $this->assertSame('4.0000', $product->fresh()->stock_quantity);
 
         // Cancelar a compra devolve o pedido ao estado anterior.
         $this->postJson("/api/professional/purchases/{$purchaseId}/cancel", ['reason' => 'erro'])->assertOk();
         $this->getJson("/api/professional/purchase-orders/{$order['id']}")
             ->assertJsonPath('data.status', 'sent')
-            ->assertJsonPath('data.items.0.received_quantity', 0);
+            ->assertJsonPath('data.items.0.received_quantity', '0.0000');
     }
 }

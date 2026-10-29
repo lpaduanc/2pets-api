@@ -3,6 +3,7 @@
 namespace App\Services\Finance;
 
 use App\DataTransferObjects\Finance\PlannedFinancialInstallment;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -26,8 +27,7 @@ final class FinancialInstallmentPlanner
     {
         $count = max(1, $count);
         $seriesId = $count === 1 ? null : (string) Str::uuid();
-        $totalCents = (int) round($totalAmount * 100);
-        $baseCents = intdiv($totalCents, $count);
+        $amounts = Money::of($totalAmount)->splitInInstallments($count, remainderOnLast: true);
 
         return collect(range(1, $count))->map(
             fn (int $number): PlannedFinancialInstallment => new PlannedFinancialInstallment(
@@ -35,7 +35,7 @@ final class FinancialInstallmentPlanner
                 $number,
                 $count,
                 $this->dueDateFor($firstDueDate, $number, $intervalDays, $organizationId),
-                $this->amountFor($number, $count, $totalCents, $baseCents) / 100,
+                $amounts[$number - 1]->toFloat(),
             )
         );
     }
@@ -51,10 +51,5 @@ final class FinancialInstallmentPlanner
         }
 
         return $due;
-    }
-
-    private function amountFor(int $number, int $count, int $totalCents, int $baseCents): int
-    {
-        return $number === $count ? $totalCents - ($baseCents * ($count - 1)) : $baseCents;
     }
 }

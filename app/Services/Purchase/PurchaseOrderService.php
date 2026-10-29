@@ -9,6 +9,9 @@ use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Support\Money\Decimal;
+use App\Support\Money\Money;
+use App\Support\Money\Quantity;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -116,17 +119,17 @@ final class PurchaseOrderService
             $orderItem = $orderItems->get((int) $entry['purchase_order_item_id']);
             abort_if($orderItem === null, 422, 'Item não pertence a este pedido.');
 
-            $quantity = (int) $entry['quantity'];
+            $quantity = Quantity::of($entry['quantity']);
 
-            if ($quantity < 1) {
+            if (! $quantity->isPositive()) {
                 continue;
             }
 
             $items[] = [
                 'product_id' => $orderItem->product_id,
                 'purchase_order_item_id' => $orderItem->id,
-                'quantity' => $quantity,
-                'unit_cost' => (float) $orderItem->unit_cost,
+                'quantity' => $quantity->toString(),
+                'unit_cost' => $orderItem->unit_cost,
             ];
         }
 
@@ -146,24 +149,25 @@ final class PurchaseOrderService
     private function syncItems(PurchaseOrder $order, User $user, array $items): void
     {
         $order->items()->delete();
-        $total = 0.0;
+        $total = Money::zero();
 
         foreach ($items as $data) {
             $product = $this->scope->scopeQuery(Product::query(), $user)->findOrFail((int) $data['product_id']);
-            $quantity = (int) $data['quantity'];
-            $unitCost = round((float) ($data['unit_cost'] ?? $product->last_cost), 4);
-            $lineTotal = round($quantity * $unitCost, 2);
-            $total += $lineTotal;
+            $quantity = Quantity::of($data['quantity']);
+            abort_unless($product->acceptsQuantity($quantity), 422, sprintf('"%s" é comprado em unidades inteiras.', $product->name));
+            $unitCost = Decimal::of($data['unit_cost'] ?? $product->last_cost);
+            $lineTotal = Money::of($quantity->toBigDecimal()->multipliedBy($unitCost));
+            $total = $total->plus($lineTotal);
 
             $order->items()->create([
                 'product_id' => $product->id,
-                'quantity' => $quantity,
-                'unit_cost' => $unitCost,
-                'total' => $lineTotal,
+                'quantity' => $quantity->toString(),
+                'unit_cost' => (string) $unitCost,
+                'total' => $lineTotal->toString(),
             ]);
         }
 
-        $order->update(['total' => round($total, 2)]);
+        $order->update(['total' => $total->toString()]);
     }
 
     private function supplierId(User $user, mixed $supplierId): int

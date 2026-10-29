@@ -4,6 +4,9 @@ namespace App\Models;
 
 use App\Enums\PaymentDirection;
 use App\Enums\PaymentMethodKind;
+use App\Support\Money\Decimal;
+use App\Support\Money\Money;
+use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -84,12 +87,20 @@ class PaymentMethod extends Model
      */
     public function feeFor(float $amount): float
     {
-        return round(($amount * ((float) $this->fee_percent / 100)) + (float) $this->fee_fixed, 2);
+        return $this->feeMoneyFor($amount)->toFloat();
     }
 
     public function netFor(float $amount): float
     {
-        return round($amount - $this->feeFor($amount), 2);
+        return Money::of($amount)->minus($this->feeMoneyFor($amount))->toFloat();
+    }
+
+    /** Conta exata: percentual + fixo somados sem arredondar, e um único arredondamento no fim. */
+    private function feeMoneyFor(float $amount): Money
+    {
+        $percentPart = Decimal::of($amount)->multipliedBy(Decimal::of($this->fee_percent))->dividedBy(100, 12, RoundingMode::HalfUp);
+
+        return Money::of($percentPart->plus(Decimal::of($this->fee_fixed)));
     }
 
     /**
