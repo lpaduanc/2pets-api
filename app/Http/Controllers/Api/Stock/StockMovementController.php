@@ -62,7 +62,7 @@ class StockMovementController extends Controller
                 'id' => $product->id,
                 'name' => $product->name,
                 'stock_quantity' => $product->stock_quantity,
-                'average_cost' => (float) $product->average_cost,
+                'average_cost' => $product->average_cost,
                 'controls_stock' => $product->controls_stock,
                 'track_batches' => $product->track_batches,
             ],
@@ -82,7 +82,7 @@ class StockMovementController extends Controller
                 'batch_code' => $batch->batch_code,
                 'expires_at' => $batch->expires_at?->toDateString(),
                 'quantity' => $batch->quantity,
-                'unit_cost' => (float) $batch->unit_cost,
+                'unit_cost' => $batch->unit_cost,
             ]);
 
         return response()->json(['data' => $batches]);
@@ -116,9 +116,11 @@ class StockMovementController extends Controller
             'notes' => $data['notes'] ?? null,
         ];
 
+        abort_unless($product->acceptsQuantity((string) $data['quantity']), 422, sprintf('"%s" aceita até %d casa(s) decimal(is) de quantidade.', $product->name, $product->decimal_places_allowed));
+
         $movements = $type->direction()->value === 'in'
-            ? $this->stock->in($product, $type, (int) $data['quantity'], $context)
-            : $this->stock->out($product, $type, (int) $data['quantity'], $context);
+            ? $this->stock->in($product, $type, (string) $data['quantity'], $context)
+            : $this->stock->out($product, $type, (string) $data['quantity'], $context);
 
         $loaded = StockMovement::with(StockMovementResource::RESOURCE_RELATIONS)
             ->whereKey(array_map(fn (StockMovement $m) => $m->id, $movements))

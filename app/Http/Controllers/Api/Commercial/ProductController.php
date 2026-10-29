@@ -14,11 +14,14 @@ use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\PricingService;
 use App\Services\Stock\StockService;
+use App\Support\Money\Decimal;
+use App\Support\Money\Quantity;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Catálogo comercial — contrato docs/gap-simplesvet/08-produtos-precificacao-lista-precos.md.
@@ -68,13 +71,15 @@ class ProductController extends Controller
 
         // Saldo informado no cadastro entra pelo livro (doc 07) como saldo inicial, nunca
         // gravado direto na coluna — senão o kardex nasceria sem explicar o próprio número.
-        $openingBalance = (int) ($data['stock_quantity'] ?? 0);
+        $openingBalance = Quantity::of($data['stock_quantity'] ?? 0);
         $data['stock_quantity'] = 0;
+        $data['decimal_places_allowed'] ??= Product::defaultDecimalPlacesFor($data['unit_of_sale'] ?? null);
 
         $product = DB::transaction(function () use ($data, $request, $openingBalance): Product {
             $product = Product::create($data + $this->scope->ownershipFor($request->user()));
+            $this->guardQuantityFitsProduct($product, $openingBalance);
 
-            if ($openingBalance > 0) {
+            if ($openingBalance->isPositive()) {
                 $this->stock->in($product, StockMovementType::OPENING_BALANCE, $openingBalance, [
                     'user' => $request->user(),
                     'notes' => 'Saldo informado no cadastro do produto.',
@@ -108,7 +113,11 @@ class ProductController extends Controller
 
         // O custo que a conta usa é o que está CHEGANDO quando informado, e o já gravado
         // quando não — senão editar só o markup reprecificaria a partir de custo zero.
-        $data['average_cost'] ??= (float) $product->average_cost;
+        // Custo médio digitado é reavaliação: passa pelo `StockService::revalue`, que só age
+        // quando o valor muda de fato e grava o ajuste de custo no kardex. O front manda o
+        // médio em todo salvamento — gravar direto reavaliaria o estoque a cada edição de nome.
+        $newAverage = array_key_exists('average_cost', $data) ? (string) Decimal::of($data['average_cost']) : null;
+        $data['average_cost'] ??= $product->average_cost;
 
         $group = $this->resolveGroup(
             $request->user(),
@@ -116,11 +125,24 @@ class ProductController extends Controller
         );
 
         // Editar o saldo no cadastro vira um AJUSTE no livro (doc 07), com quem e quando.
-        $targetStock = array_key_exists('stock_quantity', $data) ? (int) $data['stock_quantity'] : null;
+        $targetStock = array_key_exists('stock_quantity', $data) ? Quantity::of($data['stock_quantity']) : null;
         unset($data['stock_quantity']);
 
-        DB::transaction(function () use ($product, $data, $group, $targetStock, $request): void {
-            $product->update($this->pricing->resolvePricing($data, $group));
+        DB::transaction(function () use ($product, $data, $group, $targetStock, $request, $newAverage): void {
+            $attributes = $this->pricing->resolvePricing($data, $group);
+            unset($attributes['average_cost']);
+            $product->update($attributes);
+
+            if ($targetStock !== null) {
+                $this->guardQuantityFitsProduct($product, $targetStock);
+            }
+
+            if ($newAverage !== null) {
+                $this->stock->revalue($product, $newAverage, [
+                    'user' => $request->user(),
+                    'notes' => 'Custo médio alterado no cadastro do produto.',
+                ]);
+            }
 
             if ($targetStock !== null) {
                 $this->stock->adjustTo($product, $targetStock, [
@@ -157,6 +179,15 @@ class ProductController extends Controller
             ->firstOrFail();
 
         return new ProductResource($product);
+    }
+
+    private function guardQuantityFitsProduct(Product $product, Quantity $quantity): void
+    {
+        if (! $product->acceptsQuantity($quantity)) {
+            throw ValidationException::withMessages([
+                'stock_quantity' => sprintf('Este produto aceita até %d casa(s) decimal(is) de quantidade.', $product->decimal_places_allowed),
+            ]);
+        }
     }
 
     /**

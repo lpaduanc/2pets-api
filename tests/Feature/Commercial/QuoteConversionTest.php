@@ -66,8 +66,8 @@ class QuoteConversionTest extends TestCase
         // Financeiro: recebimentos com forma, valor e líquido gravados.
         $this->assertEquals(280, (float) SaleReceipt::where('sale_id', $saleId)->sum('amount'));
         // Estoque: 2 rações e 1 colar saem; o serviço não mexe em nada.
-        $this->assertSame(8, $food->fresh()->stock_quantity);
-        $this->assertSame(4, $collar->fresh()->stock_quantity);
+        $this->assertSame('8.0000', $food->fresh()->stock_quantity);
+        $this->assertSame('4.0000', $collar->fresh()->stock_quantity);
 
         // O orçamento continua existindo como documento, apontando para a venda.
         $this->getJson("/api/professional/quotes/{$id}")
@@ -91,7 +91,7 @@ class QuoteConversionTest extends TestCase
             ->assertJsonPath('data.status', 'open')
             ->json('data.id');
 
-        $this->assertSame(10, $food->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $food->fresh()->stock_quantity);
         $this->assertSame(0, SaleReceipt::where('sale_id', $saleId)->count());
     }
 

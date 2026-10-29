@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PurchaseStatus;
+use App\Support\Money\Money;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -123,9 +124,9 @@ class Purchase extends Model
     /** Frete e desconto da nota rateados não entram no custo unitário no MVP; só no total. */
     public function recalculateTotals(): void
     {
-        $products = round((float) $this->items()->sum('total_cost'), 2);
+        $products = Money::of($this->items()->sum('total_cost'));
 
-        $this->total_products = $products;
-        $this->total = round($products + (float) $this->total_freight - (float) $this->total_discount, 2);
+        $this->total_products = $products->toString();
+        $this->total = $products->plus($this->total_freight)->minus($this->total_discount)->toString();
     }
 }

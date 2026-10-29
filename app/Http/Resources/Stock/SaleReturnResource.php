@@ -31,7 +31,7 @@ class SaleReturnResource extends JsonResource
                 'sale_item_id' => $item->sale_item_id,
                 'description' => $item->saleItem?->description,
                 'quantity' => $item->quantity,
-                'unit_price' => (float) $item->unit_price,
+                'unit_price' => $item->unit_price,
                 'total' => (float) $item->total,
             ])->values()),
             'created_at' => $this->created_at?->toIso8601String(),

@@ -34,9 +34,9 @@ class StoreSaleItemRequest extends FormRequest
             // regra de negócio ser avaliada (achado desta auditoria).
             'sellable_type' => ['required', Rule::in(['product', 'service', 'package'])],
             'sellable_id' => ['required', 'integer', 'min:1'],
-            'quantity' => ['nullable', 'numeric', 'gt:0', 'max:999999'],
-            'unit_price' => ['nullable', 'numeric', 'min:0', 'max:9999999.99'],
-            'discount' => ['nullable', 'numeric', 'min:0', 'max:9999999.99'],
+            'quantity' => ['nullable', 'numeric', 'decimal:0,4', 'gt:0', 'max:999999'],
+            'unit_price' => ['nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
+            'discount' => ['nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             'staff_id' => ['nullable', 'integer', 'exists:organization_members,id'],
             'description' => ['nullable', 'string', 'max:255'],
         ];

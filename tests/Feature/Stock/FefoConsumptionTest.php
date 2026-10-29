@@ -29,11 +29,11 @@ class FefoConsumptionTest extends TestCase
 
         $this->assertCount(2, $movements);
         $this->assertSame(['SOON', 'LATE'], array_map(fn (StockMovement $m) => $m->batch->batch_code, $movements));
-        $this->assertSame([3, 2], array_map(fn (StockMovement $m) => $m->quantity, $movements));
-        $this->assertSame([9, 7], array_map(fn (StockMovement $m) => $m->balance_after, $movements));
+        $this->assertSame(['3.0000', '2.0000'], array_map(fn (StockMovement $m) => $m->quantity, $movements));
+        $this->assertSame(['9.0000', '7.0000'], array_map(fn (StockMovement $m) => $m->balance_after, $movements));
 
         $batches = $product->batches()->pluck('quantity', 'batch_code')->all();
-        $this->assertSame(['LATE' => 2, 'SOON' => 0, 'NOEXP' => 5], $batches);
+        $this->assertSame(['LATE' => '2.0000', 'SOON' => '0.0000', 'NOEXP' => '5.0000'], $batches);
         $this->assertLedgerMatches($product);
     }
 
@@ -47,7 +47,7 @@ class FefoConsumptionTest extends TestCase
         $movements = $stock->out($product, StockMovementType::SALE_OUT, 3);
 
         $this->assertSame(['A', null], array_map(fn (StockMovement $m) => $m->batch?->batch_code, $movements));
-        $this->assertSame(-1, $product->fresh()->stock_quantity);
+        $this->assertSame('-1.0000', $product->fresh()->stock_quantity);
         $this->assertLedgerMatches($product);
     }
 }

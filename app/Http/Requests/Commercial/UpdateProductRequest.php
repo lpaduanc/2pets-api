@@ -40,15 +40,16 @@ class UpdateProductRequest extends FormRequest
             'category_id' => ['sometimes', 'nullable', 'integer', 'exists:product_categories,id'],
             'immunization_product_id' => ['sometimes', 'nullable', 'integer', 'exists:immunization_products,id'],
 
-            'price' => ['sometimes', 'numeric', 'min:0', 'max:9999999.99'],
-            'average_cost' => ['sometimes', 'numeric', 'min:0'],
-            'last_cost' => ['sometimes', 'numeric', 'min:0'],
+            'price' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
+            'average_cost' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0'],
+            'last_cost' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0'],
             'markup_percent' => ['sometimes', 'nullable', 'numeric', 'min:-100', 'max:100000'],
             'commission_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
 
-            'stock_quantity' => ['sometimes', 'integer', 'min:0'],
-            'min_stock' => ['sometimes', 'integer', 'min:0'],
-            'max_stock' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'stock_quantity' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0'],
+            'min_stock' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0'],
+            'max_stock' => ['sometimes', 'nullable', 'numeric', 'decimal:0,4', 'min:0'],
+            'decimal_places_allowed' => ['sometimes', 'integer', 'between:0,4'],
             'expiry_date' => ['sometimes', 'nullable', 'date'],
 
             'show_in_price_list' => ['sometimes', 'boolean'],

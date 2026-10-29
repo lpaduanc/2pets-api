@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Commercial;
 
+use App\Models\Product;
 use App\Models\SaleItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -23,8 +24,12 @@ class SaleItemResource extends JsonResource
             'sellable_type' => $this->sellable_type === null ? null : mb_strtolower(class_basename($this->sellable_type)),
             'sellable_id' => $this->sellable_id,
             'description' => $this->description,
-            'quantity' => (float) $this->quantity,
-            'unit_price' => (float) $this->unit_price,
+            'quantity' => $this->quantity,
+            // Casas que a quantidade aceita (docs/gap-petflow 0.2): granel mostra campo decimal no
+            // PDV, unidade mostra +/-. Só produto restringe; serviço e pacote vêm `null`.
+            'unit_of_sale' => $this->whenLoaded('sellable', fn () => $this->sellable instanceof Product ? $this->sellable->unit_of_sale : null),
+            'decimal_places_allowed' => $this->whenLoaded('sellable', fn () => $this->sellable instanceof Product ? (int) $this->sellable->decimal_places_allowed : null),
+            'unit_price' => $this->unit_price,
             'discount' => (float) $this->discount,
             'total' => (float) $this->total,
             'commission_percent' => $this->commission_percent === null ? null : (float) $this->commission_percent,

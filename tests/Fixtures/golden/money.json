@@ -1,0 +1,45 @@
+{
+  "_doc": "Casos de referencia do Money (docs/gap-petflow/PLANO.md, secoes 0.3 e 3). Copia byte a byte em 2pets-pro/tests/fixtures/golden/money.json: PHPUnit e Vitest leem o mesmo conteudo, e o back e o front nao podem divergir nem um centavo. Altere aqui e copie para la.",
+  "allocate": [
+    { "id": "iguais-3", "total": "100.00", "weights": ["1", "1", "1"], "expected": ["33.34", "33.33", "33.33"] },
+    { "id": "um-centavo-3", "total": "0.01", "weights": ["1", "1", "1"], "expected": ["0.01", "0.00", "0.00"] },
+    { "id": "mdr-01-taxa-entre-parcelas", "total": "2.99", "weights": ["33.34", "33.33", "33.33"], "expected": ["1.00", "1.00", "0.99"] },
+    { "id": "rentab-01-desconto-cabecalho", "total": "13.00", "weights": ["200.00", "60.00"], "expected": ["10.00", "3.00"] },
+    { "id": "rentab-01-taxa-entre-itens", "total": "7.39", "weights": ["190.00", "57.00"], "expected": ["5.68", "1.71"] },
+    { "id": "compra-01-frete", "total": "25.00", "weights": ["200.00", "300.00"], "expected": ["10.00", "15.00"] },
+    { "id": "pacote-01-servicos", "total": "230.00", "weights": ["240.00", "40.00"], "expected": ["197.14", "32.86"] },
+    { "id": "pesos-zero", "total": "10.00", "weights": ["0", "0"], "expected": ["5.00", "5.00"] },
+    { "id": "estorno-negativo", "total": "-10.00", "weights": ["1", "2"], "expected": ["-3.33", "-6.67"] },
+    { "id": "empate-de-resto-maior-peso", "total": "0.03", "weights": ["1", "3", "2"], "expected": ["0.00", "0.02", "0.01"] },
+    { "id": "total-zero", "total": "0.00", "weights": ["5", "7"], "expected": ["0.00", "0.00"] }
+  ],
+  "allocateEqually": [
+    { "id": "pacote-01-sessoes-banho", "total": "197.14", "parts": 4, "expected": ["49.29", "49.29", "49.28", "49.28"] },
+    { "id": "cinco-centavos-3", "total": "0.05", "parts": 3, "expected": ["0.02", "0.02", "0.01"] }
+  ],
+  "splitInInstallments": [
+    { "id": "mdr-01-bruto", "total": "100.00", "count": 3, "remainderOnLast": false, "expected": ["33.34", "33.33", "33.33"] },
+    { "id": "compra-ultima-parcela", "total": "100.00", "count": 3, "remainderOnLast": true, "expected": ["33.33", "33.33", "33.34"] },
+    { "id": "cinco-centavos-3", "total": "0.05", "count": 3, "remainderOnLast": false, "expected": ["0.03", "0.01", "0.01"] },
+    { "id": "exato", "total": "300.00", "count": 3, "remainderOnLast": false, "expected": ["100.00", "100.00", "100.00"] }
+  ],
+  "percentage": [
+    { "id": "rentab-01-taxa", "amount": "247.00", "percent": "2.99", "expected": "7.39" },
+    { "id": "mdr-01-taxa", "amount": "100.00", "percent": "2.99", "expected": "2.99" },
+    { "id": "antecip-01-parcela-1", "amount": "96.51", "percent": "1.99", "expected": "1.92" },
+    { "id": "crediario-01-multa", "amount": "150.00", "percent": "2", "expected": "3.00" },
+    { "id": "meio-centavo-sobe", "amount": "0.50", "percent": "1", "expected": "0.01" }
+  ],
+  "lineTotal": [
+    { "id": "balanca-01", "unitPrice": "32.90", "quantity": "1.250", "discount": "0.00", "expected": "41.13" },
+    { "id": "granel-em-gramas", "unitPrice": "18.99", "quantity": "0.333", "discount": "0.00", "expected": "6.32" },
+    { "id": "unidade-exata", "unitPrice": "3.33", "quantity": "3", "discount": "0.00", "expected": "9.99" },
+    { "id": "granel-com-desconto", "unitPrice": "19.99", "quantity": "2.5", "discount": "5.00", "expected": "44.98" },
+    { "id": "desconto-maior-que-a-linha", "unitPrice": "10.00", "quantity": "3", "discount": "50.00", "expected": "0.00" }
+  ],
+  "times": [
+    { "id": "balanca-01", "amount": "32.90", "factor": "1.250", "expected": "41.13" },
+    { "id": "servico-01-shampoo", "amount": "0.08", "factor": "30", "expected": "2.40" },
+    { "id": "ponto-flutuante", "amount": "0.10", "factor": "3", "expected": "0.30" }
+  ]
+}

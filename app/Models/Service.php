@@ -91,9 +91,9 @@ class Service extends Model implements Sellable
         return $this->name;
     }
 
-    public function sellableUnitPrice(): float
+    public function sellableUnitPrice(): string
     {
-        return (float) $this->price;
+        return (string) ($this->price ?? '0');
     }
 
     public function allowsPriceOverride(): bool
@@ -117,9 +117,9 @@ class Service extends Model implements Sellable
      * aplicada a serviço equivale a `gross` — e é essa a leitura correta: a margem de um
      * serviço é o próprio preço, já que o custo dele é mão de obra, não mercadoria.
      */
-    public function unitCost(): float
+    public function unitCost(): string
     {
-        return 0.0;
+        return '0';
     }
 
     public function appearsInPriceList(): bool

@@ -22,6 +22,9 @@ use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\PricingService;
 use App\Services\Finance\PurchaseFinancialEntryRecorder;
 use App\Services\Stock\StockService;
+use App\Support\Money\Decimal;
+use App\Support\Money\Money;
+use App\Support\Money\Quantity;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -176,6 +179,7 @@ final class PurchaseService
 
         $this->stock->in($product, StockMovementType::PURCHASE_IN, $item->quantity, [
             'unit_cost' => $unitCost,
+            'total_cost' => $item->total_cost,
             'batch_code' => $item->batch,
             'expires_at' => $item->expires_at?->toDateString(),
             'reference' => $purchase,
@@ -195,9 +199,8 @@ final class PurchaseService
         }
 
         if ($item->applied_sale_price !== null) {
-            $price = (float) $item->applied_sale_price;
-            $changes['price'] = $price;
-            $changes['markup_percent'] = $this->pricing->markupFromCost($unitCost, $price);
+            $changes['price'] = $item->applied_sale_price;
+            $changes['markup_percent'] = $this->pricing->markupFromCost((float) $unitCost, (float) $item->applied_sale_price);
         }
 
         if ($product->ncm === null && $item->ncm !== null) {
@@ -231,6 +234,7 @@ final class PurchaseService
 
         $this->stock->out($item->product, StockMovementType::RETURN_OUT, $item->quantity, [
             'unit_cost' => $item->effectiveUnitCost(),
+            'total_cost' => $item->total_cost,
             'batch_id' => $batchId,
             'reverse_average_cost' => true,
             'reference' => $purchase,
@@ -279,11 +283,11 @@ final class PurchaseService
         }
 
         $items = $order->items()->get();
-        $received = $items->sum('received_quantity');
+        $nothingReceived = $items->every(fn (PurchaseOrderItem $i): bool => Quantity::of($i->received_quantity)->isZero());
 
         $status = match (true) {
-            $received === 0 => $order->sent_at !== null ? PurchaseOrderStatus::SENT : PurchaseOrderStatus::DRAFT,
-            $items->every(fn (PurchaseOrderItem $i) => $i->received_quantity >= $i->quantity) => PurchaseOrderStatus::RECEIVED,
+            $nothingReceived => $order->sent_at !== null ? PurchaseOrderStatus::SENT : PurchaseOrderStatus::DRAFT,
+            $items->every(fn (PurchaseOrderItem $i): bool => Quantity::of($i->received_quantity)->isGreaterThanOrEqualTo(Quantity::of($i->quantity))) => PurchaseOrderStatus::RECEIVED,
             default => PurchaseOrderStatus::PARTIALLY_RECEIVED,
         };
 
@@ -337,14 +341,21 @@ final class PurchaseService
 
         foreach ($items as $index => $data) {
             $product = $this->resolveProduct($user, $data, $index);
-            $quantity = (int) $data['quantity'];
-            $unitCost = round((float) $data['unit_cost'], 4);
-            $discount = round((float) ($data['discount'] ?? 0), 2);
+            $quantity = Quantity::of($data['quantity']);
+            abort_unless($product->acceptsQuantity($quantity), 422, sprintf(
+                'Item %d: "%s" aceita até %d casa(s) decimal(is) de quantidade.',
+                $index + 1,
+                $product->name,
+                $product->decimal_places_allowed
+            ));
+            // Custo e preço como digitados (2 casas, `StorePurchaseRequest` recusa mais).
+            $unitCost = Decimal::of($data['unit_cost']);
+            $discount = Money::of($data['discount'] ?? 0);
             $markup = isset($data['markup_percent']) ? (float) $data['markup_percent'] : null;
-            $applied = isset($data['applied_sale_price']) ? round((float) $data['applied_sale_price'], 2) : null;
+            $applied = isset($data['applied_sale_price']) ? (string) Decimal::of($data['applied_sale_price']) : null;
 
             if ($markup === null && $applied !== null) {
-                $markup = $this->pricing->markupFromCost($unitCost, $applied);
+                $markup = $this->pricing->markupFromCost($unitCost->toFloat(), (float) $applied);
             }
 
             $purchase->items()->create([
@@ -352,13 +363,15 @@ final class PurchaseService
                 'purchase_order_item_id' => $this->resolveOrderItemId($purchase, $data['purchase_order_item_id'] ?? null),
                 'supplier_product_code' => $data['supplier_product_code'] ?? null,
                 'description_on_invoice' => $data['description_on_invoice'] ?? null,
-                'quantity' => $quantity,
+                'quantity' => $quantity->toString(),
                 'unit' => $data['unit'] ?? $product->unit_of_sale,
-                'unit_cost' => $unitCost,
-                'discount' => $discount,
-                'total_cost' => round(max(0, $quantity * $unitCost - $discount), 2),
+                'unit_cost' => (string) $unitCost,
+                'discount' => $discount->toString(),
+                // Valor da linha da nota (vProd − desconto): é o que se paga ao fornecedor, então
+                // vira centavo aqui, uma vez. O estoque recebe ESTE valor, não custo × quantidade.
+                'total_cost' => $this->lineGross($quantity, $unitCost, $data)->minus($discount)->max(0)->toString(),
                 'markup_percent' => $markup,
-                'suggested_price' => $markup === null ? null : $this->pricing->priceFromMarkup($unitCost, $markup),
+                'suggested_price' => $markup === null ? null : $this->pricing->priceFromMarkup($unitCost->toFloat(), $markup),
                 'applied_sale_price' => $applied,
                 'batch' => $data['batch'] ?? null,
                 'expires_at' => $data['expires_at'] ?? null,
@@ -369,6 +382,21 @@ final class PurchaseService
 
         $purchase->recalculateTotals();
         $purchase->save();
+    }
+
+    /**
+     * Bruto da linha: o da nota (`gross_total`, XML) quando vem; senão quantidade × custo,
+     * virando centavo uma vez. Nunca recalcular o que a nota já fixou.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function lineGross(Quantity $quantity, \Brick\Math\BigDecimal $unitCost, array $data): Money
+    {
+        if (isset($data['gross_total'])) {
+            return Money::of($data['gross_total']);
+        }
+
+        return Money::of($quantity->toBigDecimal()->multipliedBy($unitCost));
     }
 
     /**
@@ -383,11 +411,13 @@ final class PurchaseService
         $new = $data['new_product'] ?? null;
         abort_if(! is_array($new), 422, sprintf('Item %d: vincule a um produto existente ou cadastre um novo.', $index + 1));
 
-        $unitCost = round((float) $data['unit_cost'], 4);
+        $unitOfSale = $data['unit'] ?? 'UN';
+        $unitCost = (string) Decimal::of($data['unit_cost']);
         $attributes = $new + [
             'average_cost' => 0,
             'last_cost' => $unitCost,
-            'unit_of_sale' => $data['unit'] ?? 'UN',
+            'unit_of_sale' => $unitOfSale,
+            'decimal_places_allowed' => Product::defaultDecimalPlacesFor($new['unit_of_sale'] ?? $unitOfSale),
             'ncm' => $data['ncm'] ?? null,
             'purpose' => $data['purpose'] ?? ProductPurpose::RESALE->value,
         ];

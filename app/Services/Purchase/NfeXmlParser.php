@@ -2,6 +2,9 @@
 
 namespace App\Services\Purchase;
 
+use App\Support\Money\Decimal;
+use App\Support\Money\Money;
+use App\Support\Money\Quantity;
 use SimpleXMLElement;
 
 /**
@@ -78,9 +81,12 @@ final class NfeXmlParser
         foreach ($nfe->det as $det) {
             $prod = $det->prod;
             $gtin = $this->text($prod->cEAN);
-            $quantity = (float) $prod->qCom;
-            $gross = (float) $prod->vProd;
-            $discount = (float) $prod->vDesc;
+            // Texto exato da nota (float perderia fração). `qCom` tem até 4 casas; o valor que
+            // vale é o da LINHA (`vProd`, centavos) — o `vUnCom` pode ter até 10 casas e só vira o
+            // custo unitário de 2 casas para exibir.
+            $quantity = Quantity::of($this->text($prod->qCom) ?? '0');
+            $gross = Money::of($this->text($prod->vProd) ?? '0');
+            $discount = Money::of($this->text($prod->vDesc) ?? '0');
             $batch = $prod->rastro[0] ?? null;
 
             $items[] = [
@@ -91,13 +97,17 @@ final class NfeXmlParser
                 'gtin' => $gtin !== null && ctype_digit($gtin) ? $gtin : null,
                 'ncm' => $this->text($prod->NCM),
                 'unit' => $this->text($prod->uCom),
-                // Estoque é inteiro (ver migration do livro); quantidade fracionada é
-                // arredondada e sinalizada para o usuário conferir na tela.
-                'quantity' => (int) round($quantity),
-                'fractional_quantity' => abs($quantity - round($quantity)) > 0.0001,
-                'unit_cost' => round((float) $prod->vUnCom, 4),
-                'discount' => round($discount, 2),
-                'total_cost' => round($gross - $discount, 2),
+                // Estoque decimal desde a migration 2026_11_05_100000: a quantidade da nota entra
+                // como veio. `fractional_quantity` avisa a tela de que o produto precisa aceitar
+                // casas decimais (`decimal_places_allowed`) para receber este item.
+                'quantity' => $quantity->toString(),
+                'fractional_quantity' => $quantity->decimalPlaces() > 0,
+                'unit_cost' => Money::of($this->text($prod->vUnCom) ?? '0')->toString(),
+                // A compra grava ESTE valor como bruto da linha, não quantidade × custo de 2
+                // casas — que poderia diferir do total da nota em centavos.
+                'gross_total' => $gross->toString(),
+                'discount' => $discount->toString(),
+                'total_cost' => $gross->minus($discount)->toString(),
                 'batch' => $batch === null ? null : $this->text($batch->nLote),
                 'expires_at' => $batch === null ? null : $this->text($batch->dVal),
             ];

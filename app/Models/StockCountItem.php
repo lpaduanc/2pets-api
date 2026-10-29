@@ -22,9 +22,9 @@ class StockCountItem extends Model
     protected function casts(): array
     {
         return [
-            'system_quantity' => 'integer',
-            'counted_quantity' => 'integer',
-            'difference' => 'integer',
+            'system_quantity' => 'decimal:4',
+            'counted_quantity' => 'decimal:4',
+            'difference' => 'decimal:4',
             'adjusted' => 'boolean',
         ];
     }

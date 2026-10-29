@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\PricingService;
 use App\Services\Stock\StockService;
+use App\Support\Money\Quantity;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -35,8 +36,10 @@ final class ImportedProductProvisioner
             $group = $this->findGroup($normalized['product_group_id'] ?? null);
             $data = $this->pricing->resolvePricing($this->attributesFrom($normalized, $actor), $group);
 
-            $openingBalance = (int) ($data['stock_quantity'] ?? 0);
+            $openingBalance = Quantity::of($data['stock_quantity'] ?? 0);
             $data['stock_quantity'] = 0;
+            // Casas pela unidade da nota, e nunca menos do que o próprio saldo importado usa.
+            $data['decimal_places_allowed'] = max(Product::defaultDecimalPlacesFor($data['unit_of_sale'] ?? null), $openingBalance->decimalPlaces());
 
             $product = Product::create($data + $this->scope->ownershipFor($actor));
             $this->recordOpeningBalance($product, $openingBalance, $actor);
@@ -74,9 +77,9 @@ final class ImportedProductProvisioner
         return $groupId === null ? null : ProductGroup::find($groupId);
     }
 
-    private function recordOpeningBalance(Product $product, int $openingBalance, User $actor): void
+    private function recordOpeningBalance(Product $product, Quantity $openingBalance, User $actor): void
     {
-        if ($openingBalance <= 0) {
+        if (! $openingBalance->isPositive()) {
             return;
         }
 

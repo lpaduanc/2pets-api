@@ -29,7 +29,7 @@ class StoreSaleReceiptRequest extends FormRequest
     {
         return [
             'payment_method_id' => ['required', 'integer', 'exists:payment_methods,id'],
-            'amount' => ['required', 'numeric', 'gt:0', 'max:9999999.99'],
+            'amount' => ['required', 'numeric', 'decimal:0,2', 'gt:0', 'max:9999999.99'],
             'installments' => ['nullable', 'integer', 'min:1', 'max:24'],
             'account_id' => ['nullable', 'integer', 'exists:financial_accounts,id'],
             'received_at' => ['nullable', 'date'],

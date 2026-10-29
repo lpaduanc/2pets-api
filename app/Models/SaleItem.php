@@ -3,6 +3,11 @@
 namespace App\Models;
 
 use App\Contracts\Sellable;
+use App\Services\Stock\StockValuation;
+use App\Support\Money\Decimal;
+use App\Support\Money\Money;
+use App\Support\Money\Quantity;
+use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -45,9 +50,9 @@ class SaleItem extends Model
     protected function casts(): array
     {
         return [
-            'quantity' => 'decimal:3',
+            'quantity' => 'decimal:4',
             'unit_price' => 'decimal:2',
-            'unit_cost' => 'decimal:4',
+            'unit_cost' => 'decimal:2',
             'discount' => 'decimal:2',
             'total' => 'decimal:2',
             'commission_percent' => 'decimal:4',
@@ -85,15 +90,69 @@ class SaleItem extends Model
      */
     public function calculateTotal(): float
     {
-        $gross = (float) $this->quantity * (float) $this->unit_price;
-
-        return round(max(0, $gross - (float) $this->discount), 2);
+        return $this->totalMoney()->toFloat();
     }
 
     /** Base `margin` da comissão (doc 09): total da linha menos o custo das unidades vendidas. */
     public function marginAmount(): float
     {
-        return round($this->calculateTotal() - ((float) $this->quantity * (float) $this->unit_cost), 2);
+        return $this->marginMoney()->toFloat();
+    }
+
+    public function marginMoney(): Money
+    {
+        $cost = Decimal::of($this->quantity)->multipliedBy(Decimal::of($this->unit_cost));
+
+        return Money::of($this->totalMoney()->toBigDecimal()->minus($cost));
+    }
+
+    /**
+     * Preço unitário efetivo da linha (já com o desconto), em centavos — só para exibir e gravar na
+     * devolução. O valor devolvido NÃO é este × quantidade: é `refundFor()`.
+     */
+    public function netUnitPrice(): string
+    {
+        $quantity = Decimal::of($this->quantity);
+
+        if (! $quantity->isPositive()) {
+            return '0';
+        }
+
+        return (string) $this->totalMoney()->toBigDecimal()->dividedBy($quantity, StockValuation::COST_SCALE, RoundingMode::HalfUp);
+    }
+
+    /**
+     * Quanto devolver por `$quantity` unidades, sabendo que `$alreadyReturned` já voltaram.
+     * Rateio acumulado: o devolvido até aqui é sempre `total × devolvido ÷ vendido`, virando
+     * centavo uma vez só; cada devolução leva a diferença. Devolver tudo, em quantas vezes for,
+     * devolve EXATAMENTE o total da linha — nunca um centavo a mais nem a menos.
+     */
+    public function refundFor(Quantity $alreadyReturned, Quantity $quantity, ?Money $paid = null): Money
+    {
+        $paid ??= $this->totalMoney();
+
+        return $this->cumulativeRefund($alreadyReturned->plus($quantity), $paid)->minus($this->cumulativeRefund($alreadyReturned, $paid));
+    }
+
+    /** `$paid`: o que o cliente pagou pela linha (com o desconto do cabeçalho, `Sale::netItemTotals`). */
+    private function cumulativeRefund(Quantity $returned, Money $paid): Money
+    {
+        $sold = Quantity::of($this->quantity);
+
+        if ($returned->isGreaterThanOrEqualTo($sold)) {
+            return $paid;
+        }
+
+        return Money::of($paid->toBigDecimal()->multipliedBy($returned->toBigDecimal())
+            ->dividedBy($sold->toBigDecimal(), StockValuation::VALUE_SCALE, RoundingMode::HalfUp));
+    }
+
+    /** Quantidade × preço − desconto, exato; arredonda uma vez e nunca fica negativo. */
+    public function totalMoney(): Money
+    {
+        $gross = Decimal::of($this->quantity)->multipliedBy(Decimal::of($this->unit_price));
+
+        return Money::of($gross->minus(Decimal::of($this->discount)))->max(0);
     }
 
     /**

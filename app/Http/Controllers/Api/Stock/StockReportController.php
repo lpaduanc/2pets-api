@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Stock\StockAnalysisService;
+use App\Support\Money\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -100,21 +101,23 @@ class StockReportController extends Controller
                 'expires_at' => $batch->expires_at->toDateString(),
                 'quantity' => $batch->quantity,
                 'days_left' => (int) $today->diffInDays($batch->expires_at, false),
-                'capital' => round($batch->quantity * (float) $batch->unit_cost, 2),
+                // Valor exato do lote (quantidade × custo, sem divisão); float só na saída.
+                'capital' => Decimal::of($batch->quantity)->multipliedBy(Decimal::of($batch->unit_cost))->toFloat(),
             ]);
 
         $plain = (clone $products)->where('track_batches', false)
             ->where('stock_quantity', '>', 0)
             ->whereNotNull('expiry_date')
             ->where('expiry_date', '<=', $limit)
-            ->get(['id', 'name', 'code', 'stock_quantity', 'expiry_date', 'average_cost'])
+            ->get(['id', 'name', 'code', 'stock_quantity', 'expiry_date', 'average_cost', 'stock_value'])
             ->map(fn (Product $product): array => [
                 'product' => ['id' => $product->id, 'name' => $product->name, 'code' => $product->code],
                 'batch' => null,
                 'expires_at' => $product->expiry_date->toDateString(),
                 'quantity' => $product->stock_quantity,
                 'days_left' => (int) $today->diffInDays($product->expiry_date, false),
-                'capital' => round($product->stock_quantity * (float) $product->average_cost, 2),
+                // `stock_value` é a fonte da verdade do valor (docs/gap-petflow 0.2).
+                'capital' => (float) $product->stock_value,
             ]);
 
         $rows = $batches->concat($plain)->sortBy('expires_at')->values();

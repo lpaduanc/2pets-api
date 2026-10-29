@@ -3,6 +3,9 @@
 namespace App\Models;
 
 use App\Enums\ProductPurpose;
+use App\Services\Stock\StockValuation;
+use App\Support\Money\Decimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -35,8 +38,8 @@ class PurchaseItem extends Model
     {
         return [
             'purpose' => ProductPurpose::class,
-            'quantity' => 'integer',
-            'unit_cost' => 'decimal:4',
+            'quantity' => 'decimal:4',
+            'unit_cost' => 'decimal:2',
             'discount' => 'decimal:2',
             'total_cost' => 'decimal:2',
             'markup_percent' => 'decimal:4',
@@ -62,15 +65,18 @@ class PurchaseItem extends Model
     }
 
     /**
-     * Custo unitário EFETIVO que entra no custo médio: o desconto do item rateado pelas
-     * unidades. Pagar 100 em 5 unidades com 10 de desconto é custo 18, não 20.
+     * Custo unitário EFETIVO: o desconto do item rateado pelas unidades. Pagar 100 em 5 unidades
+     * com 10 de desconto é custo 18, não 20. Só para exibir e para o último custo — o estoque
+     * recebe o `total_cost` exato da linha (`PurchaseService::receiveItem`), não este × quantidade.
      */
-    public function effectiveUnitCost(): float
+    public function effectiveUnitCost(): string
     {
-        if ($this->quantity <= 0) {
-            return 0.0;
+        $quantity = Decimal::of($this->quantity);
+
+        if (! $quantity->isPositive()) {
+            return '0';
         }
 
-        return round((float) $this->total_cost / $this->quantity, 4);
+        return (string) Decimal::of($this->total_cost)->dividedBy($quantity, StockValuation::COST_SCALE, RoundingMode::HalfUp);
     }
 }

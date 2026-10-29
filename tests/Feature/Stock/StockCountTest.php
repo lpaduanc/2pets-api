@@ -59,11 +59,11 @@ class StockCountTest extends TestCase
             ->assertJsonPath('data.items_adjusted', 2)
             ->assertJsonPath('data.adjustment_value', -26); // -3×10 + 2×2
 
-        $this->assertSame(10, $right->fresh()->stock_quantity);
-        $this->assertSame(7, $short->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $right->fresh()->stock_quantity);
+        $this->assertSame('7.0000', $short->fresh()->stock_quantity);
         // Diferença (+2) aplicada sobre o saldo atual (9), não o número contado (12).
-        $this->assertSame(11, $extra->fresh()->stock_quantity);
-        $this->assertSame(10, $uncounted->fresh()->stock_quantity);
+        $this->assertSame('11.0000', $extra->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $uncounted->fresh()->stock_quantity);
 
         $this->assertSame(2, StockMovement::whereIn('type', ['adjustment_in', 'adjustment_out'])->count());
         foreach ([$right, $short, $extra, $uncounted] as $product) {

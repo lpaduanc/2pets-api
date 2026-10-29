@@ -63,7 +63,7 @@ class QuoteFlowTest extends TestCase
             ->assertJsonPath('data.origin.medical_record_id', $record->id)
             ->assertJsonPath('data.origin.medical_record.chief_complaint', 'lameness')
             ->assertJsonCount(2, 'data.items')
-            ->assertJsonPath('data.items.0.unit_price', 150)
+            ->assertJsonPath('data.items.0.unit_price', '150.00')
             ->assertJsonPath('data.items.1.description', 'Raio-X de tórax')
             ->assertJsonPath('data.items.1.total', 360)
             ->assertJsonPath('data.total', 510)

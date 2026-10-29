@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\StockDirection;
 use App\Enums\StockMovementType;
+use App\Support\Money\Quantity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -45,10 +46,10 @@ class StockMovement extends Model
         return [
             'type' => StockMovementType::class,
             'direction' => StockDirection::class,
-            'quantity' => 'integer',
-            'unit_cost' => 'decimal:4',
+            'quantity' => 'decimal:4',
+            'unit_cost' => 'decimal:2',
             'total_cost' => 'decimal:2',
-            'balance_after' => 'integer',
+            'balance_after' => 'decimal:4',
             'occurred_at' => 'datetime',
             'created_at' => 'datetime',
         ];
@@ -79,8 +80,11 @@ class StockMovement extends Model
         return $this->morphTo();
     }
 
-    public function signedQuantity(): int
+    /** Quantidade com sinal, exata (`"-1.2500"`); ajuste de custo dá zero. */
+    public function signedQuantity(): string
     {
-        return $this->quantity * $this->direction->sign();
+        $quantity = Quantity::of($this->quantity);
+
+        return ($this->direction->sign() < 0 ? $quantity->negated() : $quantity)->toString();
     }
 }

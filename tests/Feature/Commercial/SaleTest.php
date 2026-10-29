@@ -88,7 +88,7 @@ class SaleTest extends TestCase
             'sellable_type' => 'product', 'sellable_id' => $foreignProduct->id,
         ])->assertStatus(422)->assertJsonValidationErrors('sellable_id');
 
-        $this->assertSame(10, $foreignProduct->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $foreignProduct->fresh()->stock_quantity);
     }
 
     public function test_staff_must_belong_to_the_clinic(): void
@@ -145,7 +145,7 @@ class SaleTest extends TestCase
         ])->assertCreated();
 
         $this->assertSame(0, CashRegisterMovement::count());
-        $this->assertSame(10, $product->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $product->fresh()->stock_quantity);
 
         // Orçamento não recebe pagamento.
         $registerId = $this->openRegisterFor($this->receptionist, 0);
@@ -165,7 +165,7 @@ class SaleTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('sale.status', 'paid');
 
-        $this->assertSame(8, $product->fresh()->stock_quantity);
+        $this->assertSame('8.0000', $product->fresh()->stock_quantity);
         $this->assertSame(1, CashRegisterMovement::where('cash_register_id', $registerId)->where('type', 'sale_receipt')->count());
     }
 
@@ -189,7 +189,7 @@ class SaleTest extends TestCase
         $saleId = $this->postJson('/api/professional/sales', ['kind' => 'sale'])->json('data.id');
         $this->postJson("/api/professional/sales/{$saleId}/items", ['sellable_type' => 'product', 'sellable_id' => $product->id]);
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 100])->assertCreated();
-        $this->assertSame(4, $product->fresh()->stock_quantity);
+        $this->assertSame('4.0000', $product->fresh()->stock_quantity);
 
         $this->postJson("/api/professional/sales/{$saleId}/cancel", ['reason' => 'Cliente desistiu'])->assertForbidden();
 
@@ -199,7 +199,7 @@ class SaleTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'cancelled');
 
-        $this->assertSame(5, $product->fresh()->stock_quantity);
+        $this->assertSame('5.0000', $product->fresh()->stock_quantity);
         // Estorno sai da gaveta de quem devolveu o dinheiro (o dono), não da recepcionista.
         $refund = CashRegisterMovement::where('type', 'refund')->sole();
         $this->assertNotSame($registerId, $refund->cash_register_id);

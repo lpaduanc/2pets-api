@@ -8,6 +8,7 @@ use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Stock\StoreSaleReturnRequest;
 use App\Http\Resources\Stock\SaleReturnResource;
+use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReturn;
@@ -78,7 +79,7 @@ class SaleReturnController extends Controller
         $sale = $this->scope->scopeQuery(Sale::query(), $request->user())
             ->where('kind', SaleKind::SALE->value)
             ->where('number', $request->integer('number'))
-            ->with(['items', 'client:id,name'])
+            ->with(['items.sellable', 'client:id,name'])
             ->firstOrFail();
 
         return response()->json(['data' => [
@@ -91,9 +92,11 @@ class SaleReturnController extends Controller
             'items' => $sale->items->map(fn (SaleItem $item): array => [
                 'id' => $item->id,
                 'description' => $item->description,
-                'quantity' => (float) $item->quantity,
-                'returned_quantity' => $this->returns->returnedQuantity($item->id),
-                'unit_price' => round($item->calculateTotal() / max((float) $item->quantity, 1), 2),
+                'quantity' => $item->quantity,
+                'unit_of_sale' => $item->sellable instanceof Product ? $item->sellable->unit_of_sale : null,
+                'decimal_places_allowed' => $item->sellable instanceof Product ? (int) $item->sellable->decimal_places_allowed : null,
+                'returned_quantity' => $this->returns->returnedQuantity($item->id)->toString(),
+                'unit_price' => $item->netUnitPrice(),
             ])->values(),
         ]]);
     }

@@ -80,7 +80,7 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
 
         $response = $this->getJson('/api/professional/products')->assertOk();
 
-        $response->assertJsonPath('data.0.average_cost', 12.5);
+        $response->assertJsonPath('data.0.average_cost', '12.50');
     }
 
     public function test_receptionist_role_gets_forbidden_on_products_crud(): void

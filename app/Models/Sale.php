@@ -8,6 +8,7 @@ use App\Enums\FiscalOperation;
 use App\Enums\QuoteStatus;
 use App\Enums\SaleKind;
 use App\Enums\SaleStatus;
+use App\Support\Money\Money;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -109,6 +110,7 @@ class Sale extends Model
     /** Relações que a consulta de vendas e o recibo precisam para não cair em N+1. */
     public const RESOURCE_RELATIONS = [
         'items.staff.user',
+        'items.sellable',
         'receipts.paymentMethod',
         'client',
         'pet',
@@ -210,23 +212,58 @@ class Sale extends Model
      */
     public function recalculateTotals(): void
     {
-        $subtotal = round((float) $this->items()->sum('total'), 2);
-        $discount = $this->discount_type->amountFor($subtotal, (float) $this->discount_value);
+        // `sum()` de coluna decimal volta como string exata do Postgres; não passa por float.
+        $subtotal = Money::of($this->items()->sum('total'));
+        $discount = $this->discount_type->moneyFor($subtotal, (string) ($this->discount_value ?? '0'));
 
-        $this->subtotal = $subtotal;
-        $this->discount_amount = $discount;
-        $this->total = round($subtotal - $discount, 2);
+        $this->subtotal = $subtotal->toString();
+        $this->discount_amount = $discount->toString();
+        $this->total = $subtotal->minus($discount)->toString();
+    }
+
+    /**
+     * Quanto cada linha custou ao cliente: total da linha menos a parte dela no desconto do
+     * cabeçalho, rateado pelo maior resto — a soma é o total da venda, centavo a centavo. Base
+     * da devolução em dinheiro (`SaleReturnService`). Exige `items` carregados.
+     *
+     * @return array<int, Money> por `sale_items.id`
+     */
+    public function netItemTotals(): array
+    {
+        $totals = [];
+
+        foreach ($this->items as $item) {
+            $totals[$item->id] = Money::of($item->total);
+        }
+
+        $discount = Money::of($this->discount_amount);
+
+        if ($totals === [] || $discount->isZero()) {
+            return $totals;
+        }
+
+        // `allocate` preserva as chaves: a parte de cada linha volta no id dela.
+        foreach ($discount->allocate($totals) as $itemId => $share) {
+            $totals[$itemId] = $totals[$itemId]->minus($share);
+        }
+
+        return $totals;
     }
 
     public function amountDue(): float
     {
-        return round((float) $this->total - (float) $this->paid_amount, 2);
+        return $this->amountDueMoney()->toFloat();
     }
 
     public function isFullyPaid(): bool
     {
         // Um centavo de tolerância: parcelamento em 3x de R$ 100,00 dá 33,33 × 3 = 99,99.
-        return $this->amountDue() <= 0.01;
+        return $this->amountDueMoney()->isLessThanOrEqualTo('0.01');
+    }
+
+    public function amountDueMoney(): Money
+    {
+        return Money::of($this->total)->minus($this->paid_amount);
     }
 
     public function isQuote(): bool

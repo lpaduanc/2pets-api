@@ -6,6 +6,7 @@ use App\Contracts\Sellable;
 use App\Enums\ProductPurpose;
 use App\Enums\StockMovementType;
 use App\Services\Stock\StockService;
+use App\Support\Money\Quantity;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -34,6 +35,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Product extends Model implements Sellable
 {
+    /** Unidades da nota (`unit_of_sale`) que fracionam: peso, volume e medida. */
+    public const FRACTIONAL_UNITS = ['KG', 'G', 'MG', 'L', 'ML', 'M', 'M2', 'CM'];
+
+    public const FRACTIONAL_DECIMAL_PLACES = 3;
+
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
@@ -51,6 +57,7 @@ class Product extends Model implements Sellable
         'ncm',
         'cest',
         'unit_of_sale',
+        'decimal_places_allowed',
         'purpose',
         'price',
         'average_cost',
@@ -81,14 +88,16 @@ class Product extends Model implements Sellable
         return [
             'purpose' => ProductPurpose::class,
             'price' => 'decimal:2',
-            'average_cost' => 'decimal:4',
-            'last_cost' => 'decimal:4',
+            'average_cost' => 'decimal:2',
+            'last_cost' => 'decimal:2',
+            'stock_value' => 'decimal:2',
+            'decimal_places_allowed' => 'integer',
             'markup_percent' => 'decimal:4',
             'commission_percent' => 'decimal:4',
             'compare_at_price' => 'decimal:2',
-            'stock_quantity' => 'integer',
-            'min_stock' => 'integer',
-            'max_stock' => 'integer',
+            'stock_quantity' => 'decimal:4',
+            'min_stock' => 'decimal:4',
+            'max_stock' => 'decimal:4',
             'expiry_date' => 'date',
             'track_inventory' => 'boolean',
             'show_in_price_list' => 'boolean',
@@ -180,9 +189,9 @@ class Product extends Model implements Sellable
         return $this->name;
     }
 
-    public function sellableUnitPrice(): float
+    public function sellableUnitPrice(): string
     {
-        return (float) $this->price;
+        return (string) ($this->price ?? '0');
     }
 
     public function allowsPriceOverride(): bool
@@ -200,9 +209,9 @@ class Product extends Model implements Sellable
         return (bool) $this->controls_stock;
     }
 
-    public function unitCost(): float
+    public function unitCost(): string
     {
-        return (float) $this->average_cost;
+        return (string) ($this->average_cost ?? '0');
     }
 
     public function appearsInPriceList(): bool
@@ -218,16 +227,31 @@ class Product extends Model implements Sellable
             return true;
         }
 
-        return $this->stock_quantity > 0;
+        return Quantity::of($this->stock_quantity)->isPositive();
     }
 
-    public function hasStock(int $quantity): bool
+    public function hasStock(Quantity|int|string $quantity): bool
     {
         if (! $this->track_inventory) {
             return true;
         }
 
-        return $this->stock_quantity >= $quantity;
+        return Quantity::of($this->stock_quantity)->isGreaterThanOrEqualTo(Quantity::of($quantity));
+    }
+
+    /**
+     * Quantidade cabe nas casas que o produto aceita? Ração a granel (3 casas) aceita 1,250;
+     * produto por unidade (0 casas) recusa 1,5 — fração de frasco não existe no estoque.
+     */
+    public function acceptsQuantity(Quantity|int|string $quantity): bool
+    {
+        return Quantity::of($quantity)->decimalPlaces() <= (int) $this->decimal_places_allowed;
+    }
+
+    /** Casas padrão para a unidade da nota: peso, volume e medida fracionam; o resto não. */
+    public static function defaultDecimalPlacesFor(?string $unitOfSale): int
+    {
+        return in_array(strtoupper(trim((string) $unitOfSale)), self::FRACTIONAL_UNITS, true) ? self::FRACTIONAL_DECIMAL_PLACES : 0;
     }
 
     /**
@@ -235,18 +259,18 @@ class Product extends Model implements Sellable
      * reconstituível pelo livro `stock_movements` — um `decrement()` direto aqui quebraria a
      * invariante `SUM(movimentos) = stock_quantity`.
      */
-    public function decrementStock(int $quantity, ?Model $reference = null): void
+    public function decrementStock(Quantity|int|string $quantity, ?Model $reference = null): void
     {
-        if (! $this->track_inventory || $quantity < 1) {
+        if (! $this->track_inventory || ! Quantity::of($quantity)->isPositive()) {
             return;
         }
 
         app(StockService::class)->out($this, StockMovementType::SALE_OUT, $quantity, ['reference' => $reference]);
     }
 
-    public function incrementStock(int $quantity, ?Model $reference = null): void
+    public function incrementStock(Quantity|int|string $quantity, ?Model $reference = null): void
     {
-        if (! $this->track_inventory || $quantity < 1) {
+        if (! $this->track_inventory || ! Quantity::of($quantity)->isPositive()) {
             return;
         }
 
@@ -264,10 +288,12 @@ class Product extends Model implements Sellable
             return 'untracked';
         }
 
+        $stock = Quantity::of($this->stock_quantity);
+
         return match (true) {
-            $this->stock_quantity <= 0 => 'out_of_stock',
-            $this->stock_quantity <= $this->min_stock => 'low',
-            $this->max_stock !== null && $this->stock_quantity > $this->max_stock => 'over',
+            ! $stock->isPositive() => 'out_of_stock',
+            $stock->isLessThanOrEqualTo(Quantity::of($this->min_stock)) => 'low',
+            $this->max_stock !== null && $stock->isGreaterThan(Quantity::of($this->max_stock)) => 'over',
             default => 'ok',
         };
     }

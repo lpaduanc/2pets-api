@@ -29,6 +29,7 @@ class ProductResource extends JsonResource
             'ncm' => $this->ncm,
             'cest' => $this->cest,
             'unit_of_sale' => $this->unit_of_sale,
+            'decimal_places_allowed' => (int) $this->decimal_places_allowed,
             'purpose' => $this->purpose?->value,
             'purpose_label' => $this->purpose?->label(),
 
@@ -49,8 +50,9 @@ class ProductResource extends JsonResource
             // frontend-specialist: `clinic_vet` e recepção têm `products.view` só para o
             // seletor clínico/consulta de preço e não podem ver quanto a clínica paga nem a
             // margem. Esconder aqui, não no front (o campo nem sai no payload).
-            'average_cost' => $this->when($this->canSeeCost($request), fn () => (float) $this->average_cost),
-            'last_cost' => $this->when($this->canSeeCost($request), fn () => (float) $this->last_cost),
+            'average_cost' => $this->when($this->canSeeCost($request), fn () => $this->average_cost),
+            'last_cost' => $this->when($this->canSeeCost($request), fn () => $this->last_cost),
+            'stock_value' => $this->when($this->canSeeCost($request), fn () => $this->stock_value),
             'markup_percent' => $this->when(
                 $this->canSeeCost($request),
                 fn () => $this->markup_percent === null ? null : (float) $this->markup_percent,
