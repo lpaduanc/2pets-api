@@ -19,9 +19,16 @@ class SaleReceiptResource extends JsonResource
         return [
             'id' => $this->id,
             'amount' => (float) $this->amount,
+            // Parte do `amount` que é repasse da taxa ao cliente (plano 1.1); string de 2 casas.
+            'surcharge_amount' => $this->surcharge_amount ?? '0.00',
             'operator_fee' => (float) $this->operator_fee,
             'net_amount' => (float) $this->net_amount,
             'installments' => $this->installments,
+            'card_brand' => $this->card_brand?->value,
+            'authorization_code' => $this->authorization_code,
+            'terminal_label' => $this->terminal_label,
+            'fee_percent_applied' => $this->fee_percent_applied,
+            'receivables' => ReceivableResource::collection($this->whenLoaded('receivables')),
             'received_at' => $this->received_at?->toIso8601String(),
             'expected_settlement_date' => $this->expected_settlement_date?->toDateString(),
             'payment_method' => $this->whenLoaded('paymentMethod', fn () => [

@@ -37,6 +37,7 @@ class FiscalDocument extends Model
         'pdf_path',
         'rejection_reason',
         'total',
+        'surcharge_amount',
         'tax_breakdown',
     ];
 
@@ -50,6 +51,7 @@ class FiscalDocument extends Model
             'status' => FiscalDocumentStatus::class,
             'issued_at' => 'datetime',
             'total' => 'decimal:2',
+            'surcharge_amount' => 'decimal:2',
             'tax_breakdown' => 'array',
         ];
     }

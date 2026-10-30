@@ -298,7 +298,7 @@ class SaleController extends Controller
         $sale = $this->findForUser($request->user(), $id, 'registerReceipt');
         $receipt = $this->sales->registerReceipt($sale, $request->user(), $request->validated());
 
-        return (new SaleReceiptResource($receipt))
+        return (new SaleReceiptResource($receipt->load(['paymentMethod', 'receivables'])))
             ->additional([
                 'message' => 'Recebimento registrado.',
                 'sale' => new SaleResource($sale->fresh(Sale::RESOURCE_RELATIONS)),
@@ -311,7 +311,7 @@ class SaleController extends Controller
     {
         $sale = $this->findForUser($request->user(), $id, 'view');
 
-        return SaleReceiptResource::collection($sale->receipts()->with('paymentMethod')->get());
+        return SaleReceiptResource::collection($sale->receipts()->with(['paymentMethod', 'receivables'])->get());
     }
 
     /**

@@ -69,7 +69,12 @@ final class CommissionCalculator
     private function netOfCardFee(SaleItem $item): Money
     {
         $sale = $item->sale;
-        $totalFee = Money::sum($sale->receipts->pluck('operator_fee'));
+        // Só a taxa que a clínica ABSORVEU reduz a base: com repasse ao cliente (plano 1.1) o
+        // acréscimo cobre a taxa, e descontá-la do item tiraria do profissional um custo que o
+        // cliente pagou. Por recebimento, nunca negativo (acréscimo ≥ taxa por construção).
+        $totalFee = Money::sum($sale->receipts->map(
+            fn ($receipt): Money => Money::of($receipt->operator_fee)->minus($receipt->surcharge_amount ?? '0')->max(Money::zero())
+        ));
         $itemsTotal = Money::sum($sale->items->pluck('total'));
 
         if (! $totalFee->isPositive() || ! $itemsTotal->isPositive()) {

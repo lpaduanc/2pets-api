@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Fiscal\UpdateFiscalSettingsRequest;
 use App\Models\FiscalDocument;
 use App\Models\Organization;
+use App\Services\Commercial\Card\CardSurchargePolicy;
 use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,8 @@ class FiscalSettingsController extends Controller
     /** @return array<string, mixed> */
     private function toArray(Organization $organization): array
     {
+        $policy = CardSurchargePolicy::forOrganization($organization);
+
         return [
             'tax_regime' => $organization->tax_regime?->value,
             'tax_regime_label' => $organization->tax_regime?->label(),
@@ -63,6 +66,8 @@ class FiscalSettingsController extends Controller
             'iss_rate' => $organization->iss_rate === null ? null : (float) $organization->iss_rate,
             'certificate_expires_at' => $organization->certificate_expires_at?->toDateString(),
             'has_certificate' => $organization->certificate_ref !== null,
+            'card_surcharge_on_invoice' => $policy->onInvoice,
+            'card_surcharge_return_policy' => $policy->returnPolicy->value,
         ];
     }
 }

@@ -7,6 +7,7 @@ use App\Enums\FinancialNature;
 use App\Models\FinancialEntry;
 use App\Models\Sale;
 use App\Models\User;
+use App\Support\Money\Money;
 
 /**
  * Venda de balcão paga → `financial_entries` de receita — contrato
@@ -16,11 +17,17 @@ use App\Models\User;
  * reaproveitando `FinancialOverviewService::saleTotalsByItemType()` — o MESMO rateio de
  * desconto que a tela de Financeiro do PDV já usa, para não haver duas contas divergentes da
  * mesma venda.
+ *
+ * O acréscimo de repasse da taxa de cartão (plano 1.1) é receita própria, em "Acréscimo de
+ * parcelamento": misturá-lo em Produtos/Serviços inflaria a receita de venda de item, e no DRE a
+ * clínica precisa ver quanto o repasse cobre da despesa de adquirente.
  */
 final class SaleFinancialEntryRecorder
 {
     /** @var array<string, string> */
     private const CATEGORY_BY_TYPE = ['product' => 'Produtos', 'service' => 'Serviços'];
+
+    private const SURCHARGE_CATEGORY = 'Acréscimo de parcelamento';
 
     public function __construct(
         private readonly FinancialCategoryProvisioner $categories,
@@ -43,6 +50,12 @@ final class SaleFinancialEntryRecorder
             }
 
             $this->storeRevenueEntry($sale, $user, $label, (float) $byType[$type], $accrualDate, $paidAt);
+        }
+
+        $surcharge = Money::of($sale->surcharge_amount);
+
+        if ($surcharge->isPositive()) {
+            $this->storeRevenueEntry($sale, $user, self::SURCHARGE_CATEGORY, $surcharge->toFloat(), $accrualDate, $paidAt);
         }
     }
 

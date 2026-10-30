@@ -45,6 +45,8 @@ class SaleResource extends JsonResource
             'discount_type' => $this->discount_type->value,
             'discount_value' => (float) $this->discount_value,
             'discount_amount' => (float) $this->discount_amount,
+            // Σ acréscimos de repasse da taxa de cartão (plano 1.1), já incluído no `total`.
+            'surcharge_amount' => $this->surcharge_amount ?? '0.00',
             'subtotal' => (float) $this->subtotal,
             'total' => (float) $this->total,
             'paid_amount' => (float) $this->paid_amount,

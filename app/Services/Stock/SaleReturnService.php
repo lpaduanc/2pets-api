@@ -11,6 +11,7 @@ use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
 use App\Models\User;
+use App\Services\Commercial\Card\CardSurchargePolicy;
 use App\Services\Commercial\CashRegisterService;
 use App\Support\Money\Money;
 use App\Support\Money\Quantity;
@@ -26,6 +27,9 @@ use Illuminate\Support\Facades\DB;
  *  - `store_credit`: crédito na conta corrente do cliente (doc 11). Esse livro ainda não
  *    existe; a devolução fica registrada com o valor e o doc 11 a consome quando entrar;
  *  - `none`: troca — só estoque.
+ *
+ * Acréscimo de repasse da taxa do cartão (PLANO 1.1): `keep` nunca o devolve; `proportional`
+ * devolve a parte dos itens devolvidos, somada ao `total` e registrada em `surcharge_refund`.
  */
 final class SaleReturnService
 {
@@ -58,6 +62,8 @@ final class SaleReturnService
             // cabeçalho (rateio pelo maior resto). Devolver pelo total da linha devolveria o
             // desconto junto — 10% sobre R$ 100 pagos R$ 90 e devolvidos R$ 100.
             $paidPerItem = $sale->setRelation('items', $saleItems->values())->netItemTotals();
+            $surchargePerItem = $this->surchargePerItem($sale, $paidPerItem);
+            $surchargeRefund = Money::zero();
 
             foreach ($items as $entry) {
                 $saleItem = $saleItems->get((int) $entry['sale_item_id']);
@@ -81,6 +87,9 @@ final class SaleReturnService
                 // Valor pelo rateio acumulado da linha (já com o desconto do item), não o de tabela.
                 $lineTotal = $saleItem->refundFor($returned, $quantity, $paidPerItem[$saleItem->id]);
                 $total = $total->plus($lineTotal);
+                // Mesmo rateio acumulado da linha, sobre a parte dela no acréscimo: devoluções
+                // sucessivas nunca passam do acréscimo cobrado e devolver tudo zera exatamente.
+                $surchargeRefund = $surchargeRefund->plus($saleItem->refundFor($returned, $quantity, $surchargePerItem[$saleItem->id]));
 
                 $productBack = $saleItem->sellable instanceof Product
                     ? SaleReturnItem::returnedForProduct($sale->id, $saleItem->sellable->getKey())
@@ -106,7 +115,12 @@ final class SaleReturnService
                 }
             }
 
-            $return->update(['total' => $total->toString()]);
+            // O acréscimo devolvido entra no total (é o que sai do caixa) e fica também à parte,
+            // para a tela e o financeiro saberem quanto dele voltou.
+            $return->update([
+                'total' => $total->plus($surchargeRefund)->toString(),
+                'surcharge_refund' => $surchargeRefund->toString(),
+            ]);
 
             if ($refundMethod === RefundMethod::CASH) {
                 $this->refundInCash($sale, $return, $user);
@@ -114,6 +128,25 @@ final class SaleReturnService
 
             return $return->load('items.saleItem', 'sale', 'user');
         });
+    }
+
+    /**
+     * Parte de cada linha no acréscimo de repasse da taxa (PLANO 1.1), rateado pelo maior resto
+     * sobre o que o cliente pagou por linha. Política lida AGORA (`CardSurchargePolicy`): em
+     * `keep` (padrão) toda parte é zero e nada do acréscimo volta.
+     *
+     * @param  array<int, Money>  $paidPerItem
+     * @return array<int, Money>
+     */
+    private function surchargePerItem(Sale $sale, array $paidPerItem): array
+    {
+        $surcharge = Money::of($sale->surcharge_amount ?? '0');
+
+        if ($paidPerItem === [] || $surcharge->isZero() || ! CardSurchargePolicy::forSale($sale)->refundsProportionally()) {
+            return array_map(fn (): Money => Money::zero(), $paidPerItem);
+        }
+
+        return $surcharge->allocate($paidPerItem);
     }
 
     public function returnedQuantity(int $saleItemId): Quantity

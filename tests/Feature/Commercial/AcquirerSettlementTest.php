@@ -4,6 +4,8 @@ namespace Tests\Feature\Commercial;
 
 use App\Models\FinancialAccount;
 use App\Models\SaleReceipt;
+use App\Services\Finance\DueDateService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Feature\Commercial\Concerns\BuildsCounterFixtures;
@@ -46,7 +48,10 @@ class AcquirerSettlementTest extends TestCase
         $receipt = SaleReceipt::where('sale_id', $saleId)->sole();
         $this->assertEqualsWithDelta(2.50, (float) $receipt->operator_fee, 0.001);
         $this->assertEqualsWithDelta(97.50, (float) $receipt->net_amount, 0.001);
-        $this->assertSame($today->copy()->addDays(30)->toDateString(), $receipt->expected_settlement_date->toDateString());
+        // Adquirente deposita em dia útil (docs/gap-petflow 1.1): +30 dias, rolado para o próximo
+        // dia útil quando cai em fim de semana ou feriado.
+        $expected = app(DueDateService::class)->nextBusinessDay(CarbonImmutable::parse($today->copy()->addDays(30)->toDateString()));
+        $this->assertSame($expected->toDateString(), $receipt->expected_settlement_date->toDateString());
     }
 
     public function test_creating_a_deposit_and_reconciling_the_right_receipts_marks_it_reconciled(): void

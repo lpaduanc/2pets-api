@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Fiscal;
 
+use App\Enums\CardSurchargeReturnPolicy;
 use App\Enums\StateRegistrationType;
 use App\Enums\TaxRegime;
 use Illuminate\Foundation\Http\FormRequest;
@@ -32,6 +33,10 @@ class UpdateFiscalSettingsRequest extends FormRequest
             'cnae_code' => ['nullable', 'string', 'max:10'],
             'special_tax_regime' => ['nullable', 'string', 'max:255'],
             'iss_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // Opcionais no PUT, mas nunca nulos: a coluna não aceita "sem escolha" — o padrão
+            // já vale desde a criação da organização.
+            'card_surcharge_on_invoice' => ['sometimes', 'boolean'],
+            'card_surcharge_return_policy' => ['sometimes', Rule::enum(CardSurchargeReturnPolicy::class)],
         ];
     }
 }

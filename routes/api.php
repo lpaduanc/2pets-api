@@ -18,10 +18,13 @@ use App\Http\Controllers\Api\Commercial\CommissionSettlementController;
 use App\Http\Controllers\Api\Commercial\FinancialAccountController;
 use App\Http\Controllers\Api\Commercial\PartnerPayoutController;
 use App\Http\Controllers\Api\Commercial\PaymentMethodController;
+use App\Http\Controllers\Api\Commercial\PaymentMethodFeeTierController;
 use App\Http\Controllers\Api\Commercial\PriceListController;
 use App\Http\Controllers\Api\Commercial\ProductController;
 use App\Http\Controllers\Api\Commercial\ProductGroupController;
 use App\Http\Controllers\Api\Commercial\QuoteController;
+use App\Http\Controllers\Api\Commercial\ReceiptSimulationController;
+use App\Http\Controllers\Api\Commercial\ReceivableController;
 use App\Http\Controllers\Api\Commercial\SaleController;
 use App\Http\Controllers\Api\Commercial\ServicePackageController;
 use App\Http\Controllers\Api\Commercial\SoldPackageController;
@@ -894,6 +897,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::middleware('permission:financial-accounts.manage')->group(function (): void {
             Route::post('payment-methods', [PaymentMethodController::class, 'store']);
             Route::match(['put', 'patch'], 'payment-methods/{id}', [PaymentMethodController::class, 'update']);
+            // Faixas de taxa por bandeira × parcela (docs/gap-petflow 1.1) — mesma fronteira de
+            // quem edita a forma: é a taxa que a clínica paga.
+            Route::get('payment-methods/{id}/fee-tiers', [PaymentMethodFeeTierController::class, 'index'])->whereNumber('id');
+            Route::put('payment-methods/{id}/fee-tiers', [PaymentMethodFeeTierController::class, 'update'])->whereNumber('id');
         });
 
         // Contas bancárias/caixa/operadora e conciliação de cartões — doc 04.
@@ -909,6 +916,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         });
 
         Route::middleware('permission:acquirer-settlements.view')->group(function (): void {
+            // Agenda de recebíveis de cartão (docs/gap-petflow 1.1).
+            Route::get('receivables', [ReceivableController::class, 'index']);
             Route::get('acquirer-settlements/expected', [AcquirerSettlementController::class, 'expected']);
             Route::get('acquirer-settlements', [AcquirerSettlementController::class, 'index']);
             Route::get('acquirer-settlements/{id}', [AcquirerSettlementController::class, 'show'])->whereNumber('id');
@@ -996,6 +1005,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::patch('sales/{id}/items/{itemId}', [SaleController::class, 'updateItem'])->whereNumber(['id', 'itemId']);
         Route::delete('sales/{id}/items/{itemId}', [SaleController::class, 'destroyItem'])->whereNumber(['id', 'itemId']);
         Route::post('sales/{id}/discount', [SaleController::class, 'applyDiscount'])->whereNumber('id');
+        // Prévia de taxa e agenda do recebimento no PDV (docs/gap-petflow 1.1). Literal antes de
+        // qualquer `sales/{id}` — e `{id}` é numérico, então não colide.
+        Route::post('sales/receipts/simulate-fee', ReceiptSimulationController::class);
         Route::get('sales/{id}/receipts', [SaleController::class, 'receipts'])->whereNumber('id');
         Route::post('sales/{id}/receipts', [SaleController::class, 'storeReceipt'])->whereNumber('id');
         Route::post('sales/{id}/convert', [SaleController::class, 'convert'])->whereNumber('id');

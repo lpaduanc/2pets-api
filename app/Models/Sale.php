@@ -47,6 +47,7 @@ class Sale extends Model
         'discount_type',
         'discount_value',
         'discount_amount',
+        'surcharge_amount',
         'subtotal',
         'total',
         'paid_amount',
@@ -92,6 +93,7 @@ class Sale extends Model
             'discount_type' => DiscountType::class,
             'discount_value' => 'decimal:2',
             'discount_amount' => 'decimal:2',
+            'surcharge_amount' => 'decimal:2',
             'subtotal' => 'decimal:2',
             'total' => 'decimal:2',
             'paid_amount' => 'decimal:2',
@@ -209,6 +211,10 @@ class Sale extends Model
      * O desconto percentual é reaplicado sobre o subtotal novo: adicionar um item a uma venda
      * com 10% de desconto tem que dar 10% sobre o total maior, e é por isso que o TIPO fica
      * gravado ao lado do valor (ver `App\Enums\DiscountType`).
+     *
+     * O acréscimo de repasse da taxa de cartão (`surcharge_amount`, Σ dos recebimentos — plano
+     * 1.1) entra DEPOIS do desconto: o desconto percentual incide só sobre os itens, nunca sobre
+     * o acréscimo que o cliente aceitou pagar para parcelar.
      */
     public function recalculateTotals(): void
     {
@@ -218,7 +224,7 @@ class Sale extends Model
 
         $this->subtotal = $subtotal->toString();
         $this->discount_amount = $discount->toString();
-        $this->total = $subtotal->minus($discount)->toString();
+        $this->total = $subtotal->minus($discount)->plus($this->surcharge_amount ?? '0')->toString();
     }
 
     /**
@@ -248,6 +254,12 @@ class Sale extends Model
         }
 
         return $totals;
+    }
+
+    /** Total sem o acréscimo de repasse: o que os itens valem para o cliente após o desconto. */
+    public function totalWithoutSurchargeMoney(): Money
+    {
+        return Money::of($this->total)->minus($this->surcharge_amount ?? '0');
     }
 
     public function amountDue(): float

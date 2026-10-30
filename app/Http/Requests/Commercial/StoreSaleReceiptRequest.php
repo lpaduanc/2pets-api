@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Commercial;
 
+use App\Enums\CardBrand;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Recebimento de uma venda — contrato docs/gap-simplesvet/01-caixa-pdv.md.
@@ -31,6 +33,11 @@ class StoreSaleReceiptRequest extends FormRequest
             'payment_method_id' => ['required', 'integer', 'exists:payment_methods,id'],
             'amount' => ['required', 'numeric', 'decimal:0,2', 'gt:0', 'max:9999999.99'],
             'installments' => ['nullable', 'integer', 'min:1', 'max:24'],
+            // Cartão (docs/gap-petflow 1.1): a bandeira decide a faixa de taxa; autorização e
+            // terminal ajudam a casar o extrato da adquirente.
+            'card_brand' => ['nullable', Rule::in(CardBrand::values())],
+            'authorization_code' => ['nullable', 'string', 'max:40'],
+            'terminal_label' => ['nullable', 'string', 'max:60'],
             'account_id' => ['nullable', 'integer', 'exists:financial_accounts,id'],
             'received_at' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:500'],

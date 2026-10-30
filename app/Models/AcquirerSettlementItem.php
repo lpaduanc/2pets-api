@@ -19,6 +19,7 @@ class AcquirerSettlementItem extends Model
     protected $fillable = [
         'acquirer_settlement_id',
         'sale_receipt_id',
+        'receivable_id',
         'amount',
     ];
 
@@ -35,6 +36,12 @@ class AcquirerSettlementItem extends Model
     public function settlement(): BelongsTo
     {
         return $this->belongsTo(AcquirerSettlement::class, 'acquirer_settlement_id');
+    }
+
+    /** Parcela conciliada (docs/gap-petflow 1.1); nula nos itens anteriores à agenda. */
+    public function receivable(): BelongsTo
+    {
+        return $this->belongsTo(Receivable::class);
     }
 
     public function receipt(): BelongsTo

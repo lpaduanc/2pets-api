@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Fiscal;
 
 use App\Models\FiscalDocument;
+use App\Support\Money\Money;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -34,6 +35,9 @@ class FiscalDocumentResource extends JsonResource
             'issued_at' => $this->issued_at?->toIso8601String(),
             'rejection_reason' => $this->rejection_reason,
             'total' => (float) $this->total,
+            // Parte do acréscimo de repasse da taxa contida no `total` (PLANO 1.1); string de 2
+            // casas, como os demais campos de acréscimo.
+            'surcharge_amount' => Money::of($this->surcharge_amount ?? '0')->toString(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

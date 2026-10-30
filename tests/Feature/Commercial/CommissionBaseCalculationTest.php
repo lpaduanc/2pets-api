@@ -70,6 +70,39 @@ class CommissionBaseCalculationTest extends TestCase
             ->assertJsonPath('data.1.base_amount', 48.5);
     }
 
+    public function test_net_of_card_fee_base_ignores_a_fee_passed_through_to_the_customer(): void
+    {
+        // Plano 1.1: com repasse, o acréscimo pago pelo cliente cobre a taxa — o profissional
+        // não perde comissão por um custo que a clínica não absorveu.
+        $this->makeCommissionRule(['calculation_base' => 'net_of_card_fee', 'percent' => 10]);
+        $card = PaymentMethod::create([
+            'organization_id' => $this->clinic->id, 'name' => 'Cartão Repasse', 'kind' => 'credit_card',
+            'direction' => 'in', 'fee_percent' => 0, 'fee_fixed' => 0, 'settlement_days' => 1, 'active' => true,
+        ]);
+        $card->feeTiers()->create([
+            'installments_from' => 1, 'installments_to' => 1, 'fee_percent' => '3', 'fee_fixed' => '0',
+            'first_settlement_days' => 1, 'interval_days' => 30, 'pass_to_customer' => true,
+        ]);
+        $productA = $this->makeProduct(['name' => 'Item A', 'price' => 50, 'sku' => 'A-'.uniqid()]);
+        $productB = $this->makeProduct(['name' => 'Item B', 'price' => 50, 'sku' => 'B-'.uniqid()]);
+
+        $this->openRegisterFor($this->receptionist);
+        $saleId = $this->postJson('/api/professional/sales', ['kind' => 'sale'])->json('data.id');
+        foreach ([$productA, $productB] as $product) {
+            $this->postJson("/api/professional/sales/{$saleId}/items", [
+                'sellable_type' => 'product', 'sellable_id' => $product->id, 'staff_id' => $this->groomerMember->id,
+            ])->assertCreated();
+        }
+        // 100 / 0,97 = 103,0927… → cobrado 103,10; taxa 3,09 ≤ acréscimo 3,10.
+        $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $card->id, 'amount' => 100])
+            ->assertCreated()
+            ->assertJsonPath('data.surcharge_amount', '3.10');
+
+        $this->openCommissionsFor($this->groomerMember->id)
+            ->assertJsonPath('data.0.base_amount', 50)
+            ->assertJsonPath('data.1.base_amount', 50);
+    }
+
     public function test_margin_base_is_zero_when_a_product_sells_for_exactly_its_average_cost(): void
     {
         $this->makeCommissionRule(['calculation_base' => 'margin', 'percent' => 20]);

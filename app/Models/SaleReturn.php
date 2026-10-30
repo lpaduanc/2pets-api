@@ -17,6 +17,7 @@ class SaleReturn extends Model
         'reason',
         'refund_method',
         'total',
+        'surcharge_refund',
         'user_id',
     ];
 
@@ -28,6 +29,7 @@ class SaleReturn extends Model
         return [
             'refund_method' => RefundMethod::class,
             'total' => 'decimal:2',
+            'surcharge_refund' => 'decimal:2',
         ];
     }
 

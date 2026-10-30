@@ -9,7 +9,8 @@ use App\Models\FiscalDocument;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\User;
-use App\Services\Finance\FinancialOverviewService;
+use App\Services\Commercial\Card\CardSurchargePolicy;
+use App\Support\Money\Money;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -29,7 +30,6 @@ final class FiscalDocumentService
 {
     public function __construct(
         private readonly FiscalProviderGateway $gateway,
-        private readonly FinancialOverviewService $overview,
     ) {}
 
     /**
@@ -40,23 +40,64 @@ final class FiscalDocumentService
         abort_if($sale->items->isEmpty(), 422, 'Venda sem item não emite documento fiscal.');
         $this->assertNotAlreadyIssued($sale);
 
-        $split = $this->overview->saleTotalsByItemType($sale);
-        $hasProduct = $sale->items->contains(fn ($item): bool => $item->sellable_type === Product::class);
-        $hasService = $sale->items->contains(fn ($item): bool => $item->sellable_type !== Product::class);
+        $parts = $this->documentParts($sale);
 
-        return DB::transaction(function () use ($sale, $actor, $split, $hasProduct, $hasService): Collection {
+        return DB::transaction(function () use ($sale, $parts): Collection {
             $documents = collect();
 
-            if ($hasProduct) {
-                $documents->push($this->issueOne($sale, $this->productDocumentKind($sale), $split['product']));
+            if (isset($parts['product'])) {
+                $documents->push($this->issueOne($sale, $this->productDocumentKind($sale), $parts['product']));
             }
 
-            if ($hasService) {
-                $documents->push($this->issueOne($sale, FiscalDocumentKind::NFSE, $split['service']));
+            if (isset($parts['service'])) {
+                $documents->push($this->issueOne($sale, FiscalDocumentKind::NFSE, $parts['service']));
             }
 
             return $documents;
         });
+    }
+
+    /**
+     * Base (itens já com o desconto do cabeçalho, `Sale::netItemTotals`) e acréscimo de cada
+     * documento, só dos tipos presentes na venda. Tudo em `Money` com rateio pelo maior resto:
+     * Σ bases = subtotal − desconto e Σ acréscimos = acréscimo da venda, então Σ totais dos
+     * documentos = total da venda, centavo a centavo (o antigo fator float podia errar 1 centavo).
+     *
+     * @return array<'product'|'service', array{base: Money, surcharge: Money}>
+     */
+    private function documentParts(Sale $sale): array
+    {
+        $bases = [];
+
+        foreach ($sale->netItemTotals() as $itemId => $net) {
+            $type = $sale->items->firstWhere('id', $itemId)->sellable_type === Product::class ? 'product' : 'service';
+            $bases[$type] = ($bases[$type] ?? Money::zero())->plus($net);
+        }
+
+        $surcharges = $this->surchargeShares($sale, $bases);
+
+        return array_map(
+            fn (string $type): array => ['base' => $bases[$type], 'surcharge' => $surcharges[$type]],
+            array_combine(array_keys($bases), array_keys($bases)),
+        );
+    }
+
+    /**
+     * Configuração lida AGORA, na emissão (`CardSurchargePolicy`). Desligada, o acréscimo fica
+     * fora de todo documento (zero) — comportamento anterior ao repasse.
+     *
+     * @param  array<'product'|'service', Money>  $bases
+     * @return array<'product'|'service', Money>
+     */
+    private function surchargeShares(Sale $sale, array $bases): array
+    {
+        $surcharge = Money::of($sale->surcharge_amount ?? '0');
+
+        if ($surcharge->isZero() || ! CardSurchargePolicy::forSale($sale)->onInvoice) {
+            return array_map(fn (): Money => Money::zero(), $bases);
+        }
+
+        return $surcharge->allocate($bases);
     }
 
     public function cancel(FiscalDocument $document, string $reason): FiscalDocument
@@ -69,7 +110,13 @@ final class FiscalDocumentService
         return $document->fresh();
     }
 
-    private function issueOne(Sale $sale, FiscalDocumentKind $kind, float $total): FiscalDocument
+    /**
+     * O acréscimo vai somado ao total do documento: "outras despesas acessórias" (vOutro) na
+     * NF-e/NFC-e, somado ao valor do serviço na NFS-e — o mapeamento por layout é do gateway.
+     *
+     * @param  array{base: Money, surcharge: Money}  $part
+     */
+    private function issueOne(Sale $sale, FiscalDocumentKind $kind, array $part): FiscalDocument
     {
         $ownership = ['organization_id' => $sale->organization_id, 'professional_id' => $sale->professional_id];
 
@@ -77,7 +124,8 @@ final class FiscalDocumentService
             'sale_id' => $sale->id,
             'kind' => $kind->value,
             'status' => FiscalDocumentStatus::PENDING->value,
-            'total' => $total,
+            'total' => $part['base']->plus($part['surcharge'])->toString(),
+            'surcharge_amount' => $part['surcharge']->toString(),
         ]);
 
         $result = $this->gateway->issue($document);

@@ -12,6 +12,7 @@ use App\Models\SaleReceipt;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Invoice\VisibleInvoicesQuery;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -79,6 +80,7 @@ final class FinancialOverviewService
                 'sales_count' => $receipts->pluck('sale_id')->unique()->count(),
                 'sales_products' => $byItemType['product'],
                 'sales_services' => $byItemType['service'],
+                'sales_surcharge' => $byItemType['surcharge'],
                 'by_payment_method' => $this->receivedByPaymentMethod($receipts, $paidInvoices),
             ],
             'pending' => [
@@ -306,12 +308,15 @@ final class FinancialOverviewService
      * exatamente este rateio para gerar o lançamento de receita — duas contas de desconto
      * divergentes para a mesma venda seria pior que o acoplamento.
      *
+     * O acréscimo de repasse da taxa de cartão (plano 1.1) fica FORA: não é produto nem serviço,
+     * e somá-lo aqui inflaria as duas partes (e a receita/documento fiscal que derivam delas).
+     *
      * @return array{product: float, service: float}
      */
     public function saleTotalsByItemType(Sale $sale): array
     {
         $subtotal = (float) $sale->subtotal;
-        $factor = $subtotal > 0 ? (float) $sale->total / $subtotal : 0.0;
+        $factor = $subtotal > 0 ? $sale->totalWithoutSurchargeMoney()->toFloat() / $subtotal : 0.0;
 
         $product = (float) $sale->items->where('sellable_type', Product::class)->sum('total') * $factor;
         $service = (float) $sale->items->where('sellable_type', '!=', Product::class)->sum('total') * $factor;
@@ -324,27 +329,34 @@ final class FinancialOverviewService
      * na venda de cada recebimento.
      *
      * @param  Collection<int, SaleReceipt>  $receipts
-     * @return array{product: float, service: float}
+     * @return array{product: float, service: float, surcharge: float}
      */
     private function receivedByItemType(Collection $receipts): array
     {
         $product = 0.0;
         $service = 0.0;
 
+        $surcharge = Money::zero();
+
         foreach ($receipts as $receipt) {
             $sale = $receipt->sale;
-            $total = (float) $sale->total;
+            // Só a parte-base do recebimento se divide entre produto e serviço; o acréscimo de
+            // repasse (plano 1.1) é devolvido à parte, para produto + serviço + acréscimo = recebido.
+            $total = $sale->totalWithoutSurchargeMoney()->toFloat();
+            $receiptSurcharge = Money::of($receipt->surcharge_amount);
+            $surcharge = $surcharge->plus($receiptSurcharge);
 
             if ($total <= 0) {
                 continue;
             }
 
             $byType = $this->saleTotalsByItemType($sale);
-            $product += (float) $receipt->amount * ($byType['product'] / $total);
-            $service += (float) $receipt->amount * ($byType['service'] / $total);
+            $base = Money::of($receipt->amount)->minus($receiptSurcharge)->toFloat();
+            $product += $base * ($byType['product'] / $total);
+            $service += $base * ($byType['service'] / $total);
         }
 
-        return ['product' => round($product, 2), 'service' => round($service, 2)];
+        return ['product' => round($product, 2), 'service' => round($service, 2), 'surcharge' => $surcharge->toFloat()];
     }
 
     /**

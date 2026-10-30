@@ -4,6 +4,7 @@ namespace App\Http\Resources\Stock;
 
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
+use App\Support\Money\Money;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -25,6 +26,8 @@ class SaleReturnResource extends JsonResource
             'refund_method' => $this->refund_method->value,
             'refund_method_label' => $this->refund_method->label(),
             'total' => (float) $this->total,
+            // Quanto do acréscimo de repasse da taxa voltou nesta devolução, já contido no `total`.
+            'surcharge_refund' => Money::of($this->surcharge_refund ?? '0')->toString(),
             'user' => $this->whenLoaded('user', fn () => $this->user ? ['id' => $this->user->id, 'name' => $this->user->name] : null),
             'items' => $this->whenLoaded('items', fn () => $this->items->map(fn (SaleReturnItem $item): array => [
                 'id' => $item->id,

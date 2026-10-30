@@ -75,6 +75,12 @@ class PaymentMethod extends Model
         return $this->belongsTo(FinancialAccount::class, 'default_account_id');
     }
 
+    /** Faixas de taxa por bandeira e parcela (docs/gap-petflow 1.1). */
+    public function feeTiers(): HasMany
+    {
+        return $this->hasMany(PaymentMethodFeeTier::class)->orderBy('card_brand')->orderBy('installments_from');
+    }
+
     public function receipts(): HasMany
     {
         return $this->hasMany(SaleReceipt::class);

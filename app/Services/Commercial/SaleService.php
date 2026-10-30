@@ -3,11 +3,13 @@
 namespace App\Services\Commercial;
 
 use App\Contracts\Sellable;
+use App\Enums\CardBrand;
 use App\Enums\CashMovementType;
 use App\Enums\DiscountType;
 use App\Enums\FiscalOperation;
 use App\Enums\ProductPurpose;
 use App\Enums\QuoteStatus;
+use App\Enums\ReceivableStatus;
 use App\Enums\SaleKind;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
@@ -20,6 +22,7 @@ use App\Models\OrganizationMember;
 use App\Models\PaymentMethod;
 use App\Models\Pet;
 use App\Models\Product;
+use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReceipt;
@@ -27,6 +30,8 @@ use App\Models\SaleReturnItem;
 use App\Models\Service;
 use App\Models\ServicePackage;
 use App\Models\User;
+use App\Services\Commercial\Card\ReceiptPricing;
+use App\Services\Commercial\Card\ReceivableScheduleService;
 use App\Services\Finance\SaleFinancialEntryRecorder;
 use App\Services\Professional\ProfessionalClientsQuery;
 use App\Services\Stock\StockService;
@@ -61,6 +66,8 @@ final class SaleService
         private readonly SoldPackageService $soldPackages,
         private readonly SaleFinancialEntryRecorder $financialEntries,
         private readonly SaleClientAccountEffects $clientAccounts,
+        private readonly ReceiptPricing $pricing,
+        private readonly ReceivableScheduleService $receivables,
     ) {}
 
     /**
@@ -304,25 +311,38 @@ final class SaleService
                 ? \Carbon\CarbonImmutable::parse($attributes['received_at'])
                 : \Carbon\CarbonImmutable::now();
 
-            $fee = $method->feeFor($amount);
+            $installments = (int) ($attributes['installments'] ?? 1);
+            $brand = isset($attributes['card_brand']) ? CardBrand::from($attributes['card_brand']) : null;
+            // Taxa e agenda pela faixa da bandeira × parcelas (docs/gap-petflow 1.1); Σ das
+            // parcelas = taxa/líquido do recebimento, centavo a centavo.
+            $quote = $this->pricing->quote($method->loadMissing('feeTiers'), Money::of($amount), $installments, $brand, $receivedAt, $sale->organization_id);
 
+            // Com repasse da taxa (plano 1.1), o cliente paga base + acréscimo: o recebimento grava
+            // o COBRADO, e o acréscimo à parte, para o saldo da venda abater só a base.
             $receipt = $sale->receipts()->create([
                 'payment_method_id' => $method->id,
                 'account_id' => $accountId,
-                'amount' => $amount,
-                'installments' => (int) ($attributes['installments'] ?? 1),
+                'amount' => $quote->charged->toString(),
+                'surcharge_amount' => $quote->surcharge->toString(),
+                'installments' => $installments,
+                'card_brand' => $brand,
+                'authorization_code' => $attributes['authorization_code'] ?? null,
+                'terminal_label' => $attributes['terminal_label'] ?? null,
+                'fee_tier_id' => $quote->terms?->tierId,
+                'fee_percent_applied' => $quote->terms?->feePercent,
+                'fee_fixed_applied' => $quote->terms?->feeFixed,
                 'received_at' => $receivedAt,
-                'operator_fee' => $fee,
-                'net_amount' => $method->netFor($amount),
-                // Só quem passa por adquirente espera depósito. Dinheiro na gaveta não tem
-                // "previsão de liquidação", e preencher com a data de hoje faria a tela de
-                // conciliação listar toda venda em dinheiro como pendente.
-                'expected_settlement_date' => $method->kind->settlesThroughAcquirer()
-                    ? $method->expectedSettlementDate($receivedAt)->toDateString()
-                    : null,
+                'operator_fee' => $quote->fee->toString(),
+                'net_amount' => $quote->net->toString(),
+                // Só quem passa por adquirente espera depósito — a data da 1ª parcela. Dinheiro na
+                // gaveta não tem "previsão de liquidação", e preencher com a data de hoje faria a
+                // tela de conciliação listar toda venda em dinheiro como pendente.
+                'expected_settlement_date' => $quote->plan === [] ? null : $quote->plan[0]->expectedDate->toDateString(),
                 'received_by' => $user->id,
                 'notes' => $attributes['notes'] ?? null,
             ]);
+
+            $this->receivables->persist($receipt, $quote->plan);
 
             // Recebimento em `account_credit` (doc 11): consome o saldo credor do cliente
             // ANTES de mexer em caixa/estoque — 422 aqui desfaz a transação inteira (o
@@ -336,6 +356,11 @@ final class SaleService
                 $sale->cash_register_id ??= $register->id;
             }
 
+            // O acréscimo entra no total ANTES de comparar com o pago: sem isso o pago (base +
+            // acréscimo) abateria do saldo mais do que a base, e o resto da venda (R$ 220 − 100 em
+            // cartão com repasse) não fecharia em R$ 120,00 exatos.
+            $sale->surcharge_amount = Money::of($sale->receipts()->sum('surcharge_amount'))->toString();
+            $sale->recalculateTotals();
             $sale->paid_amount = Money::of($sale->receipts()->sum('amount'))->toString();
             $sale->status = $sale->isFullyPaid() ? SaleStatus::PAID : SaleStatus::UNPAID;
 
@@ -450,6 +475,13 @@ final class SaleService
                     );
                 }
             }
+
+            // Parcela que a adquirente ainda não pagou deixa de ser esperada; a já recebida fica
+            // como está — o estorno ao portador é outro fluxo (plano 2.3).
+            Receivable::query()
+                ->whereIn('sale_receipt_id', $sale->receipts()->select('id'))
+                ->pending()
+                ->update(['status' => ReceivableStatus::CANCELLED->value]);
 
             if ($sale->status === SaleStatus::PAID) {
                 $this->restoreStock($sale, $user);

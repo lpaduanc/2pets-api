@@ -107,12 +107,21 @@ class AcquirerSettlementController extends Controller
     {
         $settlement = $this->findForUser($request->user(), $id, 'reconcile');
 
+        // `receivable_ids` (parcelas, docs/gap-petflow 1.1) é o contrato novo; `receipt_ids`
+        // continua aceito para a tela que ainda concilia por recebimento.
         $request->validate([
-            'receipt_ids' => ['required', 'array', 'min:1'],
+            'receivable_ids' => ['required_without:receipt_ids', 'array', 'min:1'],
+            'receivable_ids.*' => ['integer'],
+            'receipt_ids' => ['required_without:receivable_ids', 'array', 'min:1'],
             'receipt_ids.*' => ['integer'],
         ]);
 
-        $reconciled = $this->reconciliation->match($settlement, $request->input('receipt_ids'), $request->user());
+        $reconciled = $this->reconciliation->match(
+            $settlement,
+            array_map('intval', $request->input('receivable_ids', [])),
+            $request->user(),
+            array_map('intval', $request->input('receipt_ids', [])),
+        );
 
         return new AcquirerSettlementResource($reconciled->load('items.receipt'));
     }

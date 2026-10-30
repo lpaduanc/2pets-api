@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CardBrand;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * `operator_fee` e `expected_settlement_date` são congelados no momento do recebimento a
  * partir da forma cadastrada (doc 04) — a taxa vigente pode mudar amanhã, a que valeu aqui não.
+ *
+ * `amount` é o que o cliente pagou; `surcharge_amount` é a parte dele que é acréscimo de
+ * repasse da taxa (faixa com `pass_to_customer`, docs/gap-petflow 1.1). O que abateu do saldo
+ * da venda é `amount − surcharge_amount`.
  */
 class SaleReceipt extends Model
 {
@@ -28,7 +33,14 @@ class SaleReceipt extends Model
         'payment_method_id',
         'account_id',
         'amount',
+        'surcharge_amount',
         'installments',
+        'card_brand',
+        'authorization_code',
+        'terminal_label',
+        'fee_tier_id',
+        'fee_percent_applied',
+        'fee_fixed_applied',
         'received_at',
         'operator_fee',
         'net_amount',
@@ -44,9 +56,13 @@ class SaleReceipt extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'surcharge_amount' => 'decimal:2',
             'operator_fee' => 'decimal:2',
             'net_amount' => 'decimal:2',
             'installments' => 'integer',
+            'card_brand' => CardBrand::class,
+            'fee_percent_applied' => 'decimal:4',
+            'fee_fixed_applied' => 'decimal:2',
             'received_at' => 'datetime',
             'expected_settlement_date' => 'date',
         ];
@@ -70,6 +86,12 @@ class SaleReceipt extends Model
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by');
+    }
+
+    /** Parcelas que a adquirente vai depositar (docs/gap-petflow 1.1). */
+    public function receivables(): HasMany
+    {
+        return $this->hasMany(Receivable::class)->orderBy('installment_number');
     }
 
     public function settlementItems(): HasMany

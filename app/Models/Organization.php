@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Contracts\HasDepositSettings;
 use App\DataTransferObjects\Cnpj;
+use App\Enums\CardSurchargeReturnPolicy;
 use App\Enums\OrganizationType;
 use App\Enums\StateRegistrationType;
 use App\Enums\TaxRegime;
@@ -62,6 +63,10 @@ class Organization extends Model implements HasDepositSettings
         'cnae_code',
         'special_tax_regime',
         'iss_rate',
+        // Acréscimo de repasse da taxa do cartão (PLANO 1.1) — escolha do contador da clínica,
+        // lida por `CardSurchargePolicy`.
+        'card_surcharge_on_invoice',
+        'card_surcharge_return_policy',
     ];
 
     /**
@@ -83,6 +88,8 @@ class Organization extends Model implements HasDepositSettings
             'state_registration_type' => StateRegistrationType::class,
             'iss_rate' => 'decimal:2',
             'certificate_expires_at' => 'datetime',
+            'card_surcharge_on_invoice' => 'boolean',
+            'card_surcharge_return_policy' => CardSurchargeReturnPolicy::class,
         ];
     }
 
