@@ -178,6 +178,23 @@ class PurchaseReceiveTest extends TestCase
             ])->assertStatus(422)->assertJsonValidationErrors('items.0.product_id');
     }
 
+    public function test_a_new_product_with_blank_optional_stock_limits_is_created_with_the_defaults(): void
+    {
+        // O diálogo "Cadastrar novo" manda `min_stock: null` quando o campo fica vazio.
+        $id = $this->actingAs($this->owner, 'sanctum')
+            ->postJson('/api/professional/purchases', [
+                'supplier_id' => $this->supplier->id,
+                'items' => [[
+                    'new_product' => ['name' => 'Ração teste', 'min_stock' => null, 'max_stock' => null],
+                    'quantity' => 1, 'unit_cost' => 10,
+                ]],
+            ])->assertCreated()->json('data.id');
+
+        $product = Purchase::findOrFail($id)->items()->sole()->product;
+        $this->assertSame('0.0000', (string) $product->min_stock);
+        $this->assertNull($product->max_stock);
+    }
+
     /** @return array{0: PaymentMethod, 1: FinancialAccount} */
     private function paymentSetup(): array
     {

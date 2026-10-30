@@ -1,0 +1,85 @@
+{
+  "_doc": "Casos de referencia do custo de aquisicao real (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.2). custo_total_item = linha - desconto + frete + seguro + outras + IPI + ICMS-ST; custo_unitario = custo_total_item / (quantidade x fator), 4 casas, por unidade de ESTOQUE. Despesa de cabecalho sem detalhe por item e rateada pelo maior resto com peso = linha - desconto. Copia byte a byte em 2pets-pro/tests/fixtures/golden/purchase-cost.json. Altere aqui e copie para la.",
+  "landedCost": [
+    {
+      "id": "compra-01",
+      "_conta": "A 10 x 20,00 = 200,00; B 5 cx x 60,00 = 300,00; frete 25,00 so no cabecalho -> 25 x 200/500 = 10,00 e 25 x 300/500 = 15,00. A = 210,00 / 10 = 21,0000. B = 315,00 / 5 = 63,0000 por caixa.",
+      "header": { "total_freight": "25.00" },
+      "items": [
+        { "quantity": "10", "unit_cost": "20.00" },
+        { "quantity": "5", "unit_cost": "60.00" }
+      ],
+      "expected": {
+        "items": [
+          { "freight_share": "10.00", "landed_total_cost": "210.00", "landed_unit_cost": "21.0000", "stock_quantity": "10.0000" },
+          { "freight_share": "15.00", "landed_total_cost": "315.00", "landed_unit_cost": "63.0000", "stock_quantity": "5.0000" }
+        ],
+        "totals": { "total_products": "500.00", "total_discount": "0.00", "total_freight": "25.00", "total": "525.00" }
+      }
+    },
+    {
+      "id": "compra-01-fator-12",
+      "_conta": "Mesmo caso com B em caixa de 12: entram 60 un; 315,00 / 60 = 5,2500 por unidade.",
+      "header": { "total_freight": "25.00" },
+      "items": [
+        { "quantity": "10", "unit_cost": "20.00" },
+        { "quantity": "5", "unit_cost": "60.00", "conversion_factor": "12" }
+      ],
+      "expected": {
+        "items": [
+          { "freight_share": "10.00", "landed_total_cost": "210.00", "landed_unit_cost": "21.0000", "stock_quantity": "10.0000" },
+          { "freight_share": "15.00", "landed_total_cost": "315.00", "landed_unit_cost": "5.2500", "stock_quantity": "60.0000" }
+        ],
+        "totals": { "total_products": "500.00", "total_discount": "0.00", "total_freight": "25.00", "total": "525.00" }
+      }
+    },
+    {
+      "id": "frete-3-iguais",
+      "_conta": "10,00 em 3 linhas iguais de 10,00: 3,33 cada e o centavo que sobra vai para a primeira (empate de resto e de peso -> ordem original).",
+      "header": { "total_freight": "10.00" },
+      "items": [
+        { "quantity": "1", "unit_cost": "10.00" },
+        { "quantity": "1", "unit_cost": "10.00" },
+        { "quantity": "1", "unit_cost": "10.00" }
+      ],
+      "expected": {
+        "items": [
+          { "freight_share": "3.34", "landed_total_cost": "13.34", "landed_unit_cost": "13.3400", "stock_quantity": "1.0000" },
+          { "freight_share": "3.33", "landed_total_cost": "13.33", "landed_unit_cost": "13.3300", "stock_quantity": "1.0000" },
+          { "freight_share": "3.33", "landed_total_cost": "13.33", "landed_unit_cost": "13.3300", "stock_quantity": "1.0000" }
+        ],
+        "totals": { "total_products": "30.00", "total_discount": "0.00", "total_freight": "10.00", "total": "40.00" }
+      }
+    },
+    {
+      "id": "item-com-impostos-e-desconto",
+      "_conta": "Linha 3 x 33,33 = 99,99; desconto 9,99; IPI 4,50; ST 7,20 -> 101,70. Em caixa de 6: 18 un -> 101,70 / 18 = 5,65.",
+      "header": {},
+      "items": [
+        { "quantity": "3", "unit_cost": "33.33", "discount": "9.99", "ipi_amount": "4.50", "icms_st_amount": "7.20", "conversion_factor": "6" }
+      ],
+      "expected": {
+        "items": [
+          { "freight_share": "0.00", "landed_total_cost": "101.70", "landed_unit_cost": "5.6500", "stock_quantity": "18.0000" }
+        ],
+        "totals": { "total_products": "99.99", "total_discount": "9.99", "total_freight": "0.00", "total": "101.70" }
+      }
+    }
+  ],
+  "suggestedPrice": [
+    {
+      "id": "compra-01-b-markup-100",
+      "_conta": "Preco sugerido por unidade de ESTOQUE sobre o custo real: B custa 5,2500/un (caixa de 12 com frete); markup 100% -> 5,2500 x 2 = 10,50. Sobre o preco da caixa (60,00) daria 120,00.",
+      "landed_unit_cost": "5.2500",
+      "markup_percent": "100",
+      "expected": "10.50"
+    },
+    {
+      "id": "sem-markup",
+      "_conta": "Sem markup no item e sem produto com markup: nao ha sugestao.",
+      "landed_unit_cost": "21.0000",
+      "markup_percent": null,
+      "expected": null
+    }
+  ]
+}

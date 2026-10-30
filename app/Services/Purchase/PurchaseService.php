@@ -56,7 +56,53 @@ final class PurchaseService
         private readonly InstallmentPlanner $installments,
         private readonly NfeXmlImportService $xmlImport,
         private readonly PurchaseFinancialEntryRecorder $financialEntries,
+        private readonly PurchaseCostAllocator $costs,
+        private readonly LandedPriceSuggester $prices,
     ) {}
+
+    /** Colunas do item que vêm do `PurchaseCostAllocator` (custo real, plano 1.2). */
+    private const ITEM_COST_COLUMNS = [
+        'discount', 'total_cost', 'freight_share', 'insurance_share', 'other_share', 'ipi_amount',
+        'icms_st_amount', 'conversion_factor', 'landed_total_cost', 'landed_unit_cost',
+    ];
+
+    /**
+     * Prévia do custo real (`POST purchases/cost-preview`): a MESMA conta do salvamento, sem
+     * gravar nada — a tela mostra exatamente o que a compra vai guardar.
+     *
+     * `suggested_price` (por unidade de ESTOQUE) segue a regra do recebimento; com `product_id`,
+     * cai no markup do produto.
+     *
+     * @param  array<string, mixed>  $data  payload validado de `PreviewPurchaseCostRequest`
+     * @return array{items: list<array<string, string|null>>, totals: array<string, string>}
+     */
+    public function previewCosts(User $user, array $data): array
+    {
+        $items = array_values($data['items']);
+        $costs = $this->costs->allocate($data, $items);
+        $products = $this->previewProducts($user, $items);
+
+        foreach ($costs['items'] as $index => $cost) {
+            $product = $products->get($items[$index]['product_id'] ?? null);
+            $costs['items'][$index]['suggested_price'] = $this->prices->suggestedPrice($product, $items[$index], $cost['landed_unit_cost']);
+        }
+
+        return $costs;
+    }
+
+    /**
+     * Produtos citados na prévia, do escopo do usuário, numa consulta só (id de outro dono é
+     * ignorado: sem markup de produto, como se não tivesse vindo).
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return \Illuminate\Support\Collection<int, Product>
+     */
+    private function previewProducts(User $user, array $items): \Illuminate\Support\Collection
+    {
+        $ids = array_filter(array_column($items, 'product_id'));
+
+        return $this->scope->scopeQuery(Product::query(), $user)->whereKey($ids)->get()->keyBy('id');
+    }
 
     /**
      * @param  array<string, mixed>  $data  payload validado de `StorePurchaseRequest`
@@ -74,7 +120,7 @@ final class PurchaseService
                 'created_by' => $user->id,
             ] + $ownership);
 
-            $this->syncItems($purchase, $user, $data['items']);
+            $this->syncItems($purchase, $user, $data);
 
             return $purchase->fresh(Purchase::RESOURCE_RELATIONS);
         });
@@ -92,7 +138,7 @@ final class PurchaseService
             $this->assertNotDuplicate($user, $data['invoice_key'] ?? null, $purchase->id);
 
             $purchase->update($this->headerAttributes($user, $data, $supplier, $purchase));
-            $this->syncItems($purchase, $user, $data['items']);
+            $this->syncItems($purchase, $user, $data);
 
             return $purchase->fresh(Purchase::RESOURCE_RELATIONS);
         });
@@ -177,9 +223,11 @@ final class PurchaseService
         $product = $item->product;
         $unitCost = $item->effectiveUnitCost();
 
-        $this->stock->in($product, StockMovementType::PURCHASE_IN, $item->quantity, [
+        // Entra em unidade de ESTOQUE (5 caixas × 12 = 60 un) pelo custo real: o livro recebe o
+        // `landed_total_cost` exato e o custo médio sai dele (plano 1.2).
+        $this->stock->in($product, StockMovementType::PURCHASE_IN, $item->stockQuantity(), [
             'unit_cost' => $unitCost,
-            'total_cost' => $item->total_cost,
+            'total_cost' => $item->landed_total_cost,
             'batch_code' => $item->batch,
             'expires_at' => $item->expires_at?->toDateString(),
             'reference' => $purchase,
@@ -194,8 +242,9 @@ final class PurchaseService
         // Produto que NÃO controla estoque não passa pelo livro, mas o custo da compra
         // continua sendo o custo dele.
         if (! $product->controls_stock) {
-            $changes['last_cost'] = $unitCost;
-            $changes['average_cost'] = $unitCost;
+            // Custo do produto tem 2 casas (regra de dinheiro); o da compra, 4.
+            $changes['last_cost'] = Money::of($unitCost)->toString();
+            $changes['average_cost'] = Money::of($unitCost)->toString();
         }
 
         if ($item->applied_sale_price !== null) {
@@ -215,10 +264,7 @@ final class PurchaseService
         $product->forceFill($changes)->save();
 
         if ($item->supplier_product_code !== null) {
-            SupplierProduct::updateOrCreate(
-                ['supplier_id' => $purchase->supplier_id, 'supplier_product_code' => $item->supplier_product_code],
-                ['product_id' => $product->id],
-            );
+            SupplierProduct::remember($purchase->supplier_id, $item->supplier_product_code, $product->id);
         }
 
         if ($item->purchase_order_item_id !== null) {
@@ -232,9 +278,9 @@ final class PurchaseService
             ? null
             : ProductBatch::where('product_id', $item->product_id)->where('batch_code', $item->batch)->value('id');
 
-        $this->stock->out($item->product, StockMovementType::RETURN_OUT, $item->quantity, [
+        $this->stock->out($item->product, StockMovementType::RETURN_OUT, $item->stockQuantity(), [
             'unit_cost' => $item->effectiveUnitCost(),
-            'total_cost' => $item->total_cost,
+            'total_cost' => $item->landed_total_cost,
             'batch_id' => $batchId,
             'reverse_average_cost' => true,
             'reference' => $purchase,
@@ -310,8 +356,6 @@ final class PurchaseService
             'invoice_key' => $data['invoice_key'] ?? null,
             'invoice_issued_at' => $data['invoice_issued_at'] ?? null,
             'entered_at' => $data['entered_at'] ?? $current?->entered_at ?? now(),
-            'total_freight' => round((float) ($data['total_freight'] ?? 0), 2),
-            'total_discount' => round((float) ($data['total_discount'] ?? 0), 2),
             'notes' => $data['notes'] ?? null,
             'payment_method_id' => $this->scopedId($user, PaymentMethod::class, $payment['payment_method_id'] ?? null),
             'financial_account_id' => $this->scopedId($user, FinancialAccount::class, $payment['financial_account_id'] ?? null),
@@ -331,78 +375,95 @@ final class PurchaseService
 
     /**
      * Substitui a lista de itens do rascunho. Produto novo (`new_product`) é cadastrado aqui,
-     * com estoque zero — a entrada só acontece no `receive()`.
+     * com estoque zero — a entrada só acontece no `receive()`. Custo real e totais saem do
+     * `PurchaseCostAllocator`, numa conta só para itens e cabeçalho.
      *
-     * @param  list<array<string, mixed>>  $items
+     * @param  array<string, mixed>  $data  payload validado (cabeçalho + `items`)
      */
-    private function syncItems(Purchase $purchase, User $user, array $items): void
+    private function syncItems(Purchase $purchase, User $user, array $data): void
     {
+        $items = array_values($data['items']);
+        $costs = $this->costs->allocate($data, $items);
         $purchase->items()->delete();
 
-        foreach ($items as $index => $data) {
-            $product = $this->resolveProduct($user, $data, $index);
-            $quantity = Quantity::of($data['quantity']);
-            abort_unless($product->acceptsQuantity($quantity), 422, sprintf(
-                'Item %d: "%s" aceita até %d casa(s) decimal(is) de quantidade.',
-                $index + 1,
-                $product->name,
-                $product->decimal_places_allowed
-            ));
-            // Custo e preço como digitados (2 casas, `StorePurchaseRequest` recusa mais).
-            $unitCost = Decimal::of($data['unit_cost']);
-            $discount = Money::of($data['discount'] ?? 0);
-            $markup = isset($data['markup_percent']) ? (float) $data['markup_percent'] : null;
-            $applied = isset($data['applied_sale_price']) ? (string) Decimal::of($data['applied_sale_price']) : null;
-
-            if ($markup === null && $applied !== null) {
-                $markup = $this->pricing->markupFromCost($unitCost->toFloat(), (float) $applied);
-            }
-
-            $purchase->items()->create([
-                'product_id' => $product->id,
-                'purchase_order_item_id' => $this->resolveOrderItemId($purchase, $data['purchase_order_item_id'] ?? null),
-                'supplier_product_code' => $data['supplier_product_code'] ?? null,
-                'description_on_invoice' => $data['description_on_invoice'] ?? null,
-                'quantity' => $quantity->toString(),
-                'unit' => $data['unit'] ?? $product->unit_of_sale,
-                'unit_cost' => (string) $unitCost,
-                'discount' => $discount->toString(),
-                // Valor da linha da nota (vProd − desconto): é o que se paga ao fornecedor, então
-                // vira centavo aqui, uma vez. O estoque recebe ESTE valor, não custo × quantidade.
-                'total_cost' => $this->lineGross($quantity, $unitCost, $data)->minus($discount)->max(0)->toString(),
-                'markup_percent' => $markup,
-                'suggested_price' => $markup === null ? null : $this->pricing->priceFromMarkup($unitCost->toFloat(), $markup),
-                'applied_sale_price' => $applied,
-                'batch' => $data['batch'] ?? null,
-                'expires_at' => $data['expires_at'] ?? null,
-                'ncm' => $data['ncm'] ?? $product->ncm,
-                'purpose' => $data['purpose'] ?? $product->purpose?->value ?? ProductPurpose::RESALE->value,
-            ]);
+        foreach ($items as $index => $item) {
+            $cost = $costs['items'][$index];
+            $product = $this->resolveProduct($user, $item, $index, $cost['landed_unit_cost']);
+            $this->assertAcceptsQuantity($product, $cost['stock_quantity'], $index);
+            $purchase->items()->create($this->itemAttributes($purchase, $product, $item, $cost));
+            $this->rememberPackaging($purchase, $product, $item);
         }
 
-        $purchase->recalculateTotals();
+        $purchase->applyCostTotals($costs['totals']);
         $purchase->save();
     }
 
     /**
-     * Bruto da linha: o da nota (`gross_total`, XML) quando vem; senão quantidade × custo,
-     * virando centavo uma vez. Nunca recalcular o que a nota já fixou.
+     * @param  array<string, mixed>  $data
+     * @param  array<string, string>  $cost  linha do `PurchaseCostAllocator`
+     * @return array<string, mixed>
+     */
+    private function itemAttributes(Purchase $purchase, Product $product, array $data, array $cost): array
+    {
+        [$markup, $suggested] = $this->prices->suggest($product, $data, $cost['landed_unit_cost']);
+
+        return [
+            'product_id' => $product->id,
+            'purchase_order_item_id' => $this->resolveOrderItemId($purchase, $data['purchase_order_item_id'] ?? null),
+            'supplier_product_code' => $data['supplier_product_code'] ?? null,
+            'description_on_invoice' => $data['description_on_invoice'] ?? null,
+            'quantity' => Quantity::of($data['quantity'])->toString(),
+            'unit' => $data['unit'] ?? $product->unit_of_sale,
+            'purchase_unit' => $data['purchase_unit'] ?? null,
+            // Custo e preço como digitados (2 casas, `StorePurchaseRequest` recusa mais).
+            'unit_cost' => (string) Decimal::of($data['unit_cost']),
+            'markup_percent' => $markup,
+            'suggested_price' => $suggested,
+            'applied_sale_price' => isset($data['applied_sale_price']) ? (string) Decimal::of($data['applied_sale_price']) : null,
+            'batch' => $data['batch'] ?? null,
+            'expires_at' => $data['expires_at'] ?? null,
+            'ncm' => $data['ncm'] ?? $product->ncm,
+            'purpose' => $data['purpose'] ?? $product->purpose?->value ?? ProductPurpose::RESALE->value,
+        ] + array_intersect_key($cost, array_flip(self::ITEM_COST_COLUMNS));
+    }
+
+    private function assertAcceptsQuantity(Product $product, string $stockQuantity, int $index): void
+    {
+        // A casa decimal que importa é a do ESTOQUE: meia caixa de 12 entra como 6 un inteiras.
+        abort_unless($product->acceptsQuantity($stockQuantity), 422, sprintf(
+            'Item %d: "%s" aceita até %d casa(s) decimal(is) de quantidade.',
+            $index + 1,
+            $product->name,
+            $product->decimal_places_allowed
+        ));
+    }
+
+    /**
+     * Fator de conversão confirmado pelo usuário para um código do fornecedor fica na memória
+     * `supplier_products` já na gravação — a próxima nota do mesmo item entra em unidade.
+     * Só quando o fator veio explícito: payload antigo (sem o campo) não zera o aprendido.
      *
      * @param  array<string, mixed>  $data
      */
-    private function lineGross(Quantity $quantity, \Brick\Math\BigDecimal $unitCost, array $data): Money
+    private function rememberPackaging(Purchase $purchase, Product $product, array $data): void
     {
-        if (isset($data['gross_total'])) {
-            return Money::of($data['gross_total']);
+        if (! isset($data['supplier_product_code'], $data['conversion_factor'])) {
+            return;
         }
 
-        return Money::of($quantity->toBigDecimal()->multipliedBy($unitCost));
+        $packaging = ['conversion_factor' => (string) Decimal::of($data['conversion_factor'])];
+
+        if (isset($data['purchase_unit'])) {
+            $packaging['purchase_unit'] = $data['purchase_unit'];
+        }
+
+        SupplierProduct::remember($purchase->supplier_id, (string) $data['supplier_product_code'], $product->id, $packaging);
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    private function resolveProduct(User $user, array $data, int $index): Product
+    private function resolveProduct(User $user, array $data, int $index, string $landedUnitCost): Product
     {
         if (! empty($data['product_id'])) {
             return $this->scope->scopeQuery(Product::query(), $user)->findOrFail((int) $data['product_id']);
@@ -410,9 +471,14 @@ final class PurchaseService
 
         $new = $data['new_product'] ?? null;
         abort_if(! is_array($new), 422, sprintf('Item %d: vincule a um produto existente ou cadastre um novo.', $index + 1));
+        // Campo opcional deixado em branco chega `null` (ex.: estoque mínimo) e furava o NOT NULL
+        // da coluna — sem a chave, vale o padrão do banco.
+        $new = array_filter($new, fn ($value): bool => $value !== null);
 
         $unitOfSale = $data['unit'] ?? 'UN';
-        $unitCost = (string) Decimal::of($data['unit_cost']);
+        // Custo real (com frete, IPI, ST) por unidade de estoque, em 2 casas como todo custo
+        // de produto.
+        $unitCost = Money::of($landedUnitCost)->toString();
         $attributes = $new + [
             'average_cost' => 0,
             'last_cost' => $unitCost,

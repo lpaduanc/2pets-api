@@ -18,6 +18,8 @@ class PurchaseInstallment extends Model
         'financial_account_id',
         'status',
         'paid_at',
+        // Gravado pelo `PurchaseFinancialEntryRecorder` ao efetivar a compra (doc 02).
+        'financial_entry_id',
     ];
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Stock;
 
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Stock\PreviewPurchaseCostRequest;
 use App\Http\Requests\Stock\StorePurchaseRequest;
 use App\Http\Resources\Stock\PurchaseResource;
 use App\Models\Purchase;
@@ -96,6 +97,15 @@ class PurchaseController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
 
         return new PurchaseResource($this->purchases->cancel($this->find($request, $id), $request->user(), $data['reason']));
+    }
+
+    /**
+     * Custo real de cada item (rateio de frete/seguro/outras, IPI, ST, fator de conversão) sem
+     * gravar — a mesma conta do `store`, para a tela nunca mostrar um número e salvar outro.
+     */
+    public function costPreview(PreviewPurchaseCostRequest $request): JsonResponse
+    {
+        return response()->json(['data' => $this->purchases->previewCosts($request->user(), $request->validated())]);
     }
 
     /**

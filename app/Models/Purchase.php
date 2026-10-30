@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\PurchaseStatus;
-use App\Support\Money\Money;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -28,6 +27,12 @@ class Purchase extends Model
         'installments.financialAccount',
     ];
 
+    /** Totais de cabeçalho derivados dos itens (docs/gap-petflow/PLANO.md, 1.2). */
+    public const COST_TOTALS = [
+        'total_products', 'total_discount', 'total_freight', 'total_insurance', 'total_other',
+        'total_ipi', 'total_icms_st', 'total',
+    ];
+
     protected $fillable = [
         'organization_id',
         'professional_id',
@@ -41,6 +46,10 @@ class Purchase extends Model
         'entered_at',
         'total_products',
         'total_freight',
+        'total_insurance',
+        'total_other',
+        'total_ipi',
+        'total_icms_st',
         'total_discount',
         'total',
         'payment_method_id',
@@ -73,6 +82,10 @@ class Purchase extends Model
             'cancelled_at' => 'datetime',
             'total_products' => 'decimal:2',
             'total_freight' => 'decimal:2',
+            'total_insurance' => 'decimal:2',
+            'total_other' => 'decimal:2',
+            'total_ipi' => 'decimal:2',
+            'total_icms_st' => 'decimal:2',
             'total_discount' => 'decimal:2',
             'total' => 'decimal:2',
         ];
@@ -121,12 +134,15 @@ class Purchase extends Model
         return $this->status === PurchaseStatus::DRAFT;
     }
 
-    /** Frete e desconto da nota rateados não entram no custo unitário no MVP; só no total. */
-    public function recalculateTotals(): void
+    /**
+     * Grava os totais calculados pelo `PurchaseCostAllocator` — a mesma conta dos itens, para o
+     * cabeçalho nunca divergir deles: total = produtos − desconto + frete + seguro + outras +
+     * IPI + ICMS-ST (o vNF da NF-e).
+     *
+     * @param  array<string, string>  $totals
+     */
+    public function applyCostTotals(array $totals): void
     {
-        $products = Money::of($this->items()->sum('total_cost'));
-
-        $this->total_products = $products->toString();
-        $this->total = $products->plus($this->total_freight)->minus($this->total_discount)->toString();
+        $this->forceFill(array_intersect_key($totals, array_flip(self::COST_TOTALS)));
     }
 }

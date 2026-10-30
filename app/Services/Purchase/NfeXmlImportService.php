@@ -37,7 +37,17 @@ final class NfeXmlImportService
     public function __construct(
         private readonly NfeXmlParser $parser,
         private readonly CommercialScopeResolver $scope,
+        private readonly PurchaseCostAllocator $costs,
+        private readonly LandedPriceSuggester $prices,
     ) {}
+
+    /** Valores do item que, se a nota não detalhar em nenhum item, são rateados do total. */
+    private const ALLOCATABLE_KINDS = ['freight_share', 'insurance_share', 'other_share'];
+
+    /** Valores que a NF-e só tem por item: ausente = zero. */
+    private const ITEM_ONLY_KINDS = ['ipi_amount', 'icms_st_amount'];
+
+    private const DEFAULT_CONVERSION_FACTOR = '1.000';
 
     /**
      * @return array<string, mixed>
@@ -51,6 +61,11 @@ final class NfeXmlImportService
         Storage::disk(self::DISK)->put($this->tokenPath($user, $token), $contents);
 
         $supplier = $this->matchSupplier($parsed['supplier']['document'], $user);
+        $items = $this->withPackaging($parsed['items'], $supplier);
+        $costs = $this->costs->allocate($parsed['costs'], $this->costInput($items));
+        $matches = array_map(fn (array $item): array => $this->matchItem($item, $supplier, $user), $items);
+        // Uma consulta para o markup de todos os produtos casados (sem N+1 em nota de 500 itens).
+        $products = Product::query()->whereKey(array_filter(array_map(fn (array $match): mixed => $match['match']['product_id'] ?? null, $matches)))->get()->keyBy('id');
 
         return [
             'xml_token' => $token,
@@ -59,10 +74,82 @@ final class NfeXmlImportService
                 'match' => $supplier === null ? null : 'document',
                 'data' => $parsed['supplier'],
             ],
-            'invoice' => $parsed['invoice'],
+            // Totais novos (seguro, outras, IPI, ST) em string de 2 casas; os antigos seguem como
+            // a nota os trouxe, para não quebrar quem já lia.
+            'invoice' => $parsed['invoice'] + array_diff_key($costs['totals'], $parsed['invoice']),
             'duplicate_purchase_id' => $this->duplicateOf($parsed['invoice']['key'], $user),
-            'items' => array_map(fn (array $item): array => $item + $this->matchItem($item, $supplier, $user), $parsed['items']),
+            'items' => array_map(
+                fn (array $item, array $cost, array $match): array => $this->previewItem($item, $cost, $match, $products->get($match['match']['product_id'] ?? null)),
+                $items,
+                $costs['items'],
+                $matches,
+            ),
         ];
+    }
+
+    /**
+     * Item da conferência: dados da nota + custo real + casamento, e o preço sugerido por
+     * unidade de estoque pelo markup do produto casado (a nota não traz markup). Sugestão por
+     * similaridade também conta — é só sugestão, o usuário confirma.
+     *
+     * @param  array<string, mixed>  $item
+     * @param  array<string, string>  $cost
+     * @param  array{match: array<string, mixed>|null, suggestions: list<array<string, mixed>>}  $match
+     * @return array<string, mixed>
+     */
+    private function previewItem(array $item, array $cost, array $match, ?Product $product): array
+    {
+        return array_merge($item, $cost)
+            + ['suggested_price' => $this->prices->suggestedPrice($product, [], $cost['landed_unit_cost'])]
+            + $match;
+    }
+
+    /**
+     * Fator de conversão e unidade de compra aprendidos para o código do fornecedor (vale mesmo
+     * quando o produto casou pelo GTIN): a caixa da nota já entra como unidades no estoque.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function withPackaging(array $items, ?Supplier $supplier): array
+    {
+        $links = $supplier === null ? collect() : SupplierProduct::query()
+            ->where('supplier_id', $supplier->id)
+            ->whereIn('supplier_product_code', array_filter(array_column($items, 'supplier_product_code')))
+            ->get()
+            ->keyBy('supplier_product_code');
+
+        return array_map(function (array $item) use ($links): array {
+            $link = $links->get($item['supplier_product_code'] ?? '');
+
+            return $item + [
+                'conversion_factor' => $link?->conversion_factor ?? self::DEFAULT_CONVERSION_FACTOR,
+                'purchase_unit' => $link?->purchase_unit ?? $item['unit'],
+            ];
+        }, $items);
+    }
+
+    /**
+     * Entrada do `PurchaseCostAllocator`: valor que a nota detalhou em ALGUM item vale como veio
+     * (os itens sem ele têm zero); tipo que nenhum item detalha fica de fora e é rateado do total
+     * do cabeçalho pelo maior resto.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return list<array<string, mixed>>
+     */
+    private function costInput(array $items): array
+    {
+        $detailed = array_filter(self::ALLOCATABLE_KINDS, fn (string $kind): bool => array_filter(array_column($items, $kind)) !== []);
+
+        return array_map(function (array $item) use ($detailed): array {
+            $input = array_intersect_key($item, array_flip(['quantity', 'unit_cost', 'gross_total', 'discount', 'conversion_factor']));
+
+            foreach ([...$detailed, ...self::ITEM_ONLY_KINDS] as $kind) {
+                $input[$kind] = $item[$kind] ?? '0.00';
+            }
+
+            return $input;
+        }, $items);
     }
 
     /** Caminho do XML guardado, ou `null` se o token não é deste usuário/não existe. */

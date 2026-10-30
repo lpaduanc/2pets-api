@@ -12,6 +12,9 @@ use Illuminate\Validation\Rule;
  */
 class StorePurchaseRequest extends FormRequest
 {
+    /** Cabe em `decimal(12,3)` com folga; embalagem de um milhão de unidades já é erro de digitação. */
+    private const MAX_CONVERSION_FACTOR = 1000000;
+
     public function authorize(): bool
     {
         return $this->user() !== null;
@@ -40,12 +43,10 @@ class StorePurchaseRequest extends FormRequest
             'invoice_key' => ['nullable', 'string', 'size:44'],
             'invoice_issued_at' => ['nullable', 'date'],
             'entered_at' => ['nullable', 'date'],
-            'total_freight' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
-            'total_discount' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'xml_token' => ['nullable', 'string', 'uuid'],
 
-            'items' => ['required', 'array', 'min:1', 'max:500'],
+            ...self::costRules(),
             'items.*.product_id' => ['nullable', 'required_without:items.*.new_product', 'integer'],
             'items.*.new_product' => ['nullable', 'array'],
             'items.*.new_product.name' => ['required_with:items.*.new_product', 'string', 'max:255'],
@@ -69,12 +70,7 @@ class StorePurchaseRequest extends FormRequest
             'items.*.purchase_order_item_id' => ['nullable', 'integer'],
             'items.*.description_on_invoice' => ['nullable', 'string', 'max:255'],
             'items.*.supplier_product_code' => ['nullable', 'string', 'max:60'],
-            'items.*.quantity' => ['required', 'numeric', 'decimal:0,4', 'gt:0'],
             'items.*.unit' => ['nullable', 'string', 'max:10'],
-            'items.*.unit_cost' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
-            // Valor bruto da linha da NF-e (`vProd`): quando vem, é o bruto do item — a nota manda.
-            'items.*.gross_total' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
-            'items.*.discount' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
             'items.*.markup_percent' => ['nullable', 'numeric', 'min:-100', 'max:100000'],
             'items.*.applied_sale_price' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
             'items.*.batch' => ['nullable', 'string', 'max:60'],
@@ -88,6 +84,43 @@ class StorePurchaseRequest extends FormRequest
             'payment.installments' => ['required_with:payment', 'integer', 'min:1', 'max:60'],
             'payment.first_due_date' => ['nullable', 'date'],
             'payment.interval_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+        ];
+    }
+
+    /**
+     * Campos que entram no custo real (docs/gap-petflow/PLANO.md, 1.2) — os mesmos na gravação e
+     * na prévia (`PreviewPurchaseCostRequest`). Dinheiro com mais de 2 casas é recusado, nunca
+     * arredondado em silêncio (regra de dinheiro, Fase 0).
+     *
+     * Parte explícita por item (`*_share`) vem de rascunho de XML: com ela, aquele tipo não é
+     * rateado do cabeçalho, e o total tem de bater com a soma (`PurchaseCostAllocator`).
+     *
+     * @return array<string, mixed>
+     */
+    public static function costRules(): array
+    {
+        $money = ['nullable', 'numeric', 'decimal:0,2', 'min:0'];
+
+        return [
+            'total_freight' => $money,
+            'total_insurance' => $money,
+            'total_other' => $money,
+            'total_discount' => $money,
+
+            'items' => ['required', 'array', 'min:1', 'max:500'],
+            'items.*.quantity' => ['required', 'numeric', 'decimal:0,4', 'gt:0'],
+            'items.*.unit_cost' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
+            // Valor bruto da linha da NF-e (`vProd`): quando vem, é o bruto do item — a nota manda.
+            'items.*.gross_total' => $money,
+            'items.*.discount' => $money,
+            'items.*.freight_share' => $money,
+            'items.*.insurance_share' => $money,
+            'items.*.other_share' => $money,
+            'items.*.ipi_amount' => $money,
+            'items.*.icms_st_amount' => $money,
+            // Itens por embalagem de compra (caixa com 12 → 12): o estoque entra em unidade.
+            'items.*.conversion_factor' => ['nullable', 'numeric', 'decimal:0,3', 'gt:0', 'max:'.self::MAX_CONVERSION_FACTOR],
+            'items.*.purchase_unit' => ['nullable', 'string', 'max:10'],
         ];
     }
 

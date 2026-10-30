@@ -338,6 +338,7 @@ return [
     'POST api/professional/purchase-orders/{id}/receive',
     'POST api/professional/purchase-orders/{id}/send',
     'POST api/professional/purchases',
+    'POST api/professional/purchases/cost-preview',
     'POST api/professional/purchases/xml-preview',
     'POST api/professional/purchases/{id}/cancel',
     'POST api/professional/purchases/{id}/receive',
@@ -354,6 +355,8 @@ return [
     'POST api/professional/sales/{id}/discount',
     'POST api/professional/sales/{id}/items',
     'POST api/professional/sales/{id}/receipts',
+    // Prévia da taxa do recebimento (plano 1.1): mesma autorização do POST de recebimento acima.
+    'POST api/professional/sales/receipts/simulate-fee',
     'POST api/professional/services',
     'POST api/professional/stock-counts',
     'POST api/professional/stock-counts/{id}/close',

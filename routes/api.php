@@ -840,6 +840,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::apiResource('suppliers', SupplierController::class);
 
         Route::post('purchases/xml-preview', [PurchaseController::class, 'xmlPreview']);
+        Route::post('purchases/cost-preview', [PurchaseController::class, 'costPreview']);
         Route::post('purchases/{id}/receive', [PurchaseController::class, 'receive']);
         Route::post('purchases/{id}/cancel', [PurchaseController::class, 'cancel']);
         Route::apiResource('purchases', PurchaseController::class);

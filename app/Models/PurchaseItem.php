@@ -3,14 +3,17 @@
 namespace App\Models;
 
 use App\Enums\ProductPurpose;
-use App\Services\Stock\StockValuation;
 use App\Support\Money\Decimal;
+use App\Support\Money\Quantity;
 use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PurchaseItem extends Model
 {
+    /** Custo unitário de aquisição: 4 casas (plano, seção 3) — o custo médio do produto é que tem 2. */
+    public const LANDED_UNIT_COST_SCALE = 4;
+
     protected $fillable = [
         'purchase_id',
         'product_id',
@@ -21,7 +24,16 @@ class PurchaseItem extends Model
         'unit',
         'unit_cost',
         'discount',
+        'freight_share',
+        'insurance_share',
+        'other_share',
+        'ipi_amount',
+        'icms_st_amount',
+        'conversion_factor',
+        'purchase_unit',
         'total_cost',
+        'landed_total_cost',
+        'landed_unit_cost',
         'markup_percent',
         'suggested_price',
         'applied_sale_price',
@@ -41,7 +53,15 @@ class PurchaseItem extends Model
             'quantity' => 'decimal:4',
             'unit_cost' => 'decimal:2',
             'discount' => 'decimal:2',
+            'freight_share' => 'decimal:2',
+            'insurance_share' => 'decimal:2',
+            'other_share' => 'decimal:2',
+            'ipi_amount' => 'decimal:2',
+            'icms_st_amount' => 'decimal:2',
+            'conversion_factor' => 'decimal:3',
             'total_cost' => 'decimal:2',
+            'landed_total_cost' => 'decimal:2',
+            'landed_unit_cost' => 'decimal:4',
             'markup_percent' => 'decimal:4',
             'suggested_price' => 'decimal:2',
             'applied_sale_price' => 'decimal:2',
@@ -65,18 +85,19 @@ class PurchaseItem extends Model
     }
 
     /**
-     * Custo unitário EFETIVO: o desconto do item rateado pelas unidades. Pagar 100 em 5 unidades
-     * com 10 de desconto é custo 18, não 20. Só para exibir e para o último custo — o estoque
-     * recebe o `total_cost` exato da linha (`PurchaseService::receiveItem`), não este × quantidade.
+     * Custo unitário EFETIVO por unidade de ESTOQUE: o custo real congelado na compra
+     * (docs/gap-petflow/PLANO.md, 1.2 — linha − desconto + frete + seguro + outras + IPI + ST,
+     * dividido por quantidade × fator). Só para exibir e para o último custo — o estoque recebe o
+     * `landed_total_cost` exato (`PurchaseService::receiveItem`), não este × quantidade.
      */
     public function effectiveUnitCost(): string
     {
-        $quantity = Decimal::of($this->quantity);
+        return (string) Decimal::of($this->landed_unit_cost)->toScale(self::LANDED_UNIT_COST_SCALE, RoundingMode::HalfUp);
+    }
 
-        if (! $quantity->isPositive()) {
-            return '0';
-        }
-
-        return (string) Decimal::of($this->total_cost)->dividedBy($quantity, StockValuation::COST_SCALE, RoundingMode::HalfUp);
+    /** Unidades que entram no estoque: 5 caixas × fator 12 = 60 un (até 4 casas, validado na gravação). */
+    public function stockQuantity(): Quantity
+    {
+        return Quantity::of(Decimal::of($this->quantity)->multipliedBy(Decimal::of($this->conversion_factor ?? 1)));
     }
 }

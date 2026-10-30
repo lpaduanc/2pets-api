@@ -19,7 +19,7 @@ final class NfeXmlParser
     private const NS = 'http://www.portalfiscal.inf.br/nfe';
 
     /**
-     * @return array{supplier: array<string, string|null>, invoice: array<string, mixed>, items: list<array<string, mixed>>}
+     * @return array{supplier: array<string, string|null>, invoice: array<string, mixed>, costs: array<string, string>, items: list<array<string, mixed>>}
      */
     public function parse(string $xml): array
     {
@@ -67,6 +67,7 @@ final class NfeXmlParser
                 'total_discount' => (float) $totals->vDesc,
                 'total' => (float) $totals->vNF,
             ],
+            'costs' => $this->costTotals($totals),
             'items' => $this->items($nfe),
         ];
     }
@@ -110,10 +111,53 @@ final class NfeXmlParser
                 'total_cost' => $gross->minus($discount)->toString(),
                 'batch' => $batch === null ? null : $this->text($batch->nLote),
                 'expires_at' => $batch === null ? null : $this->text($batch->dVal),
-            ];
+            ] + $this->itemCosts($det);
         }
 
         return $items;
+    }
+
+    /**
+     * Totais da nota que compõem o custo real (plano 1.2), em texto exato de 2 casas. Os de
+     * frete/seguro/outras/desconto são o que se rateia quando o item não traz o próprio valor.
+     *
+     * @return array<string, string>
+     */
+    private function costTotals(SimpleXMLElement $totals): array
+    {
+        $fields = [
+            'total_freight' => 'vFrete', 'total_insurance' => 'vSeg', 'total_other' => 'vOutro',
+            'total_discount' => 'vDesc', 'total_ipi' => 'vIPI', 'total_icms_st' => 'vST',
+        ];
+
+        return array_map(fn (string $tag): string => Money::of($this->text($totals->{$tag}) ?? '0')->toString(), $fields);
+    }
+
+    /**
+     * Valores do item que entram no custo real. `null` = a nota não detalhou no item (o
+     * `NfeXmlImportService` decide se rateia o total). ST: qualquer grupo ICMS (10, 30, 70, 90,
+     * SN201, SN202, SN900) traz `vICMSST`; ST retido antes (ICMS60) já está no preço e não soma.
+     *
+     * @return array<string, string|null>
+     */
+    private function itemCosts(SimpleXMLElement $det): array
+    {
+        $det->registerXPathNamespace('n', self::NS);
+
+        return [
+            'freight_share' => $this->moneyAt($det, 'n:prod/n:vFrete'),
+            'insurance_share' => $this->moneyAt($det, 'n:prod/n:vSeg'),
+            'other_share' => $this->moneyAt($det, 'n:prod/n:vOutro'),
+            'ipi_amount' => $this->moneyAt($det, 'n:imposto/n:IPI/n:IPITrib/n:vIPI'),
+            'icms_st_amount' => $this->moneyAt($det, 'n:imposto/n:ICMS/*/n:vICMSST'),
+        ];
+    }
+
+    private function moneyAt(SimpleXMLElement $node, string $path): ?string
+    {
+        $value = $this->text($node->xpath($path)[0] ?? null);
+
+        return $value === null ? null : Money::of($value)->toString();
     }
 
     private function protocolKey(SimpleXMLElement $root): ?string
