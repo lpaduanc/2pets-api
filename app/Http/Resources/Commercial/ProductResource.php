@@ -32,6 +32,7 @@ class ProductResource extends JsonResource
             'decimal_places_allowed' => (int) $this->decimal_places_allowed,
             'purpose' => $this->purpose?->value,
             'purpose_label' => $this->purpose?->label(),
+            'is_supply' => (bool) $this->is_supply,
 
             'group' => $this->whenLoaded('group', fn () => [
                 'id' => $this->group->id,

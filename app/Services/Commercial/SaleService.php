@@ -9,7 +9,6 @@ use App\Enums\DiscountType;
 use App\Enums\FiscalOperation;
 use App\Enums\ProductPurpose;
 use App\Enums\QuoteStatus;
-use App\Enums\ReceivableStatus;
 use App\Enums\SaleKind;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
@@ -22,7 +21,6 @@ use App\Models\OrganizationMember;
 use App\Models\PaymentMethod;
 use App\Models\Pet;
 use App\Models\Product;
-use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReceipt;
@@ -32,6 +30,8 @@ use App\Models\ServicePackage;
 use App\Models\User;
 use App\Services\Commercial\Card\ReceiptPricing;
 use App\Services\Commercial\Card\ReceivableScheduleService;
+use App\Services\Commercial\Reversal\SaleCancellationReversal;
+use App\Services\Commercial\ServiceCost\ServiceSupplyConsumer;
 use App\Services\Finance\SaleFinancialEntryRecorder;
 use App\Services\Professional\ProfessionalClientsQuery;
 use App\Services\Stock\StockService;
@@ -68,6 +68,8 @@ final class SaleService
         private readonly SaleClientAccountEffects $clientAccounts,
         private readonly ReceiptPricing $pricing,
         private readonly ReceivableScheduleService $receivables,
+        private readonly ServiceSupplyConsumer $serviceSupplies,
+        private readonly SaleCancellationReversal $cancellation,
     ) {}
 
     /**
@@ -176,10 +178,13 @@ final class SaleService
                 'sale_id' => $sale->id,
                 'sellable_type' => $sellable::class,
                 'sellable_id' => $sellable->getKey(),
+                'appointment_id' => $sellable instanceof Service ? ($attributes['appointment_id'] ?? null) : null,
                 'description' => $attributes['description'] ?? $sellable->sellableName(),
                 'staff_id' => $attributes['staff_id'] ?? null,
                 'quantity' => $quantity->toString(),
                 'unit_price' => $unitPrice,
+                // Custo unitário congelado com 4 casas (PLANO seção 3, item 2): médio do produto ou
+                // ficha de insumos do serviço (1.3).
                 'unit_cost' => $sellable->unitCost(),
                 'discount' => Money::of($attributes['discount'] ?? 0)->toString(),
                 'commission_percent' => $sellable->commissionPercent(),
@@ -425,7 +430,7 @@ final class SaleService
     {
         foreach ($from->items()->get() as $item) {
             $to->items()->create($item->only([
-                'sellable_type', 'sellable_id', 'description', 'staff_id', 'quantity',
+                'sellable_type', 'sellable_id', 'appointment_id', 'description', 'staff_id', 'quantity',
                 'unit_price', 'unit_cost', 'discount', 'total', 'commission_percent',
             ]));
         }
@@ -453,35 +458,9 @@ final class SaleService
                 $register = $sale->cashRegister;
             }
 
-            foreach ($sale->receipts()->with('paymentMethod')->get() as $receipt) {
-                if ($receipt->paymentMethod?->kind->isDeferredToClientAccount()) {
-                    // Devolve o crédito consumido (doc 11) — não depende de caixa aberto: o
-                    // saldo do cliente não é dinheiro de gaveta.
-                    $this->clientAccounts->refundForCancelledReceipt($sale, $receipt, $user);
-
-                    continue;
-                }
-
-                if ($register !== null) {
-                    $this->cashRegisters->recordMovement(
-                        $register,
-                        CashMovementType::REFUND,
-                        (float) $receipt->amount,
-                        'Estorno da venda '.($sale->number ?? $sale->id),
-                        $user,
-                        $receipt->payment_method_id,
-                        $receipt->account_id,
-                        $sale,
-                    );
-                }
-            }
-
-            // Parcela que a adquirente ainda não pagou deixa de ser esperada; a já recebida fica
-            // como está — o estorno ao portador é outro fluxo (plano 2.3).
-            Receivable::query()
-                ->whereIn('sale_receipt_id', $sale->receipts()->select('id'))
-                ->pending()
-                ->update(['status' => ReceivableStatus::CANCELLED->value]);
+            // Estorno de cada recebimento (caixa, conta corrente, recebíveis) e da receita no
+            // financeiro; recebível já pago/antecipado pela adquirente recusa com 422.
+            $this->cancellation->reverse($sale, $user, $register);
 
             if ($sale->status === SaleStatus::PAID) {
                 $this->restoreStock($sale, $user);
@@ -716,6 +695,15 @@ final class SaleService
                 'notes' => 'Venda '.($sale->number ?? $sale->id),
             ]);
         }
+
+        // Insumos da ficha técnica de cada serviço vendido (PLANO 1.3) — idempotente por item.
+        foreach ($this->serviceItems($sale) as $item) {
+            $this->serviceSupplies->consumeForSaleItem($item, [
+                'user' => $user,
+                'occurred_at' => $sale->sold_at,
+                'notes' => 'Insumo do serviço da venda '.($sale->number ?? $sale->id),
+            ]);
+        }
     }
 
     /**
@@ -751,6 +739,24 @@ final class SaleService
                 'notes' => 'Cancelamento da venda '.($sale->number ?? $sale->id),
             ]);
         }
+
+        // Insumos dos serviços voltam por inteiro (o que a devolução parcial já repôs não volta de novo).
+        foreach ($this->serviceItems($sale) as $item) {
+            $this->serviceSupplies->reverseForSaleItem($item, Quantity::of($item->quantity), [
+                'user' => $user,
+                'notes' => 'Cancelamento da venda '.($sale->number ?? $sale->id),
+            ]);
+        }
+    }
+
+    /**
+     * Itens de serviço — os que podem ter ficha técnica de insumos (PLANO 1.3).
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, SaleItem>
+     */
+    private function serviceItems(Sale $sale): \Illuminate\Database\Eloquent\Collection
+    {
+        return $sale->items()->with('sellable')->where('sellable_type', Service::class)->orderBy('id')->get();
     }
 
     /**

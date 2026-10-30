@@ -44,7 +44,7 @@ class NfeXmlImportTest extends TestCase
             ->assertJsonCount(2, 'items');
 
         $response->assertJsonPath('items.0.quantity', '5.0000')
-            ->assertJsonPath('items.0.unit_cost', '100.00')
+            ->assertJsonPath('items.0.unit_cost', '100.0000')
             ->assertJsonPath('items.0.batch', 'L2026A')
             ->assertJsonPath('items.0.expires_at', '2027-06-01')
             ->assertJsonPath('items.0.match.product_id', $racao->id)

@@ -29,24 +29,24 @@ class AverageCostTest extends TestCase
     {
         // 10 un a 20,00 + 5 un a 26,00 = (200 + 130) / 15 = 22,00
         [$after] = $this->calc->afterEntry(self::position('10', '200', '20'), Quantity::of(5), '130');
-        $this->assertSame('22.00', (string) $after->averageCost);
+        $this->assertSame('22.0000', (string) $after->averageCost);
         $this->assertSame('330.00', (string) $after->value);
 
         // Estoque zerado: custo médio é o da entrada.
         [$fromZero] = $this->calc->afterEntry(self::position('0', '0', '20'), Quantity::of(5), '130');
-        $this->assertSame('26.00', (string) $fromZero->averageCost);
+        $this->assertSame('26.0000', (string) $fromZero->averageCost);
 
-        // Dízima: 2 un a 10 + 1 a 11 = 31/3 → médio exibido 10,33; o valor (31,00) segue exato.
+        // Dízima: 2 un a 10 + 1 a 11 = 31/3 → médio exibido 10,3333 (4 casas, HALF_UP); o valor (31,00) segue exato.
         [$repeating] = $this->calc->afterEntry(self::position('2', '20', '10'), Quantity::of(1), '11');
-        $this->assertSame('10.33', (string) $repeating->averageCost);
+        $this->assertSame('10.3333', (string) $repeating->averageCost);
     }
 
     public function test_fractional_entry_keeps_the_exact_value_of_the_invoice_line(): void
     {
-        // 12,5 kg por R$ 411,25 (linha da nota): custo 32,90/kg e valor 411,25 exatos.
+        // 12,5 kg por R$ 411,25 (linha da nota): custo 32,9000/kg e valor 411,25 exatos.
         [$after] = $this->calc->afterEntry(self::position('0', '0', '0'), Quantity::of('12.5'), '411.25');
 
-        $this->assertSame('32.90', (string) $after->averageCost);
+        $this->assertSame('32.9000', (string) $after->averageCost);
         $this->assertSame('411.25', (string) $after->value);
     }
 
@@ -61,14 +61,14 @@ class AverageCostTest extends TestCase
         $this->assertSame('30.00', (string) $sold);
         $this->assertSame('-20.00', (string) $variance);
         $this->assertSame('60.00', (string) $position->value);
-        $this->assertSame('20.00', (string) $position->averageCost);
+        $this->assertSame('20.0000', (string) $position->averageCost);
     }
 
     public function test_reversal_undoes_the_entry_when_units_are_still_in_stock(): void
     {
         [$after, $variance] = $this->calc->afterReversal(self::position('15', '330', '22'), Quantity::of(5), '130');
 
-        $this->assertSame('20.00', (string) $after->averageCost);
+        $this->assertSame('20.0000', (string) $after->averageCost);
         $this->assertTrue($variance->isZero());
     }
 
@@ -80,7 +80,7 @@ class AverageCostTest extends TestCase
 
         $this->assertTrue($after->value->isZero());
         $this->assertSame('25.00', (string) $variance);
-        $this->assertSame('15.00', (string) $after->averageCost);
+        $this->assertSame('15.0000', (string) $after->averageCost);
     }
 
     public function test_revaluation_books_the_value_difference(): void

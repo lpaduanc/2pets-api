@@ -63,8 +63,8 @@ class PurchaseLandedCostTest extends TestCase
 
         $this->postJson("/api/professional/purchases/{$purchaseId}/receive")->assertOk();
 
-        $this->assertStock($productA, '10.0000', '210.00', '21.00');
-        $this->assertStock($productB, '60.0000', '315.00', '5.25');
+        $this->assertStock($productA, '10.0000', '210.00', '21.0000');
+        $this->assertStock($productB, '60.0000', '315.00', '5.2500');
         $movement = StockMovement::where('product_id', $productB->id)->where('type', 'purchase_in')->sole();
         $this->assertSame('60.0000', $movement->quantity);
         $this->assertSame('315.00', $movement->total_cost);
@@ -85,10 +85,10 @@ class PurchaseLandedCostTest extends TestCase
         $this->postJson("/api/professional/purchases/{$purchaseId}/receive")->assertOk();
 
         // (200,00 + 126,00) / 34 = 9,588… → 9,59.
-        $this->assertStock($product, '34.0000', '326.00', '9.59');
+        $this->assertStock($product, '34.0000', '326.00', '9.5882');
 
         $this->postJson("/api/professional/purchases/{$purchaseId}/cancel", ['reason' => 'Nota errada'])->assertOk();
-        $this->assertStock($product, '10.0000', '200.00', '20.00');
+        $this->assertStock($product, '10.0000', '200.00', '20.0000');
         $this->assertLedgerMatches($product);
     }
 

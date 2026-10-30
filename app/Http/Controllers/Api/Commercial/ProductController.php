@@ -236,7 +236,9 @@ class ProductController extends Controller
             ->when($request->boolean('only_in_stock'), fn (Builder $q) => $q->where('controls_stock', true)->where('stock_quantity', '>', 0))
             ->when($request->boolean('expired'), fn (Builder $q) => $q->expired())
             ->when($request->boolean('low_stock'), fn (Builder $q) => $q->lowStock())
-            ->when($request->boolean('sellable_only'), fn (Builder $q) => $q->active()->where('purpose', 'resale'))
+            // Editor da ficha técnica (PLANO 1.3) acha só os insumos com `is_supply=1`.
+            ->when($request->has('is_supply'), fn (Builder $q) => $q->where('is_supply', $request->boolean('is_supply')))
+            ->when($request->boolean('sellable_only'), fn (Builder $q) => $q->active()->where('purpose', 'resale')->where('is_supply', false))
             ->when($request->has('is_active'), fn (Builder $q) => $q->where('is_active', $request->boolean('is_active')));
     }
 

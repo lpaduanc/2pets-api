@@ -32,7 +32,7 @@ class ProductBatch extends Model
         return [
             'expires_at' => 'date',
             'quantity' => 'decimal:4',
-            'unit_cost' => 'decimal:2',
+            'unit_cost' => 'decimal:4',
         ];
     }
 

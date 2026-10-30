@@ -27,6 +27,10 @@ enum ClientAccountEntryType: string
     case ADJUSTMENT_CREDIT = 'adjustment_credit';
     case PACKAGE_CREDIT = 'package_credit';
     case LOYALTY_CREDIT = 'loyalty_credit';
+    /** Devolução de venda em crédito para o cliente (`refund_method = store_credit`). */
+    case RETURN_CREDIT = 'return_credit';
+    /** Estorno do `SALE_DEBIT` quando a venda a prazo é cancelada (`direction = credit`). */
+    case SALE_DEBIT_REVERSAL = 'sale_debit_reversal';
 
     public function label(): string
     {
@@ -39,6 +43,8 @@ enum ClientAccountEntryType: string
             self::ADJUSTMENT_CREDIT => 'Ajuste (crédito)',
             self::PACKAGE_CREDIT => 'Crédito de pacote',
             self::LOYALTY_CREDIT => 'Crédito de fidelidade',
+            self::RETURN_CREDIT => 'Crédito de devolução',
+            self::SALE_DEBIT_REVERSAL => 'Estorno de venda a prazo',
         };
     }
 

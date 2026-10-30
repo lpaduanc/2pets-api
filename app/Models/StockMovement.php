@@ -47,7 +47,7 @@ class StockMovement extends Model
             'type' => StockMovementType::class,
             'direction' => StockDirection::class,
             'quantity' => 'decimal:4',
-            'unit_cost' => 'decimal:2',
+            'unit_cost' => 'decimal:4',
             'total_cost' => 'decimal:2',
             'balance_after' => 'decimal:4',
             'occurred_at' => 'datetime',

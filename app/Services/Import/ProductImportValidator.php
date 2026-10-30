@@ -4,7 +4,9 @@ namespace App\Services\Import;
 
 use App\Contracts\Import\ImportRowValidator;
 use App\Models\DataImport;
+use App\Services\Stock\StockValuation;
 use App\Support\Money\Decimal;
+use App\Support\Money\Money;
 use App\Support\Money\Quantity;
 use InvalidArgumentException;
 
@@ -34,7 +36,7 @@ final class ProductImportValidator implements ImportRowValidator
         }
 
         $price = $this->parseUnitValue($row['price'] ?? '', 'Preço', $errors);
-        $averageCost = $this->parseUnitValue($row['average_cost'] ?? '', 'Custo', $errors);
+        $averageCost = $this->parseUnitValue($row['average_cost'] ?? '', 'Custo', $errors, StockValuation::COST_SCALE);
         $markupPercent = $this->parseOptionalDecimal($row['markup_percent'] ?? '', 'Markup', $errors);
         if ($price === null && $markupPercent === null) {
             $errors[] = 'Informe o preço de venda ou um markup para calculá-lo a partir do custo.';
@@ -105,7 +107,7 @@ final class ProductImportValidator implements ImportRowValidator
      *
      * @param  list<string>  $errors
      */
-    private function parseUnitValue(string $rawValue, string $fieldLabel, array &$errors): ?string
+    private function parseUnitValue(string $rawValue, string $fieldLabel, array &$errors, int $maxScale = Money::SCALE): ?string
     {
         if (trim($rawValue) === '') {
             return null;
@@ -113,7 +115,7 @@ final class ProductImportValidator implements ImportRowValidator
 
         $value = $this->formatParser->parseDecimalString($rawValue);
 
-        if ($value === null || Decimal::of($value)->strippedOfTrailingZeros()->getScale() > 2) {
+        if ($value === null || Decimal::of($value)->strippedOfTrailingZeros()->getScale() > $maxScale) {
             $errors[] = "{$fieldLabel} inválido.";
 
             return null;

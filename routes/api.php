@@ -105,6 +105,7 @@ use App\Http\Controllers\Api\Reports\OperationalPanelController;
 use App\Http\Controllers\Api\Reports\OperationalPanelExportController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\ServiceSupplyController;
 use App\Http\Controllers\Api\Stock\PurchaseController;
 use App\Http\Controllers\Api\Stock\PurchaseOrderController;
 use App\Http\Controllers\Api\Stock\SaleReturnController;
@@ -717,7 +718,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
         Route::apiResource('invoices', InvoiceController::class);
 
-        // Services
+        // Services — ficha técnica de insumos e prévia de custo (PLANO 1.3) ANTES do apiResource.
+        Route::post('services/cost-preview', [ServiceSupplyController::class, 'preview']);
+        Route::get('services/{id}/supplies', [ServiceSupplyController::class, 'show']);
+        Route::put('services/{id}/supplies', [ServiceSupplyController::class, 'update']);
         Route::apiResource('services', ServiceController::class);
 
         // Sinal (pagamento parcial antecipado) do estabelecimento — Fase 6 do fluxo de
@@ -862,6 +866,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::apiResource('stock-counts', StockCountController::class)->except(['update']);
 
         Route::get('sale-returns/sale-lookup', [SaleReturnController::class, 'saleLookup']);
+        // Prévia da devolução: mesmo corpo do `POST sale-returns`, nada é gravado.
+        Route::post('sales/{sale}/returns/preview', [SaleReturnController::class, 'preview'])->whereNumber('sale');
         Route::apiResource('sale-returns', SaleReturnController::class)->only(['index', 'show', 'store']);
 
         Route::get('reports/stock-analysis', [StockReportController::class, 'analysis']);

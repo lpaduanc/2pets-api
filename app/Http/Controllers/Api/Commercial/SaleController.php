@@ -139,6 +139,8 @@ class SaleController extends Controller
         if ($type !== 'service') {
             $products = $this->scope->scopeQuery(Product::query(), $user)
                 ->active()
+                // Insumo de serviço (PLANO 1.3) é consumido pela ficha técnica, não vendido no balcão.
+                ->where('is_supply', false)
                 ->with('group:id,name')
                 ->when($term !== '', fn (Builder $q) => $q->where(fn (Builder $inner) => $inner
                     ->where('name', 'ilike', "%{$term}%")

@@ -40,6 +40,8 @@ class StoreProductRequest extends FormRequest
             'cest' => ['nullable', 'string', 'regex:/^\d{7}$/'],
             'unit_of_sale' => ['nullable', 'string', 'max:10'],
             'purpose' => ['nullable', Rule::enum(ProductPurpose::class)],
+            // Insumo de serviço (PLANO 1.3): fica fora do catálogo do PDV.
+            'is_supply' => ['sometimes', 'boolean'],
 
             'product_group_id' => ['nullable', 'integer', 'exists:product_groups,id'],
             'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
@@ -50,8 +52,8 @@ class StoreProductRequest extends FormRequest
             'immunization_product_id' => ['nullable', 'integer', 'exists:immunization_products,id'],
 
             'price' => ['required_without_all:markup_percent', 'nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
-            'average_cost' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
-            'last_cost' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
+            'average_cost' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],
+            'last_cost' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],
             'markup_percent' => ['nullable', 'numeric', 'min:-100', 'max:100000'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
 

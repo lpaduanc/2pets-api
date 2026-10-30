@@ -454,6 +454,7 @@ final class QuoteService
             ->map(fn ($line) => [$line->service, (float) $line->quantity, (float) $line->unit_price, null])
             ->concat($appointment->charges()->whereNotNull('service_id')->with('service')->get()
                 ->map(fn ($charge) => [$charge->service, (float) $charge->quantity, (float) $charge->unit_price, $charge->description]));
+        $appointmentId = $appointment->id;
 
         foreach ($lines as [$service, $quantity, $unitPrice, $description]) {
             if ($service === null) {
@@ -466,6 +467,9 @@ final class QuoteService
                 'quantity' => $quantity > 0 ? $quantity : 1,
                 'unit_price' => $unitPrice,
                 'description' => $description,
+                // Item nascido do agendamento: os insumos saem pela conclusão dele, não pela
+                // venda que a conversão criar (PLANO 1.3) — o vínculo segue na cópia dos itens.
+                'appointment_id' => $appointmentId,
             ];
 
             try {

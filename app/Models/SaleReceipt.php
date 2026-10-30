@@ -42,6 +42,8 @@ class SaleReceipt extends Model
         'fee_percent_applied',
         'fee_fixed_applied',
         'received_at',
+        // Estornado (cancelamento da venda; PLANO 2.3 depois) — chave de idempotência do estorno.
+        'reversed_at',
         'operator_fee',
         'net_amount',
         'expected_settlement_date',
@@ -64,6 +66,7 @@ class SaleReceipt extends Model
             'fee_percent_applied' => 'decimal:4',
             'fee_fixed_applied' => 'decimal:2',
             'received_at' => 'datetime',
+            'reversed_at' => 'datetime',
             'expected_settlement_date' => 'date',
         ];
     }

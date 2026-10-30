@@ -1,0 +1,149 @@
+{
+  "_doc": "Casos de referencia do custo do servico pela ficha tecnica de insumos (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.3). line_cost = quantidade x custo medio, 4 casas HALF_UP por linha; supplies_cost = soma das linhas; unit_cost = supplies_cost + direct_cost (4 casas); margin_amount = preco - unit_cost (2 casas HALF_UP); margin_percent = (preco - custo) / preco x 100 e markup_percent = (preco - custo) / custo x 100, 4 casas HALF_UP, null quando o denominador e zero. Copia byte a byte em 2pets-pro/tests/fixtures/golden/service-cost.json. Altere aqui e copie para la.",
+  "serviceCost": [
+    {
+      "id": "servico-01",
+      "_conta": "Banho porte P: shampoo 30 ml x 0,0800 = 2,4000; condicionador 20 ml x 0,1000 = 2,0000; 2 toalhas x 1,2500 = 2,5000; sem custo direto -> 6,9000. Preco 50,00: margem 43,10; 43,10 / 50 = 86,2000%; 43,10 / 6,90 = 624,6377%.",
+      "input": {
+        "price": "50.00",
+        "direct_cost": "0.00",
+        "items": [
+          { "product_id": 1, "quantity": "30", "average_cost": "0.08" },
+          { "product_id": 2, "quantity": "20", "average_cost": "0.10" },
+          { "product_id": 3, "quantity": "2", "average_cost": "1.25" }
+        ]
+      },
+      "expected": {
+        "items": [
+          { "product_id": 1, "unit_cost": "0.0800", "line_cost": "2.4000" },
+          { "product_id": 2, "unit_cost": "0.1000", "line_cost": "2.0000" },
+          { "product_id": 3, "unit_cost": "1.2500", "line_cost": "2.5000" }
+        ],
+        "supplies_cost": "6.9000",
+        "direct_cost": "0.00",
+        "unit_cost": "6.9000",
+        "price": "50.00",
+        "margin_amount": "43.10",
+        "margin_percent": "86.2000",
+        "markup_percent": "624.6377"
+      }
+    },
+    {
+      "id": "servico-custo-direto",
+      "_conta": "Mesma ficha do servico-01 com lavanderia terceirizada de 15,00 por execucao: 6,9000 + 15,00 = 21,9000. Preco 80,00: margem 58,10; 58,10 / 80 = 72,6250%; 58,10 / 21,90 = 265,2968036... -> 265,2968%.",
+      "input": {
+        "price": "80.00",
+        "direct_cost": "15.00",
+        "items": [
+          { "product_id": 1, "quantity": "30", "average_cost": "0.08" },
+          { "product_id": 2, "quantity": "20", "average_cost": "0.10" },
+          { "product_id": 3, "quantity": "2", "average_cost": "1.25" }
+        ]
+      },
+      "expected": {
+        "items": [
+          { "product_id": 1, "unit_cost": "0.0800", "line_cost": "2.4000" },
+          { "product_id": 2, "unit_cost": "0.1000", "line_cost": "2.0000" },
+          { "product_id": 3, "unit_cost": "1.2500", "line_cost": "2.5000" }
+        ],
+        "supplies_cost": "6.9000",
+        "direct_cost": "15.00",
+        "unit_cost": "21.9000",
+        "price": "80.00",
+        "margin_amount": "58.10",
+        "margin_percent": "72.6250",
+        "markup_percent": "265.2968"
+      }
+    },
+    {
+      "id": "servico-fracionado",
+      "_conta": "0,125 kg x 3,33 = 0,41625 -> 0,4163 (HALF_UP na linha); 0,333 L x 1,27 = 0,42291 -> 0,4229. Custo 0,8392 (soma das linhas ja arredondadas). Preco 10,00: margem 9,1608 -> 9,16; 9,1608 / 10 = 91,6080%; 9,1608 / 0,8392 = 1091,61105... -> 1091,6111%.",
+      "input": {
+        "price": "10.00",
+        "direct_cost": "0.00",
+        "items": [
+          { "product_id": 4, "quantity": "0.125", "average_cost": "3.33" },
+          { "product_id": 5, "quantity": "0.333", "average_cost": "1.27" }
+        ]
+      },
+      "expected": {
+        "items": [
+          { "product_id": 4, "unit_cost": "3.3300", "line_cost": "0.4163" },
+          { "product_id": 5, "unit_cost": "1.2700", "line_cost": "0.4229" }
+        ],
+        "supplies_cost": "0.8392",
+        "direct_cost": "0.00",
+        "unit_cost": "0.8392",
+        "price": "10.00",
+        "margin_amount": "9.16",
+        "margin_percent": "91.6080",
+        "markup_percent": "1091.6111"
+      }
+    },
+    {
+      "id": "servico-insumo-litro",
+      "_conta": "Shampoo comprado 1 L (1000 ml) por 83,33 -> custo medio 0,0833/ml (4 casas). 30 ml x 0,0833 = 2,4990. Preco 50,00: margem 47,501 -> 47,50; 47,501 / 50 = 95,0020%; 47,501 / 2,499 = 1900,80032... -> 1900,8003%.",
+      "input": {
+        "price": "50.00",
+        "direct_cost": "0.00",
+        "items": [
+          { "product_id": 6, "quantity": "30", "average_cost": "0.0833" }
+        ]
+      },
+      "expected": {
+        "items": [
+          { "product_id": 6, "unit_cost": "0.0833", "line_cost": "2.4990" }
+        ],
+        "supplies_cost": "2.4990",
+        "direct_cost": "0.00",
+        "unit_cost": "2.4990",
+        "price": "50.00",
+        "margin_amount": "47.50",
+        "margin_percent": "95.0020",
+        "markup_percent": "1900.8003"
+      }
+    },
+    {
+      "id": "servico-preco-zero",
+      "_conta": "Cortesia: shampoo 30 ml x 0,0800 = 2,4000, preco 0,00. Margem -2,40; margem% null (preco zero); markup -2,40 / 2,40 = -100,0000%.",
+      "input": {
+        "price": "0.00",
+        "direct_cost": "0.00",
+        "items": [
+          { "product_id": 1, "quantity": "30", "average_cost": "0.08" }
+        ]
+      },
+      "expected": {
+        "items": [
+          { "product_id": 1, "unit_cost": "0.0800", "line_cost": "2.4000" }
+        ],
+        "supplies_cost": "2.4000",
+        "direct_cost": "0.00",
+        "unit_cost": "2.4000",
+        "price": "0.00",
+        "margin_amount": "-2.40",
+        "margin_percent": null,
+        "markup_percent": "-100.0000"
+      }
+    },
+    {
+      "id": "servico-sem-custo",
+      "_conta": "Consulta sem ficha e sem custo direto: custo 0,0000. Preco 30,00: margem 30,00 = 100,0000%; markup null (custo zero).",
+      "input": {
+        "price": "30.00",
+        "direct_cost": "0.00",
+        "items": []
+      },
+      "expected": {
+        "items": [],
+        "supplies_cost": "0.0000",
+        "direct_cost": "0.00",
+        "unit_cost": "0.0000",
+        "price": "30.00",
+        "margin_amount": "30.00",
+        "margin_percent": "100.0000",
+        "markup_percent": null
+      }
+    }
+  ]
+}

@@ -6,6 +6,7 @@ use App\Enums\RefundMethod;
 use App\Enums\SaleKind;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Stock\PreviewSaleReturnRequest;
 use App\Http\Requests\Stock\StoreSaleReturnRequest;
 use App\Http\Resources\Stock\SaleReturnResource;
 use App\Models\Product;
@@ -66,6 +67,27 @@ class SaleReturnController extends Controller
             ->additional(['message' => 'Devolução registrada.'])
             ->response()
             ->setStatusCode(201);
+    }
+
+    /**
+     * Quanto a devolução reembolsaria, sem gravar nada — a mesma conta do `store`.
+     */
+    public function preview(PreviewSaleReturnRequest $request, int $sale): JsonResponse
+    {
+        $data = $request->validated();
+        $record = $this->scope->scopeQuery(Sale::query(), $request->user())->findOrFail($sale);
+        $refund = $this->returns->preview($record, $data['items'], RefundMethod::from($data['refund_method']));
+
+        return response()->json(['data' => [
+            'items_refund' => $refund['items_refund']->toString(),
+            'surcharge_refund' => $refund['surcharge_refund']->toString(),
+            'total_refund' => $refund['total_refund']->toString(),
+            'items' => array_map(fn (array $line): array => [
+                'sale_item_id' => $line['item']->id,
+                'quantity' => $line['quantity']->toString(),
+                'refund_amount' => $line['refund']->toString(),
+            ], $refund['lines']),
+        ]]);
     }
 
     /**

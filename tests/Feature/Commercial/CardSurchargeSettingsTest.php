@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Commercial;
 
+use App\Enums\FinancialNature;
 use App\Models\CashRegisterMovement;
+use App\Models\FinancialEntry;
 use App\Models\FiscalDocument;
 use App\Models\PaymentMethod;
 use App\Models\Sale;
@@ -166,6 +168,71 @@ class CardSurchargeSettingsTest extends TestCase
         $sale = Sale::findOrFail($saleId);
         $this->assertSame('3.09', Money::sum(SaleReturn::where('sale_id', $saleId)->pluck('surcharge_refund'))->toString());
         $this->assertSame($sale->total, Money::sum(SaleReturn::where('sale_id', $saleId)->pluck('total'))->toString());
+    }
+
+    public function test_cash_return_books_items_and_surcharge_refund_in_the_financial_and_preview_matches(): void
+    {
+        $this->clinic->update(['card_surcharge_return_policy' => 'proportional']);
+        [$saleId, $product, $service] = $this->paidSaleForReturns();
+        $body = ['refund_method' => 'cash', 'items' => [['sale_item_id' => $product, 'quantity' => 1]]];
+
+        $this->actingAs($this->receptionist, 'sanctum')
+            ->postJson("/api/professional/sales/{$saleId}/returns/preview", $body)
+            ->assertOk()
+            ->assertExactJson(['data' => [
+                'items_refund' => '10.00', 'surcharge_refund' => '0.31', 'total_refund' => '10.31',
+                'items' => [['sale_item_id' => $product, 'quantity' => '1.0000', 'refund_amount' => '10.00']],
+            ]]);
+        $this->assertSame(0, SaleReturn::count());
+
+        $first = $this->returnItems($saleId, [[$product, 1]])->json('data.id');
+        $this->returnItems($saleId, [[$product, 2], [$service, 1]]);
+
+        $entries = FinancialEntry::where('reference_type', 'sale_return')->with('category')->orderBy('id')->get();
+        $this->assertSame(
+            [[$first, 'Devoluções de vendas', '10.00'], [$first, 'Estorno de acréscimo de parcelamento', '0.31']],
+            $entries->take(2)->map(fn (FinancialEntry $entry): array => [$entry->reference_id, $entry->category->name, $entry->amount])->all(),
+        );
+        $this->assertTrue($entries->every(fn (FinancialEntry $entry): bool => $entry->nature === FinancialNature::EXPENSE
+            && $entry->accrual_date->toDateString() === '2026-10-01' && $entry->payment_method_id === $this->credit->id));
+        // Σ saídas = Σ devoluções = total pago (itens + acréscimo), ao centavo.
+        $sale = Sale::findOrFail($saleId);
+        $this->assertSame($sale->total, Money::sum($entries->pluck('amount'))->toString());
+        $this->assertSame('3.09', Money::sum($entries->filter(fn (FinancialEntry $entry): bool => $entry->category->name === 'Estorno de acréscimo de parcelamento')->pluck('amount'))->toString());
+    }
+
+    public function test_cancelling_a_card_sale_reverses_revenue_with_surcharge_and_pending_receivables(): void
+    {
+        [$saleId] = $this->paidSaleForReturns();
+        $original = FinancialEntry::where('reference_type', 'sale')->where('reference_id', $saleId)->with('category')->get();
+        $this->assertContains('Acréscimo de parcelamento', $original->pluck('category.name')->all());
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->postJson("/api/professional/sales/{$saleId}/cancel", ['reason' => 'Cobrado errado'])->assertOk();
+
+        $reversals = FinancialEntry::where('reference_type', 'sale_cancellation')->where('reference_id', $saleId)->get();
+        $this->assertCount($original->count(), $reversals);
+        foreach ($original as $entry) {
+            $this->assertSame('0.00', Money::sum($reversals->where('financial_category_id', $entry->financial_category_id)->pluck('amount')->push($entry->amount))->toString());
+        }
+        $this->assertSame(0, \App\Models\Receivable::whereIn('sale_receipt_id', \App\Models\SaleReceipt::where('sale_id', $saleId)->select('id'))->pending()->count());
+        $this->assertNotNull(\App\Models\SaleReceipt::where('sale_id', $saleId)->sole()->reversed_at);
+    }
+
+    public function test_cancel_is_refused_when_the_acquirer_already_settled_a_receivable(): void
+    {
+        [$saleId] = $this->paidSaleForReturns();
+        \App\Models\Receivable::whereIn('sale_receipt_id', \App\Models\SaleReceipt::where('sale_id', $saleId)->select('id'))->update(['status' => 'settled']);
+
+        $message = $this->actingAs($this->owner, 'sanctum')
+            ->postJson("/api/professional/sales/{$saleId}/cancel", ['reason' => 'Cobrado errado'])
+            ->assertUnprocessable()
+            ->json('message');
+        $this->assertStringContainsString('já foi pago ou antecipado pela adquirente', $message);
+
+        $this->assertSame('paid', Sale::findOrFail($saleId)->status->value);
+        $this->assertSame(0, FinancialEntry::where('reference_type', 'sale_cancellation')->count());
+        $this->assertNull(\App\Models\SaleReceipt::where('sale_id', $saleId)->sole()->reversed_at);
     }
 
     public function test_proportional_policy_with_decimal_quantity(): void

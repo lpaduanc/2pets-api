@@ -29,6 +29,8 @@ class UpdateServiceRequest extends FormRequest
             'category' => ['sometimes', 'required', Rule::enum(ServiceCategory::class)],
             'duration' => ['sometimes', 'required', 'integer'],
             'price' => ['sometimes', 'required', 'numeric'],
+            // Custo direto por execução (PLANO 1.3), R$ 2 casas — mais casas é recusado, não arredondado.
+            'direct_cost' => ['nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999999.99'],
             'active' => ['boolean'],
 
             'code' => ['nullable', 'string', 'max:60'],

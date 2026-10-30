@@ -51,7 +51,7 @@ class PurchaseItem extends Model
         return [
             'purpose' => ProductPurpose::class,
             'quantity' => 'decimal:4',
-            'unit_cost' => 'decimal:2',
+            'unit_cost' => 'decimal:4',
             'discount' => 'decimal:2',
             'freight_share' => 'decimal:2',
             'insurance_share' => 'decimal:2',

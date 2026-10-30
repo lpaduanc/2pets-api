@@ -2,31 +2,25 @@
 
 namespace App\Services\Stock;
 
-use App\Enums\CashMovementType;
 use App\Enums\RefundMethod;
-use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
 use App\Models\User;
-use App\Services\Commercial\Card\CardSurchargePolicy;
-use App\Services\Commercial\CashRegisterService;
+use App\Services\Commercial\ServiceCost\ServiceSupplyConsumer;
 use App\Support\Money\Money;
 use App\Support\Money\Quantity;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Devolução de venda — docs/gap-simplesvet/07. Estorna o estoque (`return_in`) e o dinheiro.
+ * Devolução de venda — docs/gap-simplesvet/07. Estorna o estoque (`return_in`) e o dinheiro. O
+ * valor de cada linha vem do `SaleReturnRefundCalculator`, o mesmo da prévia.
  *
- * Efeito financeiro por forma de reembolso:
- *  - `cash`: movimento `refund` no caixa ABERTO da venda (se não houver caixa aberto, a
- *    devolução fica registrada e o estorno de dinheiro sai por fora — mesmo comportamento do
- *    `SaleService::cancel`);
- *  - `store_credit`: crédito na conta corrente do cliente (doc 11). Esse livro ainda não
- *    existe; a devolução fica registrada com o valor e o doc 11 a consome quando entrar;
- *  - `none`: troca — só estoque.
+ * Para onde vai o dinheiro (caixa, financeiro, conta corrente do cliente) é do
+ * `SaleReturnRefundEffects`.
  *
  * Acréscimo de repasse da taxa do cartão (PLANO 1.1): `keep` nunca o devolve; `proportional`
  * devolve a parte dos itens devolvidos, somada ao `total` e registrada em `surcharge_refund`.
@@ -35,18 +29,18 @@ final class SaleReturnService
 {
     public function __construct(
         private readonly StockService $stock,
-        private readonly CashRegisterService $cashRegisters,
+        private readonly ServiceSupplyConsumer $serviceSupplies,
+        private readonly SaleReturnRefundCalculator $refunds,
+        private readonly SaleReturnRefundEffects $refundEffects,
     ) {}
 
     /**
-     * @param  array<int, array{sale_item_id: int, quantity: int}>  $items
+     * @param  array<int, array{sale_item_id: int, quantity: int|float|string}>  $items
      */
     public function create(Sale $sale, User $user, array $items, RefundMethod $refundMethod, string $reason): SaleReturn
     {
-        abort_unless($sale->status === SaleStatus::PAID, 422, 'Só venda paga pode ter devolução.');
-        abort_if($refundMethod === RefundMethod::STORE_CREDIT && $sale->client_id === null, 422, 'Venda sem cliente identificado não pode gerar crédito.');
-
         return DB::transaction(function () use ($sale, $user, $items, $refundMethod, $reason): SaleReturn {
+            $refund = $this->refunds->calculate($sale, $items, $refundMethod);
             $return = SaleReturn::create([
                 'organization_id' => $sale->organization_id,
                 'professional_id' => $sale->professional_id,
@@ -56,123 +50,71 @@ final class SaleReturnService
                 'user_id' => $user->id,
             ]);
 
-            $total = Money::zero();
-            $saleItems = $sale->items()->with('sellable')->get()->keyBy('id');
-            // O que o cliente PAGOU por linha: total da linha menos a parte dela no desconto do
-            // cabeçalho (rateio pelo maior resto). Devolver pelo total da linha devolveria o
-            // desconto junto — 10% sobre R$ 100 pagos R$ 90 e devolvidos R$ 100.
-            $paidPerItem = $sale->setRelation('items', $saleItems->values())->netItemTotals();
-            $surchargePerItem = $this->surchargePerItem($sale, $paidPerItem);
-            $surchargeRefund = Money::zero();
-
-            foreach ($items as $entry) {
-                $saleItem = $saleItems->get((int) $entry['sale_item_id']);
-                abort_if($saleItem === null, 422, 'Item não pertence a esta venda.');
-
-                $quantity = Quantity::of($entry['quantity']);
-                $returned = $this->returnedQuantity($saleItem->id);
-                $available = Quantity::of($saleItem->quantity)->minus($returned);
-                abort_if(! $quantity->isPositive() || $quantity->isGreaterThan($available), 422, sprintf(
-                    'Quantidade inválida para "%s": %s disponível(is) para devolução.',
-                    $saleItem->description,
-                    $available->max(0)->toBigDecimal()->strippedOfTrailingZeros()
-                ));
-
-                abort_if(
-                    $saleItem->sellable instanceof Product && ! $saleItem->sellable->acceptsQuantity($quantity),
-                    422,
-                    sprintf('"%s" é vendido em unidades inteiras.', $saleItem->description)
-                );
-
-                // Valor pelo rateio acumulado da linha (já com o desconto do item), não o de tabela.
-                $lineTotal = $saleItem->refundFor($returned, $quantity, $paidPerItem[$saleItem->id]);
-                $total = $total->plus($lineTotal);
-                // Mesmo rateio acumulado da linha, sobre a parte dela no acréscimo: devoluções
-                // sucessivas nunca passam do acréscimo cobrado e devolver tudo zera exatamente.
-                $surchargeRefund = $surchargeRefund->plus($saleItem->refundFor($returned, $quantity, $surchargePerItem[$saleItem->id]));
-
-                $productBack = $saleItem->sellable instanceof Product
-                    ? SaleReturnItem::returnedForProduct($sale->id, $saleItem->sellable->getKey())
-                    : Quantity::zero();
-
-                SaleReturnItem::create([
-                    'sale_return_id' => $return->id,
-                    'sale_item_id' => $saleItem->id,
-                    'quantity' => $quantity->toString(),
-                    'unit_price' => $saleItem->netUnitPrice(),
-                    'total' => $lineTotal->toString(),
-                ]);
-
-                if ($saleItem->movesStock() && $saleItem->sellable instanceof Product) {
-                    // Volta com o valor que saiu na venda (rateio acumulado por produto).
-                    $this->stock->in($saleItem->sellable, StockMovementType::RETURN_IN, $quantity, [
-                        'unit_cost' => $saleItem->unit_cost,
-                        'total_cost' => $this->stock->returningValue($saleItem->sellable, $sale, StockMovementType::SALE_OUT, $productBack, $quantity),
-                        'reference' => $return,
-                        'user' => $user,
-                        'notes' => 'Devolução da venda '.($sale->number ?? $sale->id),
-                    ]);
-                }
+            foreach ($refund['lines'] as $line) {
+                $this->returnLine($sale, $return, $user, $line);
             }
 
             // O acréscimo devolvido entra no total (é o que sai do caixa) e fica também à parte,
             // para a tela e o financeiro saberem quanto dele voltou.
             $return->update([
-                'total' => $total->plus($surchargeRefund)->toString(),
-                'surcharge_refund' => $surchargeRefund->toString(),
+                'total' => $refund['total_refund']->toString(),
+                'surcharge_refund' => $refund['surcharge_refund']->toString(),
             ]);
 
-            if ($refundMethod === RefundMethod::CASH) {
-                $this->refundInCash($sale, $return, $user);
-            }
+            $this->refundEffects->apply($sale, $return, $refundMethod, $refund['items_refund'], $refund['surcharge_refund'], $user);
 
             return $return->load('items.saleItem', 'sale', 'user');
         });
     }
 
     /**
-     * Parte de cada linha no acréscimo de repasse da taxa (PLANO 1.1), rateado pelo maior resto
-     * sobre o que o cliente pagou por linha. Política lida AGORA (`CardSurchargePolicy`): em
-     * `keep` (padrão) toda parte é zero e nada do acréscimo volta.
+     * Mesma conta e mesmas validações do `create`, sem gravar nada.
      *
-     * @param  array<int, Money>  $paidPerItem
-     * @return array<int, Money>
+     * @param  array<int, array{sale_item_id: int, quantity: int|float|string}>  $items
+     * @return array{lines: list<array{item: SaleItem, quantity: Quantity, returned_before: Quantity, refund: Money, surcharge: Money}>, items_refund: Money, surcharge_refund: Money, total_refund: Money}
      */
-    private function surchargePerItem(Sale $sale, array $paidPerItem): array
+    public function preview(Sale $sale, array $items, RefundMethod $refundMethod): array
     {
-        $surcharge = Money::of($sale->surcharge_amount ?? '0');
-
-        if ($paidPerItem === [] || $surcharge->isZero() || ! CardSurchargePolicy::forSale($sale)->refundsProportionally()) {
-            return array_map(fn (): Money => Money::zero(), $paidPerItem);
-        }
-
-        return $surcharge->allocate($paidPerItem);
+        return $this->refunds->calculate($sale, $items, $refundMethod);
     }
 
     public function returnedQuantity(int $saleItemId): Quantity
     {
-        return Quantity::of(SaleReturnItem::query()->where('sale_item_id', $saleItemId)->sum('quantity'));
+        return $this->refunds->returnedQuantity($saleItemId);
     }
 
-    private function refundInCash(Sale $sale, SaleReturn $return, User $user): void
+    /** @param  array{item: SaleItem, quantity: Quantity, returned_before: Quantity, refund: Money, surcharge: Money}  $line */
+    private function returnLine(Sale $sale, SaleReturn $return, User $user, array $line): void
     {
-        $register = $sale->cashRegister;
+        $saleItem = $line['item'];
+        $quantity = $line['quantity'];
+        // Lido ANTES de gravar a linha desta devolução: é o que já tinha voltado deste produto.
+        $productBack = $saleItem->sellable instanceof Product
+            ? SaleReturnItem::returnedForProduct($sale->id, $saleItem->sellable->getKey())
+            : Quantity::zero();
 
-        if ($register === null || ! $register->isOpen() || (float) $return->total <= 0) {
-            return;
+        SaleReturnItem::create([
+            'sale_return_id' => $return->id,
+            'sale_item_id' => $saleItem->id,
+            'quantity' => $quantity->toString(),
+            'unit_price' => $saleItem->netUnitPrice(),
+            'total' => $line['refund']->toString(),
+        ]);
+
+        $notes = 'Devolução da venda '.($sale->number ?? $sale->id);
+
+        if ($saleItem->movesStock() && $saleItem->sellable instanceof Product) {
+            // Volta com o valor que saiu na venda (rateio acumulado por produto).
+            $this->stock->in($saleItem->sellable, StockMovementType::RETURN_IN, $quantity, [
+                'unit_cost' => $saleItem->unit_cost,
+                'total_cost' => $this->stock->returningValue($saleItem->sellable, $sale, StockMovementType::SALE_OUT, $productBack, $quantity),
+                'reference' => $return,
+                'user' => $user,
+                'notes' => $notes,
+            ]);
         }
 
-        $receipt = $sale->receipts()->first();
-
-        $this->cashRegisters->recordMovement(
-            $register,
-            CashMovementType::REFUND,
-            (float) $return->total,
-            'Devolução da venda '.($sale->number ?? $sale->id),
-            $user,
-            $receipt?->payment_method_id,
-            $receipt?->account_id,
-            $return,
-        );
+        // Serviço devolvido: os insumos da parte devolvida voltam (PLANO 1.3).
+        $this->serviceSupplies->reverseForSaleItem($saleItem, $line['returned_before']->plus($quantity), ['user' => $user, 'notes' => $notes]);
     }
 }

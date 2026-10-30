@@ -23,6 +23,7 @@ class SaleItemResource extends JsonResource
             // expor a classe seria dar pista de estrutura interna sem ganho nenhum.
             'sellable_type' => $this->sellable_type === null ? null : mb_strtolower(class_basename($this->sellable_type)),
             'sellable_id' => $this->sellable_id,
+            'appointment_id' => $this->appointment_id,
             'description' => $this->description,
             'quantity' => $this->quantity,
             // Casas que a quantidade aceita (docs/gap-petflow 0.2): granel mostra campo decimal no

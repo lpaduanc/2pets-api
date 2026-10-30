@@ -11,7 +11,7 @@ use Brick\Math\BigDecimal;
  * Posição de estoque de um produto: saldo, valor do estoque em centavos e custo médio.
  *
  * O VALOR é a fonte da verdade (`products.stock_value`, 2 casas); o custo médio (`average_cost`,
- * 2 casas) é derivado dele, para exibir e precificar. Guardar só o médio e recalcular o valor como
+ * 4 casas, arredondado uma vez HALF_UP) é derivado dele, para exibir e precificar. Guardar só o médio e recalcular o valor como
  * `saldo × médio` erraria um centavo aqui e outro ali a cada movimento — e o custo das vendas
  * deixaria de bater com o que foi comprado. Aqui, o que entra de valor sai inteiro: cada saída tira
  * centavos do valor, e zerou o estoque, o valor é zero exato.
@@ -20,7 +20,8 @@ final readonly class StockValuation
 {
     public const VALUE_SCALE = 2;
 
-    public const COST_SCALE = 2;
+    /** Custo unitário (médio, de entrada, do movimento): 4 casas — PLANO seção 3, item 2. */
+    public const COST_SCALE = 4;
 
     public function __construct(
         public Quantity $quantity,

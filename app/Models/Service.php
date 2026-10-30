@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Contracts\Sellable;
+use App\Services\Commercial\ServiceCost\ServiceCostCalculator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -30,6 +32,8 @@ class Service extends Model implements Sellable
         'product_group_id',
         'duration',
         'price',
+        // Custo fixo por execução fora do estoque (terceiro, lavanderia) — PLANO 1.3.
+        'direct_cost',
         'commission_percent',
         'municipal_service_code',
         'lc116_code',
@@ -49,6 +53,7 @@ class Service extends Model implements Sellable
     protected $casts = [
         'duration' => 'integer',
         'price' => 'decimal:2',
+        'direct_cost' => 'decimal:2',
         'commission_percent' => 'decimal:4',
         'show_in_price_list' => 'boolean',
         'allow_price_override' => 'boolean',
@@ -75,6 +80,12 @@ class Service extends Model implements Sellable
     public function serviceArea(): BelongsTo
     {
         return $this->belongsTo(ServiceArea::class);
+    }
+
+    /** Ficha técnica de insumos (PLANO 1.3). */
+    public function supplies(): HasMany
+    {
+        return $this->hasMany(ServiceSupply::class);
     }
 
     public function saleItems(): MorphMany
@@ -113,13 +124,32 @@ class Service extends Model implements Sellable
     }
 
     /**
-     * Serviço não tem custo de aquisição no cadastro. A base de comissão `margin` (doc 09)
-     * aplicada a serviço equivale a `gross` — e é essa a leitura correta: a margem de um
-     * serviço é o próprio preço, já que o custo dele é mão de obra, não mercadoria.
+     * Custo de uma execução = Σ(insumo da ficha × custo médio) + custo direto, 4 casas
+     * (docs/gap-petflow/PLANO.md, 1.3). É o valor congelado em `sale_items.unit_cost` e a base
+     * de comissão `margin` (doc 09). Mesma conta da prévia e do `GET services/{id}/supplies`
+     * (`ServiceCostCalculator`); o custo médio é o VIGENTE, por isso só vale como snapshot.
      */
     public function unitCost(): string
     {
-        return '0';
+        return (new ServiceCostCalculator)->calculate($this->price, $this->direct_cost, $this->costLines())['unit_cost'];
+    }
+
+    /**
+     * Linhas da ficha no formato do `ServiceCostCalculator`.
+     *
+     * @return list<array{product_id: int, quantity: string, average_cost: string|null}>
+     */
+    public function costLines(): array
+    {
+        // Sem `loadMissing`: o serviço vai serializado em outras respostas (item de venda) e não
+        // deve passar a carregar a ficha junto só porque o custo foi lido.
+        $supplies = $this->relationLoaded('supplies') ? $this->supplies : $this->supplies()->with('product')->get();
+
+        return $supplies->map(fn (ServiceSupply $supply): array => [
+            'product_id' => $supply->product_id,
+            'quantity' => (string) $supply->quantity,
+            'average_cost' => $supply->product?->average_cost,
+        ])->values()->all();
     }
 
     public function appearsInPriceList(): bool

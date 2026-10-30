@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Commercial;
 
+use App\Rules\ScopedAppointmentExists;
+use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,7 +28,7 @@ class StoreSaleItemRequest extends FormRequest
     /**
      * @return array<string, mixed>
      */
-    public function rules(): array
+    public function rules(CommercialScopeResolver $scope): array
     {
         return [
             // `package` (doc 10) chegou depois deste Form Request — sem ele, `SaleService::
@@ -39,6 +41,9 @@ class StoreSaleItemRequest extends FormRequest
             'discount' => ['nullable', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
             'staff_id' => ['nullable', 'integer', 'exists:organization_members,id'],
             'description' => ['nullable', 'string', 'max:255'],
+            // Serviço executado num agendamento (PLANO 1.3): os insumos saem pela conclusão do
+            // agendamento, nunca pela venda. Só item de serviço carrega o vínculo.
+            'appointment_id' => ['nullable', 'integer', 'prohibited_unless:sellable_type,service', new ScopedAppointmentExists($this->user(), $scope)],
         ];
     }
 

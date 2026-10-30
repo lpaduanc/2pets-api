@@ -22,8 +22,8 @@ use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\PricingService;
 use App\Services\Finance\PurchaseFinancialEntryRecorder;
 use App\Services\Stock\StockService;
+use App\Services\Stock\StockValuation;
 use App\Support\Money\Decimal;
-use App\Support\Money\Money;
 use App\Support\Money\Quantity;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -242,9 +242,9 @@ final class PurchaseService
         // Produto que NÃO controla estoque não passa pelo livro, mas o custo da compra
         // continua sendo o custo dele.
         if (! $product->controls_stock) {
-            // Custo do produto tem 2 casas (regra de dinheiro); o da compra, 4.
-            $changes['last_cost'] = Money::of($unitCost)->toString();
-            $changes['average_cost'] = Money::of($unitCost)->toString();
+            // Custo unitário com 4 casas, como o da compra (PLANO seção 3, item 2).
+            $changes['last_cost'] = (string) Decimal::round($unitCost, StockValuation::COST_SCALE);
+            $changes['average_cost'] = (string) Decimal::round($unitCost, StockValuation::COST_SCALE);
         }
 
         if ($item->applied_sale_price !== null) {
@@ -415,7 +415,7 @@ final class PurchaseService
             'quantity' => Quantity::of($data['quantity'])->toString(),
             'unit' => $data['unit'] ?? $product->unit_of_sale,
             'purchase_unit' => $data['purchase_unit'] ?? null,
-            // Custo e preço como digitados (2 casas, `StorePurchaseRequest` recusa mais).
+            // Custo (até 4 casas) e preço (2) como digitados — `StorePurchaseRequest` recusa mais.
             'unit_cost' => (string) Decimal::of($data['unit_cost']),
             'markup_percent' => $markup,
             'suggested_price' => $suggested,
@@ -476,9 +476,8 @@ final class PurchaseService
         $new = array_filter($new, fn ($value): bool => $value !== null);
 
         $unitOfSale = $data['unit'] ?? 'UN';
-        // Custo real (com frete, IPI, ST) por unidade de estoque, em 2 casas como todo custo
-        // de produto.
-        $unitCost = Money::of($landedUnitCost)->toString();
+        // Custo real (com frete, IPI, ST) por unidade de estoque, 4 casas como todo custo unitário.
+        $unitCost = (string) Decimal::round($landedUnitCost, StockValuation::COST_SCALE);
         $attributes = $new + [
             'average_cost' => 0,
             'last_cost' => $unitCost,

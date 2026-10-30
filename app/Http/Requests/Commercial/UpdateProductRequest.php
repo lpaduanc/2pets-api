@@ -34,6 +34,7 @@ class UpdateProductRequest extends FormRequest
             'cest' => ['sometimes', 'nullable', 'string', 'regex:/^\d{7}$/'],
             'unit_of_sale' => ['sometimes', 'string', 'max:10'],
             'purpose' => ['sometimes', Rule::enum(ProductPurpose::class)],
+            'is_supply' => ['sometimes', 'boolean'],
 
             'product_group_id' => ['sometimes', 'nullable', 'integer', 'exists:product_groups,id'],
             'brand_id' => ['sometimes', 'nullable', 'integer', 'exists:brands,id'],
@@ -41,8 +42,8 @@ class UpdateProductRequest extends FormRequest
             'immunization_product_id' => ['sometimes', 'nullable', 'integer', 'exists:immunization_products,id'],
 
             'price' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0', 'max:9999999.99'],
-            'average_cost' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0'],
-            'last_cost' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0'],
+            'average_cost' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0'],
+            'last_cost' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0'],
             'markup_percent' => ['sometimes', 'nullable', 'numeric', 'min:-100', 'max:100000'],
             'commission_percent' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100'],
 

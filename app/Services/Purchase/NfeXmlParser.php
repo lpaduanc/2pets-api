@@ -2,6 +2,7 @@
 
 namespace App\Services\Purchase;
 
+use App\Services\Stock\StockValuation;
 use App\Support\Money\Decimal;
 use App\Support\Money\Money;
 use App\Support\Money\Quantity;
@@ -84,7 +85,7 @@ final class NfeXmlParser
             $gtin = $this->text($prod->cEAN);
             // Texto exato da nota (float perderia fração). `qCom` tem até 4 casas; o valor que
             // vale é o da LINHA (`vProd`, centavos) — o `vUnCom` pode ter até 10 casas e só vira o
-            // custo unitário de 2 casas para exibir.
+            // custo unitário de 4 casas (PLANO seção 3, item 2).
             $quantity = Quantity::of($this->text($prod->qCom) ?? '0');
             $gross = Money::of($this->text($prod->vProd) ?? '0');
             $discount = Money::of($this->text($prod->vDesc) ?? '0');
@@ -103,7 +104,7 @@ final class NfeXmlParser
                 // casas decimais (`decimal_places_allowed`) para receber este item.
                 'quantity' => $quantity->toString(),
                 'fractional_quantity' => $quantity->decimalPlaces() > 0,
-                'unit_cost' => Money::of($this->text($prod->vUnCom) ?? '0')->toString(),
+                'unit_cost' => (string) Decimal::round($this->text($prod->vUnCom) ?? '0', StockValuation::COST_SCALE),
                 // A compra grava ESTE valor como bruto da linha, não quantidade × custo de 2
                 // casas — que poderia diferir do total da nota em centavos.
                 'gross_total' => $gross->toString(),

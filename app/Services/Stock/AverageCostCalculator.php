@@ -25,8 +25,9 @@ use Brick\Math\RoundingMode;
  * - Reversão de compra tira o valor com que a compra entrou; se as unidades já foram vendidas
  *   (sobra pouco valor), a diferença também vira ajuste de custo.
  *
- * Todo valor é centavo (regra do dono do produto: 2 casas). Proporção e quantidade × médio viram
- * centavo uma vez, `HALF_UP`; soma e subtração de centavos são exatas — e é por isso que a
+ * Todo valor é centavo (regra do dono do produto: 2 casas); o custo médio tem 4 casas (PLANO
+ * seção 3, item 2) e é sempre derivado valor ÷ saldo, uma vez, `HALF_UP` — nunca acumulado.
+ * Proporção e quantidade × médio viram centavo uma vez, `HALF_UP`; soma e subtração de centavos são exatas — e é por isso que a
  * invariante fecha: o que sai é subtraído do que ficou, nunca recalculado.
  */
 final class AverageCostCalculator
@@ -141,7 +142,7 @@ final class AverageCostCalculator
         return $dividend->dividedBy($divisor, $scale, RoundingMode::HalfUp);
     }
 
-    /** Valor vira centavo uma vez: quantidade (4 casas) × médio (2) pode ter até 6. */
+    /** Valor vira centavo uma vez: quantidade (4 casas) × médio (4) pode ter até 8. */
     private static function scaled(BigDecimal $value): BigDecimal
     {
         return $value->toScale(StockValuation::VALUE_SCALE, RoundingMode::HalfUp);

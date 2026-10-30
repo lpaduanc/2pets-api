@@ -59,6 +59,8 @@ class Product extends Model implements Sellable
         'unit_of_sale',
         'decimal_places_allowed',
         'purpose',
+        // Insumo de serviço (PLANO 1.3): fora do catálogo do PDV, dentro do estoque.
+        'is_supply',
         'price',
         'average_cost',
         'last_cost',
@@ -88,8 +90,9 @@ class Product extends Model implements Sellable
         return [
             'purpose' => ProductPurpose::class,
             'price' => 'decimal:2',
-            'average_cost' => 'decimal:2',
-            'last_cost' => 'decimal:2',
+            // Custo unitário com 4 casas (PLANO seção 3, item 2); valor do estoque em centavos.
+            'average_cost' => 'decimal:4',
+            'last_cost' => 'decimal:4',
             'stock_value' => 'decimal:2',
             'decimal_places_allowed' => 'integer',
             'markup_percent' => 'decimal:4',
@@ -105,6 +108,7 @@ class Product extends Model implements Sellable
             'controls_stock' => 'boolean',
             'track_batches' => 'boolean',
             'is_active' => 'boolean',
+            'is_supply' => 'boolean',
             'images' => 'array',
         ];
     }

@@ -34,6 +34,8 @@ class SaleItem extends Model
         'sale_id',
         'sellable_type',
         'sellable_id',
+        // Agendamento que executou o serviço (PLANO 1.3) — a baixa de insumo é dele, não da venda.
+        'appointment_id',
         'description',
         'staff_id',
         'quantity',
@@ -52,7 +54,7 @@ class SaleItem extends Model
         return [
             'quantity' => 'decimal:4',
             'unit_price' => 'decimal:2',
-            'unit_cost' => 'decimal:2',
+            'unit_cost' => 'decimal:4',
             'discount' => 'decimal:2',
             'total' => 'decimal:2',
             'commission_percent' => 'decimal:4',
@@ -118,7 +120,7 @@ class SaleItem extends Model
             return '0';
         }
 
-        return (string) $this->totalMoney()->toBigDecimal()->dividedBy($quantity, StockValuation::COST_SCALE, RoundingMode::HalfUp);
+        return (string) $this->totalMoney()->toBigDecimal()->dividedBy($quantity, Money::SCALE, RoundingMode::HalfUp);
     }
 
     /**

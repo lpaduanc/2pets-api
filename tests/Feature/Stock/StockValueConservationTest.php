@@ -41,7 +41,7 @@ class StockValueConservationTest extends TestCase
         $product->refresh();
         $this->assertSame('2.0000', $product->stock_quantity);
         $this->assertSame('40.00', $product->stock_value);
-        $this->assertSame('20.00', $product->average_cost);
+        $this->assertSame('20.0000', $product->average_cost);
         $this->assertValueConserved($product);
     }
 

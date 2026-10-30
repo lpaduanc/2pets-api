@@ -13,6 +13,7 @@ use App\Listeners\SendAppointmentDepositNotification;
 use App\Listeners\SendAppointmentNotification;
 use App\Listeners\SendReviewInviteNotification;
 use App\Listeners\SendReviewNotification;
+use App\Models\Appointment;
 use App\Models\Breed;
 use App\Models\DietaryRestriction;
 use App\Models\FoodAllergy;
@@ -24,6 +25,7 @@ use App\Models\Professional;
 use App\Models\Service;
 use App\Models\Specialty;
 use App\Models\User;
+use App\Observers\AppointmentSupplyConsumptionObserver;
 use App\Observers\Organization\OrganizationMemberRoleReconciliationObserver;
 use App\Observers\Organization\TeamSpecialtyMembershipObserver;
 use App\Observers\Organization\TeamSpecialtyProfessionalObserver;
@@ -168,6 +170,9 @@ class AppServiceProvider extends ServiceProvider
         // write path lembrar de chamar `UserRoleReconciler` manualmente (ver docblock do
         // observer).
         OrganizationMember::observe(OrganizationMemberRoleReconciliationObserver::class);
+
+        // PLANO 1.3 — baixa dos insumos do serviço quando o agendamento é concluído.
+        Appointment::observe(AppointmentSupplyConsumptionObserver::class);
     }
 
     /**

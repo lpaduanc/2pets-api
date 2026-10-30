@@ -109,7 +109,7 @@ class StorePurchaseRequest extends FormRequest
 
             'items' => ['required', 'array', 'min:1', 'max:500'],
             'items.*.quantity' => ['required', 'numeric', 'decimal:0,4', 'gt:0'],
-            'items.*.unit_cost' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
+            'items.*.unit_cost' => ['required', 'numeric', 'decimal:0,4', 'min:0'],
             // Valor bruto da linha da NF-e (`vProd`): quando vem, é o bruto do item — a nota manda.
             'items.*.gross_total' => $money,
             'items.*.discount' => $money,

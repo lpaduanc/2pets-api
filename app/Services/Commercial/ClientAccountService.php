@@ -114,6 +114,50 @@ final class ClientAccountService
     }
 
     /**
+     * Devolução de venda em crédito (`store_credit`): o valor devolvido vira saldo credor do
+     * cliente nesta clínica. Idempotente por devolução — rodar de novo devolve o lançamento que
+     * já existe, sem creditar duas vezes.
+     *
+     * @param  array{organization_id: int|null, professional_id: int}  $ownership
+     */
+    public function creditForReturn(User $client, array $ownership, float $amount, int $saleReturnId, User $actor): ClientAccountEntry
+    {
+        $existing = ClientAccountEntry::query()
+            ->where('reference_type', 'sale_return')
+            ->where('reference_id', $saleReturnId)
+            ->where('type', ClientAccountEntryType::RETURN_CREDIT->value)
+            ->first();
+
+        return $existing ?? $this->record($client, $ownership, null, ClientAccountEntryType::RETURN_CREDIT, ClientAccountEntryDirection::CREDIT, $amount, $actor, 'sale_return', $saleReturnId);
+    }
+
+    /**
+     * Venda a prazo cancelada: credita de volta exatamente o que os `SALE_DEBIT` da venda
+     * debitaram, e o saldo do cliente volta ao que era antes dela. Quitação de fiado é manual e
+     * não aponta para a venda (`PAYMENT_CREDIT` com referência `manual`), então o que o cliente
+     * já tiver pago dessa dívida continua no saldo e vira CRÉDITO a favor dele — a clínica não
+     * pode ficar com o dinheiro de uma venda que não existe mais. Idempotente por venda; `null`
+     * quando a venda não tinha débito.
+     *
+     * @param  array{organization_id: int|null, professional_id: int}  $ownership
+     */
+    public function reverseSaleDebit(User $client, array $ownership, int $saleId, User $actor): ?ClientAccountEntry
+    {
+        $bySale = fn (ClientAccountEntryType $type) => ClientAccountEntry::query()
+            ->where('reference_type', 'sale')
+            ->where('reference_id', $saleId)
+            ->where('type', $type->value);
+
+        $debited = (float) $bySale(ClientAccountEntryType::SALE_DEBIT)->sum('amount');
+
+        if ($debited <= 0 || $bySale(ClientAccountEntryType::SALE_DEBIT_REVERSAL)->exists()) {
+            return null;
+        }
+
+        return $this->record($client, $ownership, null, ClientAccountEntryType::SALE_DEBIT_REVERSAL, ClientAccountEntryDirection::CREDIT, $debited, $actor, 'sale', $saleId);
+    }
+
+    /**
      * Adiantamento ou ajuste manual — endpoint restrito ao dono do escopo
      * (`CompanyClientAccountPolicy::manage`). `type` só aceita
      * `ClientAccountEntryType::manuallyRecordable()`.

@@ -49,6 +49,16 @@ final class SaleClientAccountEffects
         $this->accounts->debitForUnpaidSale($sale->client, $this->ownershipOf($sale), $sale->amountDue(), $sale->id, $actor);
     }
 
+    /** Cancelamento de venda a prazo (fiado): estorna o débito — ver `ClientAccountService::reverseSaleDebit`. */
+    public function reverseDebitForCancelledSale(Sale $sale, User $actor): void
+    {
+        if ($sale->client_id === null) {
+            return;
+        }
+
+        $this->accounts->reverseSaleDebit($sale->client, $this->ownershipOf($sale), $sale->id, $actor);
+    }
+
     /** Cancelamento de venda cujo recebimento era `account_credit`: devolve o crédito consumido. */
     public function refundForCancelledReceipt(Sale $sale, SaleReceipt $receipt, User $actor): void
     {
