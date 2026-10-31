@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Contracts\Sellable;
+use App\Enums\SaleItemCourtesyKind;
 use App\Services\Stock\StockValuation;
 use App\Support\Money\Decimal;
 use App\Support\Money\Money;
@@ -44,6 +45,12 @@ class SaleItem extends Model
         'discount',
         'total',
         'commission_percent',
+        // Brinde/cortesia/retorno (PLANO 1.4): marcação da LINHA, por `markAsCourtesy()`.
+        'courtesy_kind',
+        'courtesy_reason',
+        'courtesy_original_unit_price',
+        'courtesy_marked_by',
+        'courtesy_marked_at',
     ];
 
     /**
@@ -58,7 +65,76 @@ class SaleItem extends Model
             'discount' => 'decimal:2',
             'total' => 'decimal:2',
             'commission_percent' => 'decimal:4',
+            'courtesy_kind' => SaleItemCourtesyKind::class,
+            'courtesy_original_unit_price' => 'decimal:2',
+            'courtesy_marked_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Líquido da linha (com a parte do desconto do cabeçalho) já calculado por quem tem a venda
+     * inteira em mãos (`Sale::itemsWithNetTotals`) — evita recalcular o rateio item a item na
+     * listagem. Não é coluna.
+     */
+    public ?Money $resolvedNetTotal = null;
+
+    public function courtesyMarkedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'courtesy_marked_by');
+    }
+
+    public function isCourtesy(): bool
+    {
+        return $this->courtesy_kind !== null;
+    }
+
+    /**
+     * Brinde/cortesia/retorno (PLANO 1.4): líquido zero — o preço vai para
+     * `courtesy_original_unit_price`, preço e desconto da linha zeram. Remarcar só troca tipo e
+     * motivo: o preço original é o de antes da PRIMEIRA marcação. Não salva.
+     */
+    public function markAsCourtesy(SaleItemCourtesyKind $kind, string $reason, User $by): void
+    {
+        $this->forceFill([
+            'courtesy_original_unit_price' => $this->isCourtesy() ? $this->courtesy_original_unit_price : $this->unit_price,
+            'courtesy_kind' => $kind,
+            'courtesy_reason' => $reason,
+            'courtesy_marked_by' => $by->id,
+            'courtesy_marked_at' => now(),
+            'unit_price' => '0',
+            'discount' => '0',
+        ]);
+        $this->total = $this->calculateTotal();
+    }
+
+    /** Desfaz a marcação: volta o preço original (o desconto da linha fica zerado). Não salva. */
+    public function unmarkCourtesy(): void
+    {
+        $this->forceFill([
+            'unit_price' => $this->courtesy_original_unit_price ?? $this->unit_price,
+            'courtesy_kind' => null,
+            'courtesy_reason' => null,
+            'courtesy_original_unit_price' => null,
+            'courtesy_marked_by' => null,
+            'courtesy_marked_at' => null,
+        ]);
+        $this->total = $this->calculateTotal();
+    }
+
+    /**
+     * Líquido abaixo de quantidade × custo congelado, e a linha não é cortesia (PLANO 1.4). Sem
+     * `$net`, usa o líquido resolvido pela venda ou, na falta, o rateio da venda.
+     */
+    public function isBelowCost(?Money $net = null): bool
+    {
+        if ($this->isCourtesy()) {
+            return false;
+        }
+
+        $net ??= $this->resolvedNetTotal ?? ($this->sale?->netItemTotals()[$this->id] ?? $this->totalMoney());
+        $cost = Decimal::of($this->quantity)->multipliedBy(Decimal::of($this->unit_cost));
+
+        return $net->toBigDecimal()->isLessThan($cost);
     }
 
     public function sale(): BelongsTo

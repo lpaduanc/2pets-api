@@ -2,11 +2,13 @@
 
 namespace App\Services\Import;
 
+use App\Enums\PriceChangeSource;
 use App\Enums\StockMovementType;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Commercial\Pricing\ProductPriceHistoryRecorder;
 use App\Services\Commercial\PricingService;
 use App\Services\Stock\StockService;
 use App\Support\Money\Quantity;
@@ -25,6 +27,7 @@ final class ImportedProductProvisioner
         private readonly StockService $stock,
         private readonly ProductSkuGenerator $skuGenerator,
         private readonly CommercialScopeResolver $scope,
+        private readonly ProductPriceHistoryRecorder $priceHistory,
     ) {}
 
     /**
@@ -42,6 +45,7 @@ final class ImportedProductProvisioner
             $data['decimal_places_allowed'] = max(Product::defaultDecimalPlacesFor($data['unit_of_sale'] ?? null), $openingBalance->decimalPlaces());
 
             $product = Product::create($data + $this->scope->ownershipFor($actor));
+            $this->priceHistory->record($product, PriceChangeSource::IMPORT, $actor);
             $this->recordOpeningBalance($product, $openingBalance, $actor);
 
             return $product;

@@ -35,6 +35,8 @@ class Service extends Model implements Sellable
         // Custo fixo por execução fora do estoque (terceiro, lavanderia) — PLANO 1.3.
         'direct_cost',
         'commission_percent',
+        // Teto do desconto efetivo da linha na venda (PLANO 1.4); `null` = sem limite.
+        'max_discount_percent',
         'municipal_service_code',
         'lc116_code',
         'show_in_price_list',
@@ -55,6 +57,7 @@ class Service extends Model implements Sellable
         'price' => 'decimal:2',
         'direct_cost' => 'decimal:2',
         'commission_percent' => 'decimal:4',
+        'max_discount_percent' => 'decimal:4',
         'show_in_price_list' => 'boolean',
         'allow_price_override' => 'boolean',
         'active' => 'boolean',
@@ -115,6 +118,11 @@ class Service extends Model implements Sellable
     public function commissionPercent(): ?float
     {
         return $this->commission_percent === null ? null : (float) $this->commission_percent;
+    }
+
+    public function maxDiscountPercent(): ?string
+    {
+        return $this->max_discount_percent === null ? null : (string) $this->max_discount_percent;
     }
 
     /** Serviço nunca baixa estoque: o insumo consumido nele é outro item (doc 07). */

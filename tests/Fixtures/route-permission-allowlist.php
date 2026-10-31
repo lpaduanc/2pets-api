@@ -359,6 +359,12 @@ return [
     'POST api/professional/sales/{id}/receipts',
     // Prévia da taxa do recebimento (plano 1.1): mesma autorização do POST de recebimento acima.
     'POST api/professional/sales/receipts/simulate-fee',
+    // PLANO 1.4: brinde/cortesia/retorno e fechamento de saldo zero. A permissão
+    // `sales.grant_courtesy` é do cargo na organização da venda (`CourtesyAuthorizer`) — o
+    // middleware leria o papel Spatie global; o fechamento usa a `SalePolicy::registerReceipt`.
+    'POST api/professional/sales/{id}/finalize',
+    'PUT api/professional/sales/{id}/items/{itemId}/courtesy',
+    'DELETE api/professional/sales/{id}/items/{itemId}/courtesy',
     'POST api/professional/services',
     'POST api/professional/services/cost-preview',
     'POST api/professional/stock-counts',

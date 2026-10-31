@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api\Fiscal;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Fiscal\StoreFiscalCancellationRequest;
 use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalDocumentStatus;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Fiscal\StoreFiscalCancellationRequest;
 use App\Http\Resources\Fiscal\FiscalDocumentResource;
 use App\Models\FiscalDocument;
 use App\Models\Sale;
@@ -36,6 +36,11 @@ class FiscalDocumentController extends Controller
 
         $sale = $this->scope->scopeQuery(Sale::query(), $request->user())->with('items')->findOrFail($saleId);
         $documents = $this->fiscalDocuments->issueFromSale($sale, $request->user());
+
+        // Venda só de brinde/cortesia/retorno (PLANO 1.4): nada a emitir, com o motivo — não é erro.
+        if ($documents->isEmpty()) {
+            return response()->json(['data' => [], 'skipped_reason' => 'courtesy_only', 'message' => __('pricing.fiscal_courtesy_only')]);
+        }
 
         return response()->json([
             'data' => FiscalDocumentResource::collection($documents),

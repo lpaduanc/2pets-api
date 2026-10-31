@@ -35,6 +35,8 @@ class UpdateServiceRequest extends FormRequest
 
             'code' => ['nullable', 'string', 'max:60'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // Teto do desconto na venda (PLANO 1.4); `null` = sem limite.
+            'max_discount_percent' => ['nullable', 'numeric', 'decimal:0,4', 'min:0', 'max:100'],
             'product_group_id' => ['nullable', 'integer', 'exists:product_groups,id'],
             'municipal_service_code' => ['nullable', 'string', 'max:20'],
             'lc116_code' => ['nullable', 'string', 'max:10'],

@@ -2,6 +2,7 @@
 
 namespace App\Services\Purchase;
 
+use App\Enums\PriceChangeSource;
 use App\Enums\ProductPurpose;
 use App\Enums\PurchaseInstallmentStatus;
 use App\Enums\PurchaseOrderStatus;
@@ -19,6 +20,7 @@ use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Commercial\Pricing\ProductPriceHistoryRecorder;
 use App\Services\Commercial\PricingService;
 use App\Services\Finance\PurchaseFinancialEntryRecorder;
 use App\Services\Stock\StockService;
@@ -58,6 +60,7 @@ final class PurchaseService
         private readonly PurchaseFinancialEntryRecorder $financialEntries,
         private readonly PurchaseCostAllocator $costs,
         private readonly LandedPriceSuggester $prices,
+        private readonly ProductPriceHistoryRecorder $priceHistory,
     ) {}
 
     /** Colunas do item que vêm do `PurchaseCostAllocator` (custo real, plano 1.2). */
@@ -262,6 +265,7 @@ final class PurchaseService
         }
 
         $product->forceFill($changes)->save();
+        $this->priceHistory->recordIfPriceChanged($product, PriceChangeSource::PURCHASE, $user);
 
         if ($item->supplier_product_code !== null) {
             SupplierProduct::remember($purchase->supplier_id, $item->supplier_product_code, $product->id);
@@ -500,7 +504,10 @@ final class PurchaseService
         $priced['price'] ??= 0;
         $priced['stock_quantity'] = 0;
 
-        return Product::create($priced + $this->scope->ownershipFor($user));
+        $product = Product::create($priced + $this->scope->ownershipFor($user));
+        $this->priceHistory->record($product, PriceChangeSource::PURCHASE, $user);
+
+        return $product;
     }
 
     /**

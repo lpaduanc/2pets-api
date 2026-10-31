@@ -135,6 +135,12 @@ class ServicePackage extends Model implements Sellable
         return '0';
     }
 
+    /** Pacote não tem teto de desconto próprio (PLANO 1.4 cobre produto e serviço). */
+    public function maxDiscountPercent(): ?string
+    {
+        return null;
+    }
+
     public function appearsInPriceList(): bool
     {
         return (bool) $this->show_in_price_list;

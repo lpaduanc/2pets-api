@@ -56,6 +56,8 @@ class StoreProductRequest extends FormRequest
             'last_cost' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],
             'markup_percent' => ['nullable', 'numeric', 'min:-100', 'max:100000'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // Teto do desconto na venda (PLANO 1.4); ausente/`null` = sem limite.
+            'max_discount_percent' => ['nullable', 'numeric', 'decimal:0,4', 'min:0', 'max:100'],
 
             'stock_quantity' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],
             'min_stock' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],

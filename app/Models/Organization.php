@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Contracts\HasDepositSettings;
 use App\DataTransferObjects\Cnpj;
+use App\Enums\CardFeeReferenceMode;
 use App\Enums\CardSurchargeReturnPolicy;
 use App\Enums\OrganizationType;
 use App\Enums\StateRegistrationType;
@@ -67,6 +68,9 @@ class Organization extends Model implements HasDepositSettings
         // lida por `CardSurchargePolicy`.
         'card_surcharge_on_invoice',
         'card_surcharge_return_policy',
+        // Precificação (PLANO 1.4): alíquota efetiva informada e taxa de referência do cartão.
+        'effective_sales_tax_rate',
+        'card_fee_reference_mode',
     ];
 
     /**
@@ -90,6 +94,8 @@ class Organization extends Model implements HasDepositSettings
             'certificate_expires_at' => 'datetime',
             'card_surcharge_on_invoice' => 'boolean',
             'card_surcharge_return_policy' => CardSurchargeReturnPolicy::class,
+            'effective_sales_tax_rate' => 'decimal:4',
+            'card_fee_reference_mode' => CardFeeReferenceMode::class,
         ];
     }
 

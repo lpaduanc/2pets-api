@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Fiscal;
 
+use App\Enums\CardFeeReferenceMode;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fiscal\UpdateFiscalSettingsRequest;
 use App\Models\FiscalDocument;
@@ -68,6 +69,9 @@ class FiscalSettingsController extends Controller
             'has_certificate' => $organization->certificate_ref !== null,
             'card_surcharge_on_invoice' => $policy->onInvoice,
             'card_surcharge_return_policy' => $policy->returnPolicy->value,
+            // Precificação (PLANO 1.4): percentual como string de 4 casas, igual ao `simulate`.
+            'effective_sales_tax_rate' => $organization->effective_sales_tax_rate,
+            'card_fee_reference_mode' => ($organization->card_fee_reference_mode ?? CardFeeReferenceMode::WEIGHTED_90D)->value,
         ];
     }
 }

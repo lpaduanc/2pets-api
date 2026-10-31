@@ -266,6 +266,11 @@ class RolesAndPermissionsSeeder extends Seeder
             // --- Repasse a parceiro terceiro (item 09, achado desta passada final — não
             // havia permissão própria; ver docs/gap-simplesvet/contratos/09-contrato-api.md) ---
             'partner-payouts.manage',
+            // Precificação (docs/gap-petflow/PLANO.md, 1.4): marcar a linha da venda como brinde,
+            // cortesia ou retorno (líquido zero). Não é ato clínico: o dono pode conceder por
+            // exceção ao membro. Na venda de organização vale o cargo NAQUELA organização
+            // (`CourtesyAuthorizer`). Vender abaixo do custo, por si, não tem permissão que libere.
+            'sales.grant_courtesy',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -387,6 +392,8 @@ class RolesAndPermissionsSeeder extends Seeder
             // população de `financial-accounts.manage`/`fiscal-documents.issue` acima (owner,
             // ou o próprio profissional sem organização).
             'partner-payouts.manage',
+            // PLANO 1.4: brinde/cortesia/retorno é decisão de gestão (ver o catálogo acima).
+            'sales.grant_courtesy',
         ]);
 
         // 3. Clinic Owner
@@ -459,6 +466,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog.manage',
             'data.import',
             'partner-payouts.manage',
+            // PLANO 1.4: brinde/cortesia/retorno é decisão de gestão (ver o catálogo acima).
+            'sales.grant_courtesy',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -558,6 +567,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'catalog.manage',
             'data.import',
             'partner-payouts.manage',
+            // PLANO 1.4: brinde/cortesia/retorno é decisão de gestão (ver o catálogo acima).
+            'sales.grant_courtesy',
         ]);
 
         // 6. Petshop Staff

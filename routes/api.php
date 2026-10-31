@@ -20,12 +20,15 @@ use App\Http\Controllers\Api\Commercial\PartnerPayoutController;
 use App\Http\Controllers\Api\Commercial\PaymentMethodController;
 use App\Http\Controllers\Api\Commercial\PaymentMethodFeeTierController;
 use App\Http\Controllers\Api\Commercial\PriceListController;
+use App\Http\Controllers\Api\Commercial\PricingSimulationController;
 use App\Http\Controllers\Api\Commercial\ProductController;
 use App\Http\Controllers\Api\Commercial\ProductGroupController;
 use App\Http\Controllers\Api\Commercial\QuoteController;
 use App\Http\Controllers\Api\Commercial\ReceiptSimulationController;
 use App\Http\Controllers\Api\Commercial\ReceivableController;
 use App\Http\Controllers\Api\Commercial\SaleController;
+use App\Http\Controllers\Api\Commercial\SaleFinalizationController;
+use App\Http\Controllers\Api\Commercial\SaleItemCourtesyController;
 use App\Http\Controllers\Api\Commercial\ServicePackageController;
 use App\Http\Controllers\Api\Commercial\SoldPackageController;
 use App\Http\Controllers\Api\ConsultationController;
@@ -753,6 +756,11 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             ->middlewareFor('update', 'permission:products.update')
             ->middlewareFor('destroy', 'permission:products.delete');
 
+        // Simulação de preço (docs/gap-petflow/PLANO.md, 1.4): margem, markup, preço mínimo e
+        // alertas para o cadastro de produto e de serviço — quem edita um dos dois simula.
+        Route::post('pricing/simulate', PricingSimulationController::class)
+            ->middleware('permission:products.update|services.update');
+
         Route::apiResource('product-groups', ProductGroupController::class)->except(['show']);
         Route::apiResource('brands', BrandController::class)->except(['show']);
 
@@ -1012,6 +1020,12 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::patch('sales/{id}/items/{itemId}', [SaleController::class, 'updateItem'])->whereNumber(['id', 'itemId']);
         Route::delete('sales/{id}/items/{itemId}', [SaleController::class, 'destroyItem'])->whereNumber(['id', 'itemId']);
         Route::post('sales/{id}/discount', [SaleController::class, 'applyDiscount'])->whereNumber('id');
+        // Brinde/cortesia/retorno na linha e fechamento da venda de saldo zero (PLANO 1.4).
+        // A permissão `sales.grant_courtesy` é julgada pelo cargo na organização da venda
+        // (`CourtesyAuthorizer`), não pelo middleware — o papel Spatie é global.
+        Route::put('sales/{id}/items/{itemId}/courtesy', [SaleItemCourtesyController::class, 'update'])->whereNumber(['id', 'itemId']);
+        Route::delete('sales/{id}/items/{itemId}/courtesy', [SaleItemCourtesyController::class, 'destroy'])->whereNumber(['id', 'itemId']);
+        Route::post('sales/{id}/finalize', SaleFinalizationController::class)->whereNumber('id');
         // Prévia de taxa e agenda do recebimento no PDV (docs/gap-petflow 1.1). Literal antes de
         // qualquer `sales/{id}` — e `{id}` é numérico, então não colide.
         Route::post('sales/receipts/simulate-fee', ReceiptSimulationController::class);

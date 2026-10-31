@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Commercial;
 
+use App\Enums\PriceChangeSource;
 use App\Enums\StockMovementType;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
@@ -12,6 +13,7 @@ use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Commercial\Pricing\ProductPriceHistoryRecorder;
 use App\Services\Commercial\PricingService;
 use App\Services\Stock\StockService;
 use App\Support\Money\Decimal;
@@ -42,6 +44,7 @@ class ProductController extends Controller
         private readonly CommercialScopeResolver $scope,
         private readonly PricingService $pricing,
         private readonly StockService $stock,
+        private readonly ProductPriceHistoryRecorder $priceHistory,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -78,6 +81,7 @@ class ProductController extends Controller
         $product = DB::transaction(function () use ($data, $request, $openingBalance): Product {
             $product = Product::create($data + $this->scope->ownershipFor($request->user()));
             $this->guardQuantityFitsProduct($product, $openingBalance);
+            $this->priceHistory->record($product, PriceChangeSource::MANUAL, $request->user());
 
             if ($openingBalance->isPositive()) {
                 $this->stock->in($product, StockMovementType::OPENING_BALANCE, $openingBalance, [
@@ -132,6 +136,9 @@ class ProductController extends Controller
             $attributes = $this->pricing->resolvePricing($data, $group);
             unset($attributes['average_cost']);
             $product->update($attributes);
+            // Constatado aqui: a reavaliação abaixo salva outra instância e o custo gravado no
+            // histórico tem que ser o novo, lido no fim.
+            $priceChanged = $product->wasChanged('price');
 
             if ($targetStock !== null) {
                 $this->guardQuantityFitsProduct($product, $targetStock);
@@ -149,6 +156,10 @@ class ProductController extends Controller
                     'user' => $request->user(),
                     'notes' => 'Saldo corrigido no cadastro do produto.',
                 ]);
+            }
+
+            if ($priceChanged) {
+                $this->priceHistory->record($product->refresh(), PriceChangeSource::MANUAL, $request->user());
             }
         });
 

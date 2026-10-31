@@ -66,6 +66,8 @@ class Product extends Model implements Sellable
         'last_cost',
         'markup_percent',
         'commission_percent',
+        // Teto do desconto efetivo da linha na venda (PLANO 1.4); `null` = sem limite.
+        'max_discount_percent',
         'compare_at_price',
         'stock_quantity',
         'track_inventory',
@@ -97,6 +99,7 @@ class Product extends Model implements Sellable
             'decimal_places_allowed' => 'integer',
             'markup_percent' => 'decimal:4',
             'commission_percent' => 'decimal:4',
+            'max_discount_percent' => 'decimal:4',
             'compare_at_price' => 'decimal:2',
             'stock_quantity' => 'decimal:4',
             'min_stock' => 'decimal:4',
@@ -211,6 +214,11 @@ class Product extends Model implements Sellable
     public function movesStock(): bool
     {
         return (bool) $this->controls_stock;
+    }
+
+    public function maxDiscountPercent(): ?string
+    {
+        return $this->max_discount_percent === null ? null : (string) $this->max_discount_percent;
     }
 
     public function unitCost(): string

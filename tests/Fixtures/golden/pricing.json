@@ -1,0 +1,227 @@
+{
+  "_doc": "Casos de referencia da precificacao (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.4). markup% = (P - C) / C x 100 e margem% = (P - C) / P x 100, 4 casas HALF_UP, null quando o denominador e zero; P por markup = C x (1 + markup/100) e P por margem = C / (1 - margem/100), 2 casas HALF_UP, com os percentuais recalculados do preco arredondado; P_minimo = C / (1 - taxa_cartao_ref - imposto% - comissao%) arredondado para CIMA no centavo, null quando as deducoes somam 100% ou mais; loss_per_unit = minimo - preco quando preco < minimo. Percentual null no input = nao cadastrado (entra 0; taxa e imposto geram alerta, comissao nao). expected = data do POST /api/professional/pricing/simulate. Copia byte a byte em 2pets-pro/tests/fixtures/golden/pricing.json. Altere aqui e copie para la.",
+  "pricing": [
+    {
+      "id": "preco-01",
+      "_conta": "C 40,00 e P 60,00: markup = 20 / 40 = 50,0000%; margem = 20 / 60 = 33,3333%. Deducoes 4,99 + 6 + 5 = 15,99% -> 40 / 0,8401 = 47,6133... -> 47,62 (para CIMA). P >= minimo: sem alerta.",
+      "input": {
+        "cost": "40.0000",
+        "price": "60.00",
+        "margin_percent": null,
+        "markup_percent": null,
+        "card_fee_reference_percent": "4.99",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6",
+        "commission_percent": "5"
+      },
+      "expected": {
+        "cost": "40.0000",
+        "price": "60.00",
+        "markup_percent": "50.0000",
+        "margin_percent": "33.3333",
+        "minimum_price": "47.62",
+        "card_fee_reference_percent": "4.9900",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6.0000",
+        "commission_percent": "5.0000",
+        "loss_per_unit": null,
+        "alerts": []
+      }
+    },
+    {
+      "id": "preco-por-margem",
+      "_conta": "Margem 40% sobre C 40,00: 40 / 0,6 = 66,6666... -> 66,67 (HALF_UP). Percentuais recalculados do preco ja arredondado: markup 26,67 / 40 = 66,6750%; margem 26,67 / 66,67 = 40,0029998... -> 40,0030%. Minimo igual ao preco-01 (47,62).",
+      "input": {
+        "cost": "40.0000",
+        "price": null,
+        "margin_percent": "40",
+        "markup_percent": null,
+        "card_fee_reference_percent": "4.99",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6",
+        "commission_percent": "5"
+      },
+      "expected": {
+        "cost": "40.0000",
+        "price": "66.67",
+        "markup_percent": "66.6750",
+        "margin_percent": "40.0030",
+        "minimum_price": "47.62",
+        "card_fee_reference_percent": "4.9900",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6.0000",
+        "commission_percent": "5.0000",
+        "loss_per_unit": null,
+        "alerts": []
+      }
+    },
+    {
+      "id": "preco-por-markup",
+      "_conta": "Markup 80% sobre C 25,50: 25,50 x 1,8 = 45,90; margem 20,40 / 45,90 = 44,4444%. Sem aliquota informada (imposto 0, alerta no_tax_rate) e sem comissao (0); taxa pior caso 3,5%: 25,50 / 0,965 = 26,4248... -> 26,43.",
+      "input": {
+        "cost": "25.5000",
+        "price": null,
+        "margin_percent": null,
+        "markup_percent": "80",
+        "card_fee_reference_percent": "3.5",
+        "card_fee_reference_mode": "worst_case",
+        "tax_percent": null,
+        "commission_percent": null
+      },
+      "expected": {
+        "cost": "25.5000",
+        "price": "45.90",
+        "markup_percent": "80.0000",
+        "margin_percent": "44.4444",
+        "minimum_price": "26.43",
+        "card_fee_reference_percent": "3.5000",
+        "card_fee_reference_mode": "worst_case",
+        "tax_percent": "0.0000",
+        "commission_percent": "0.0000",
+        "loss_per_unit": null,
+        "alerts": [
+          {
+            "code": "no_tax_rate",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "minimo-inalcancavel",
+      "_conta": "Deducoes 10 + 15 + 80 = 105% >= 100%: nenhum preco cobre o custo -> minimo null e alerta minimum_price_unreachable; sem minimo nao ha prejuizo por unidade. C 10, P 12: markup 20,0000%, margem 2 / 12 = 16,6667%.",
+      "input": {
+        "cost": "10.0000",
+        "price": "12.00",
+        "margin_percent": null,
+        "markup_percent": null,
+        "card_fee_reference_percent": "10",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "15",
+        "commission_percent": "80"
+      },
+      "expected": {
+        "cost": "10.0000",
+        "price": "12.00",
+        "markup_percent": "20.0000",
+        "margin_percent": "16.6667",
+        "minimum_price": null,
+        "card_fee_reference_percent": "10.0000",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "15.0000",
+        "commission_percent": "80.0000",
+        "loss_per_unit": null,
+        "alerts": [
+          {
+            "code": "minimum_price_unreachable",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "custo-zero",
+      "_conta": "C 0: markup null (nao ha percentual sobre zero); margem 30 / 30 = 100,0000%; minimo 0 / 0,89 = 0,00. Sem taxa de cartao cadastrada: entra 0 com alerta no_card_fee_reference.",
+      "input": {
+        "cost": "0.0000",
+        "price": "30.00",
+        "margin_percent": null,
+        "markup_percent": null,
+        "card_fee_reference_percent": null,
+        "card_fee_reference_mode": "worst_case",
+        "tax_percent": "6",
+        "commission_percent": "5"
+      },
+      "expected": {
+        "cost": "0.0000",
+        "price": "30.00",
+        "markup_percent": null,
+        "margin_percent": "100.0000",
+        "minimum_price": "0.00",
+        "card_fee_reference_percent": "0.0000",
+        "card_fee_reference_mode": "worst_case",
+        "tax_percent": "6.0000",
+        "commission_percent": "5.0000",
+        "loss_per_unit": null,
+        "alerts": [
+          {
+            "code": "no_card_fee_reference",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "abaixo-do-minimo",
+      "_conta": "C 40, P 45 com as deducoes do preco-01 (minimo 47,62): prejuizo 47,62 - 45,00 = 2,62 por unidade. markup 5 / 40 = 12,5000%; margem 5 / 45 = 11,1111%.",
+      "input": {
+        "cost": "40.0000",
+        "price": "45.00",
+        "margin_percent": null,
+        "markup_percent": null,
+        "card_fee_reference_percent": "4.99",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6",
+        "commission_percent": "5"
+      },
+      "expected": {
+        "cost": "40.0000",
+        "price": "45.00",
+        "markup_percent": "12.5000",
+        "margin_percent": "11.1111",
+        "minimum_price": "47.62",
+        "card_fee_reference_percent": "4.9900",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6.0000",
+        "commission_percent": "5.0000",
+        "loss_per_unit": "2.62",
+        "alerts": [
+          {
+            "code": "below_minimum",
+            "params": {
+              "loss_per_unit": "2.62"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "abaixo-do-custo",
+      "_conta": "C 40, P 38: abaixo do minimo (47,62 - 38 = 9,62) E do custo -> os dois alertas, nessa ordem. markup -2 / 40 = -5,0000%; margem -2 / 38 = -5,2631578... -> -5,2632%.",
+      "input": {
+        "cost": "40.0000",
+        "price": "38.00",
+        "margin_percent": null,
+        "markup_percent": null,
+        "card_fee_reference_percent": "4.99",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6",
+        "commission_percent": "5"
+      },
+      "expected": {
+        "cost": "40.0000",
+        "price": "38.00",
+        "markup_percent": "-5.0000",
+        "margin_percent": "-5.2632",
+        "minimum_price": "47.62",
+        "card_fee_reference_percent": "4.9900",
+        "card_fee_reference_mode": "weighted_90d",
+        "tax_percent": "6.0000",
+        "commission_percent": "5.0000",
+        "loss_per_unit": "9.62",
+        "alerts": [
+          {
+            "code": "below_minimum",
+            "params": {
+              "loss_per_unit": "9.62"
+            }
+          },
+          {
+            "code": "below_cost",
+            "params": {}
+          }
+        ]
+      }
+    }
+  ]
+}

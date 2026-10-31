@@ -113,6 +113,7 @@ class Sale extends Model
     public const RESOURCE_RELATIONS = [
         'items.staff.user',
         'items.sellable',
+        'items.courtesyMarkedBy:id,name',
         'receipts.paymentMethod',
         'client',
         'pet',
@@ -232,6 +233,10 @@ class Sale extends Model
      * cabeçalho, rateado pelo maior resto — a soma é o total da venda, centavo a centavo. Base
      * da devolução em dinheiro (`SaleReturnService`). Exige `items` carregados.
      *
+     * Linha de brinde/cortesia/retorno (PLANO 1.4) fica FORA do rateio: líquido zero, sempre —
+     * sem isto, uma venda em que só sobram linhas de valor zero dividiria o desconto em partes
+     * iguais (`allocate` com pesos zero) e a cortesia ficaria negativa.
+     *
      * @return array<int, Money> por `sale_items.id`
      */
     public function netItemTotals(): array
@@ -239,21 +244,36 @@ class Sale extends Model
         $totals = [];
 
         foreach ($this->items as $item) {
-            $totals[$item->id] = Money::of($item->total);
+            $totals[$item->id] = $item->isCourtesy() ? Money::zero() : Money::of($item->total);
         }
 
         $discount = Money::of($this->discount_amount);
+        $weights = array_filter($totals, fn (int $itemId): bool => ! $this->items->firstWhere('id', $itemId)->isCourtesy(), ARRAY_FILTER_USE_KEY);
 
-        if ($totals === [] || $discount->isZero()) {
+        if ($weights === [] || $discount->isZero()) {
             return $totals;
         }
 
         // `allocate` preserva as chaves: a parte de cada linha volta no id dela.
-        foreach ($discount->allocate($totals) as $itemId => $share) {
+        foreach ($discount->allocate($weights) as $itemId => $share) {
             $totals[$itemId] = $totals[$itemId]->minus($share);
         }
 
         return $totals;
+    }
+
+    /**
+     * Itens com o líquido já resolvido (`SaleItem::$resolvedNetTotal`), para a listagem mostrar
+     * `below_cost` sem refazer o rateio por linha. Exige `items` carregados.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, SaleItem>
+     */
+    public function itemsWithNetTotals(): \Illuminate\Database\Eloquent\Collection
+    {
+        $net = $this->netItemTotals();
+        $this->items->each(fn (SaleItem $item) => $item->resolvedNetTotal = $net[$item->id]);
+
+        return $this->items;
     }
 
     /** Total sem o acréscimo de repasse: o que os itens valem para o cliente após o desconto. */
@@ -384,7 +404,8 @@ class Sale extends Model
             return [];
         }
 
-        $types = $this->items->pluck('sellable_type')->unique();
+        // Brinde/cortesia/retorno (PLANO 1.4) não entra em documento fiscal, logo não gera pendência.
+        $types = $this->items->reject(fn (SaleItem $item): bool => $item->isCourtesy())->pluck('sellable_type')->unique();
         $issuedKinds = $this->issuedFiscalDocumentKinds();
         $pending = [];
 
@@ -434,12 +455,12 @@ class Sale extends Model
         return match ($document) {
             'nfce' => $withoutAuthorizedDocument($paidSale($query), 'nfce')
                 ->whereIn('fiscal_operation', FiscalOperation::consumerInvoiceValues())
-                ->whereHas('items', fn (Builder $items) => $items->where('sellable_type', Product::class)),
+                ->whereHas('items', fn (Builder $items) => $items->where('sellable_type', Product::class)->whereNull('courtesy_kind')),
             'nfe' => $withoutAuthorizedDocument($paidSale($query), 'nfe')
                 ->whereNotIn('fiscal_operation', FiscalOperation::consumerInvoiceValues())
-                ->whereHas('items', fn (Builder $items) => $items->where('sellable_type', Product::class)),
+                ->whereHas('items', fn (Builder $items) => $items->where('sellable_type', Product::class)->whereNull('courtesy_kind')),
             'nfse' => $withoutAuthorizedDocument($paidSale($query), 'nfse')
-                ->whereHas('items', fn (Builder $items) => $items->where('sellable_type', Service::class)),
+                ->whereHas('items', fn (Builder $items) => $items->where('sellable_type', Service::class)->whereNull('courtesy_kind')),
             default => $query->where(fn (Builder $q) => $q
                 ->where('status', '!=', SaleStatus::PAID->value)
                 ->orWhere('kind', SaleKind::QUOTE->value)

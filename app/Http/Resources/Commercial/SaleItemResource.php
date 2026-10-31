@@ -41,6 +41,16 @@ class SaleItemResource extends JsonResource
                 'role_label' => $this->staff->role?->label(),
             ] : null),
             'staff_id' => $this->staff_id,
+            // PLANO 1.4: líquido < quantidade × custo e não é cortesia — o recebimento recusa.
+            'below_cost' => $this->isBelowCost(),
+            'courtesy_kind' => $this->courtesy_kind?->value,
+            'courtesy_reason' => $this->courtesy_reason,
+            'courtesy_original_unit_price' => $this->courtesy_original_unit_price,
+            'courtesy_marked_by' => $this->whenLoaded('courtesyMarkedBy', fn () => $this->courtesyMarkedBy === null ? null : [
+                'id' => $this->courtesyMarkedBy->id,
+                'name' => $this->courtesyMarkedBy->name,
+            ], fn () => $this->courtesy_marked_by === null ? null : ['id' => $this->courtesy_marked_by, 'name' => null]),
+            'courtesy_marked_at' => $this->courtesy_marked_at?->toIso8601String(),
         ];
     }
 }

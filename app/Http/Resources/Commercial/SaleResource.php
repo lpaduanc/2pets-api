@@ -65,7 +65,7 @@ class SaleResource extends JsonResource
                 'name' => $this->createdBy->name,
             ]),
 
-            'items' => SaleItemResource::collection($this->whenLoaded('items')),
+            'items' => SaleItemResource::collection($this->whenLoaded('items', fn () => $this->itemsWithNetTotals())),
             'receipts' => SaleReceiptResource::collection($this->whenLoaded('receipts')),
 
             // Pendência fiscal da consulta (doc 01): documentos que a venda ainda precisa ter

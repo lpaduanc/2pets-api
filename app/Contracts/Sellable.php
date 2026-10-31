@@ -36,6 +36,12 @@ interface Sellable
     /** `false` para serviço e para produto com `controls_stock = false` (doc 07). */
     public function movesStock(): bool;
 
+    /**
+     * Teto do desconto efetivo da linha (desconto da linha + parte do desconto do cabeçalho ÷
+     * bruto), em %, 4 casas — docs/gap-petflow/PLANO.md, 1.4. `null` = sem limite.
+     */
+    public function maxDiscountPercent(): ?string;
+
     /** Custo unitário usado na base de comissão `margin` (doc 09). */
     public function unitCost(): string;
 

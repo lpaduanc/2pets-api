@@ -30,6 +30,8 @@ use App\Models\ServicePackage;
 use App\Models\User;
 use App\Services\Commercial\Card\ReceiptPricing;
 use App\Services\Commercial\Card\ReceivableScheduleService;
+use App\Services\Commercial\Pricing\SalePricingChange;
+use App\Services\Commercial\Pricing\SalePricingGuard;
 use App\Services\Commercial\Reversal\SaleCancellationReversal;
 use App\Services\Commercial\ServiceCost\ServiceSupplyConsumer;
 use App\Services\Finance\SaleFinancialEntryRecorder;
@@ -54,7 +56,12 @@ use Illuminate\Validation\ValidationException;
  *    dela);
  *  - orçamento (`kind = quote`) não movimenta caixa nem estoque — só a conversão movimenta;
  *  - item com `allow_price_override = false` recusa preço diferente do cadastrado;
- *  - recebimento grava taxa e previsão de depósito CONGELADAS a partir da forma de pagamento.
+ *  - recebimento grava taxa e previsão de depósito CONGELADAS a partir da forma de pagamento;
+ *  - desconto máximo e venda abaixo do custo (PLANO 1.4, `SalePricingGuard`): julgados na hora
+ *    em que o item é lançado/editado ou o desconto do cabeçalho é aplicado (o PDV mostra o erro
+ *    inline), dentro da transação — 422 desfaz a mudança. Abaixo do custo é bloqueio absoluto.
+ *    Teto e custo são conferidos de novo no recebimento, que pega desconto redistribuído por
+ *    item removido.
  */
 final class SaleService
 {
@@ -70,6 +77,7 @@ final class SaleService
         private readonly ReceivableScheduleService $receivables,
         private readonly ServiceSupplyConsumer $serviceSupplies,
         private readonly SaleCancellationReversal $cancellation,
+        private readonly SalePricingGuard $pricingRules,
     ) {}
 
     /**
@@ -173,7 +181,9 @@ final class SaleService
         $quantity = $this->acceptedQuantity($sellable, $attributes['quantity'] ?? 1);
         $unitPrice = $this->resolveUnitPrice($sellable, $attributes);
 
-        return DB::transaction(function () use ($sale, $sellable, $attributes, $quantity, $unitPrice): SaleItem {
+        $before = $this->pricingRules->snapshot($sale);
+
+        return DB::transaction(function () use ($sale, $before, $sellable, $attributes, $quantity, $unitPrice): SaleItem {
             $item = new SaleItem([
                 'sale_id' => $sale->id,
                 'sellable_type' => $sellable::class,
@@ -194,6 +204,7 @@ final class SaleService
             $item->save();
 
             $this->refreshTotals($sale);
+            $this->pricingRules->assertChange($sale, $before, SalePricingChange::ITEM, $item->id);
 
             return $item->load('staff.user');
         });
@@ -209,8 +220,10 @@ final class SaleService
     public function updateItem(Sale $sale, int $itemId, array $attributes): SaleItem
     {
         $this->assertEditable($sale);
+        $before = $this->pricingRules->snapshot($sale);
 
         $item = $sale->items()->with('sellable')->findOrFail($itemId);
+        $this->assertCourtesyPriceUntouched($item, $attributes);
 
         if (array_key_exists('staff_id', $attributes)) {
             $this->assertStaffBelongsToSale($sale, $attributes['staff_id']);
@@ -232,11 +245,12 @@ final class SaleService
                 : (string) Decimal::of($attributes['unit_price']);
         }
 
-        return DB::transaction(function () use ($sale, $item): SaleItem {
+        return DB::transaction(function () use ($sale, $item, $before): SaleItem {
             $item->total = $item->calculateTotal();
             $item->save();
 
             $this->refreshTotals($sale);
+            $this->pricingRules->assertChange($sale, $before, SalePricingChange::ITEM);
 
             return $item->load('staff.user');
         });
@@ -255,10 +269,15 @@ final class SaleService
     public function applyDiscount(Sale $sale, DiscountType $type, float $value): Sale
     {
         $this->assertEditable($sale);
+        $this->pricingRules->assertHeaderDiscountFits($sale, $type, $value);
+        $before = $this->pricingRules->snapshot($sale);
 
-        $sale->discount_type = $type;
-        $sale->discount_value = $type === DiscountType::NONE ? 0 : round($value, 2);
-        $this->refreshTotals($sale);
+        DB::transaction(function () use ($sale, $type, $value, $before): void {
+            $sale->discount_type = $type;
+            $sale->discount_value = $type === DiscountType::NONE ? 0 : round($value, 2);
+            $this->refreshTotals($sale);
+            $this->pricingRules->assertChange($sale, $before, SalePricingChange::HEADER_DISCOUNT);
+        });
 
         return $sale->fresh(Sale::RESOURCE_RELATIONS);
     }
@@ -279,6 +298,7 @@ final class SaleService
         abort_if($sale->status === SaleStatus::CANCELLED, 422, 'Venda cancelada não recebe pagamento.');
         abort_if($sale->status === SaleStatus::PAID, 422, 'Esta venda já está paga.');
         abort_if((float) $sale->total <= 0, 422, 'Adicione ao menos um item antes de receber.');
+        $this->pricingRules->assertReadyToReceive($sale);
 
         $method = $this->scope->scopeQuery(PaymentMethod::query(), $user)
             ->active()
@@ -370,13 +390,7 @@ final class SaleService
             $sale->status = $sale->isFullyPaid() ? SaleStatus::PAID : SaleStatus::UNPAID;
 
             if ($sale->status === SaleStatus::PAID) {
-                $sale->sold_at ??= now();
-                $sale->save();
-                $this->deductStock($sale, $user);
-                $this->soldPackages->activateFromSale($sale, $user);
-                // Perna contábil da venda (doc 02): receita no DRE, produto e serviço
-                // separados pelo mesmo rateio de desconto do Financeiro do PDV.
-                $this->financialEntries->recordForFullyPaidSale($sale->fresh(['items', 'receipts']), $user);
+                $this->settlePaidSale($sale, $user);
             } else {
                 $sale->save();
                 // Venda que fecha `unpaid` (fiado, doc 11): débito no cliente pelo valor em
@@ -386,6 +400,35 @@ final class SaleService
             }
 
             return $receipt->load('paymentMethod');
+        });
+    }
+
+    /**
+     * Fecha a venda que soma R$ 0,00 — só brinde/cortesia/retorno, ou isso mais linhas de custo
+     * zero (PLANO 1.4). Sem recebimento não há o que registrar: nenhum `sale_receipt`, nenhum
+     * movimento de caixa, nenhum caixa exigido. O resto é o MESMO fechamento do recebimento que
+     * quita a venda (`settlePaidSale`): `paid`, `sold_at`, baixa de estoque e insumos, pacotes e
+     * financeiro — e as mesmas regras de preço da finalização.
+     */
+    public function finalizeWithoutPayment(Sale $sale, User $user): Sale
+    {
+        abort_if($sale->isQuote(), 422, 'Orçamento não é finalizado. Converta em venda primeiro.');
+        abort_if(! $sale->status->isEditable(), 422, 'Esta venda não pode mais ser finalizada.');
+        abort_if(! $sale->items()->exists(), 422, 'Adicione ao menos um item antes de receber.');
+
+        $due = $sale->amountDueMoney();
+
+        if ($due->isPositive()) {
+            throw ValidationException::withMessages(['amount' => __('pricing.finalize_balance_due', ['due' => number_format($due->toFloat(), 2, ',', '.')])]);
+        }
+
+        $this->pricingRules->assertReadyToReceive($sale);
+
+        return DB::transaction(function () use ($sale, $user): Sale {
+            $sale->status = SaleStatus::PAID;
+            $this->settlePaidSale($sale, $user);
+
+            return $sale->fresh(Sale::RESOURCE_RELATIONS);
         });
     }
 
@@ -432,6 +475,8 @@ final class SaleService
             $to->items()->create($item->only([
                 'sellable_type', 'sellable_id', 'appointment_id', 'description', 'staff_id', 'quantity',
                 'unit_price', 'unit_cost', 'discount', 'total', 'commission_percent',
+                // Brinde/cortesia/retorno (PLANO 1.4) vai junto: quem marcou e o preço original.
+                'courtesy_kind', 'courtesy_reason', 'courtesy_original_unit_price', 'courtesy_marked_by', 'courtesy_marked_at',
             ]));
         }
 
@@ -502,6 +547,37 @@ final class SaleService
             'medical_record_id' => $attributes['medical_record_id'] ?? null,
             'hospitalization_id' => $attributes['hospitalization_id'] ?? null,
         ];
+    }
+
+    /**
+     * Efeitos da venda que acabou de ficar `paid` — recebimento que quita ou `finalizeWithoutPayment`.
+     */
+    private function settlePaidSale(Sale $sale, User $user): void
+    {
+        $sale->sold_at ??= now();
+        $sale->save();
+        $this->deductStock($sale, $user);
+        $this->soldPackages->activateFromSale($sale, $user);
+        // Perna contábil da venda (doc 02): receita no DRE, produto e serviço
+        // separados pelo mesmo rateio de desconto do Financeiro do PDV.
+        $this->financialEntries->recordForFullyPaidSale($sale->fresh(['items', 'receipts']), $user);
+    }
+
+    /**
+     * Linha de brinde/cortesia/retorno (PLANO 1.4) não muda preço nem desconto: desmarca primeiro.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function assertCourtesyPriceUntouched(SaleItem $item, array $attributes): void
+    {
+        $touchesPrice = (array_key_exists('unit_price', $attributes) && $attributes['unit_price'] !== null)
+            || array_key_exists('discount', $attributes);
+
+        if ($item->isCourtesy() && $touchesPrice) {
+            throw ValidationException::withMessages([
+                array_key_exists('discount', $attributes) ? 'discount' : 'unit_price' => __('pricing.courtesy_locked'),
+            ]);
+        }
     }
 
     private function assertEditable(Sale $sale): void

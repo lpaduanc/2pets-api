@@ -63,6 +63,10 @@ class ProductResource extends JsonResource
                 fn () => $this->commission_percent === null ? null : (float) $this->commission_percent,
             ),
 
+            // Teto do desconto (PLANO 1.4): visível a todos — o PDV precisa dele para avisar
+            // antes do 422, e não revela custo. String de 4 casas, `null` = sem limite.
+            'max_discount_percent' => $this->maxDiscountPercent(),
+
             'stock_quantity' => $this->stock_quantity,
             'min_stock' => $this->min_stock,
             'max_stock' => $this->max_stock,

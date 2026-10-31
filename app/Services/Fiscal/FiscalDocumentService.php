@@ -33,11 +33,20 @@ final class FiscalDocumentService
     ) {}
 
     /**
+     * Linha de brinde/cortesia/retorno (PLANO 1.4) fica FORA do documento; venda só com elas
+     * devolve coleção vazia — nada a emitir, não é erro (`isCourtesyOnly`). A saída fiscal de
+     * bonificação (CFOP 5.910) é pendência do contador: docs/PENDENCIAS.md.
+     *
      * @return Collection<int, FiscalDocument>
      */
     public function issueFromSale(Sale $sale, User $actor): Collection
     {
         abort_if($sale->items->isEmpty(), 422, 'Venda sem item não emite documento fiscal.');
+
+        if (self::isCourtesyOnly($sale)) {
+            return collect();
+        }
+
         $this->assertNotAlreadyIssued($sale);
 
         $parts = $this->documentParts($sale);
@@ -70,7 +79,13 @@ final class FiscalDocumentService
         $bases = [];
 
         foreach ($sale->netItemTotals() as $itemId => $net) {
-            $type = $sale->items->firstWhere('id', $itemId)->sellable_type === Product::class ? 'product' : 'service';
+            $item = $sale->items->firstWhere('id', $itemId);
+
+            if ($item->isCourtesy()) {
+                continue;
+            }
+
+            $type = $item->sellable_type === Product::class ? 'product' : 'service';
             $bases[$type] = ($bases[$type] ?? Money::zero())->plus($net);
         }
 
@@ -98,6 +113,12 @@ final class FiscalDocumentService
         }
 
         return $surcharge->allocate($bases);
+    }
+
+    /** Venda em que toda linha é brinde/cortesia/retorno: nenhum documento a emitir. Exige `items`. */
+    public static function isCourtesyOnly(Sale $sale): bool
+    {
+        return $sale->items->isNotEmpty() && $sale->items->every(fn ($item): bool => $item->isCourtesy());
     }
 
     public function cancel(FiscalDocument $document, string $reason): FiscalDocument

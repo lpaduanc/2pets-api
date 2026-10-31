@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Fiscal;
 
+use App\Enums\CardFeeReferenceMode;
 use App\Enums\CardSurchargeReturnPolicy;
 use App\Enums\StateRegistrationType;
 use App\Enums\TaxRegime;
@@ -37,6 +38,10 @@ class UpdateFiscalSettingsRequest extends FormRequest
             // já vale desde a criação da organização.
             'card_surcharge_on_invoice' => ['sometimes', 'boolean'],
             'card_surcharge_return_policy' => ['sometimes', Rule::enum(CardSurchargeReturnPolicy::class)],
+            // Precificação (PLANO 1.4). Alíquota efetiva do Simples informada pela clínica, em %
+            // com até 4 casas; `null` = não informada (o preço mínimo usa 0 e avisa).
+            'effective_sales_tax_rate' => ['sometimes', 'nullable', 'numeric', 'decimal:0,4', 'min:0', 'max:100'],
+            'card_fee_reference_mode' => ['sometimes', Rule::enum(CardFeeReferenceMode::class)],
         ];
     }
 }
