@@ -5,9 +5,9 @@ namespace App\Services\Commercial;
 use App\Enums\CommissionCalculationBase;
 use App\Models\CommissionRule;
 use App\Models\SaleItem;
+use App\Services\Commercial\Profitability\SaleAllocationService;
 use App\Support\Money\Decimal;
 use App\Support\Money\Money;
-use Brick\Math\RoundingMode;
 
 /**
  * Base de cálculo e valor da comissão de UM item de venda — contrato
@@ -19,6 +19,8 @@ use Brick\Math\RoundingMode;
  */
 final class CommissionCalculator
 {
+    public function __construct(private readonly SaleAllocationService $allocation) {}
+
     /**
      * @return array{base_amount: float, commission_amount: float}
      */
@@ -29,7 +31,10 @@ final class CommissionCalculator
 
         return [
             'base_amount' => $baseAmount->toFloat(),
-            'commission_amount' => $this->commissionAmountFor($item, $rule, $baseAmount)->toFloat(),
+            // Comissão nunca é negativa: base `margin` de linha com prejuízo (custo > receita, ou
+            // brinde/cortesia, PLANO 1.4) daria valor negativo, que o fechamento descontaria do
+            // profissional. A base continua a real (negativa) para a tela explicar o zero.
+            'commission_amount' => $this->commissionAmountFor($item, $rule, $baseAmount)->max(Money::zero())->toFloat(),
         ];
     }
 
@@ -62,30 +67,16 @@ final class CommissionCalculator
     }
 
     /**
-     * Taxa da adquirente do RECEBIMENTO, rateada entre os itens da venda proporcionalmente ao
-     * valor de cada um — "recebimento de R$ 100 com taxa de R$ 3 rateada entre 2 itens de
-     * R$ 50 gera R$ 1,50 de dedução por item" (critério de aceite).
+     * Taxa da adquirente do RECEBIMENTO, rateada entre os itens da venda — "recebimento de R$ 100
+     * com taxa de R$ 3 rateada entre 2 itens de R$ 50 gera R$ 1,50 de dedução por item" (critério
+     * de aceite). O rateio é o do `SaleAllocationService` (PLANO 1.5): só a taxa que a clínica
+     * ABSORVEU (com repasse ao cliente o acréscimo cobre a taxa), pelo maior resto sobre a receita
+     * líquida da linha — o mesmo número que a rentabilidade usa.
      */
     private function netOfCardFee(SaleItem $item): Money
     {
-        $sale = $item->sale;
-        // Só a taxa que a clínica ABSORVEU reduz a base: com repasse ao cliente (plano 1.1) o
-        // acréscimo cobre a taxa, e descontá-la do item tiraria do profissional um custo que o
-        // cliente pagou. Por recebimento, nunca negativo (acréscimo ≥ taxa por construção).
-        $totalFee = Money::sum($sale->receipts->map(
-            fn ($receipt): Money => Money::of($receipt->operator_fee)->minus($receipt->surcharge_amount ?? '0')->max(Money::zero())
-        ));
-        $itemsTotal = Money::sum($sale->items->pluck('total'));
+        $share = $this->allocation->cardFeeShares($item->sale)[$item->id] ?? Money::zero();
 
-        if (! $totalFee->isPositive() || ! $itemsTotal->isPositive()) {
-            return Money::of($item->total);
-        }
-
-        // Fórmula proporcional mantida na fase 0; o rateio por maior resto entre os itens é o
-        // item 1.5 do docs/gap-petflow/PLANO.md. Aqui só a conta deixa de passar por float.
-        $share = $totalFee->toBigDecimal()->multipliedBy(Decimal::of($item->total))
-            ->dividedBy($itemsTotal->toBigDecimal(), 12, RoundingMode::HalfUp);
-
-        return Money::of(Decimal::of($item->total)->minus($share));
+        return Money::of($item->total)->minus($share);
     }
 }

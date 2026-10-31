@@ -131,6 +131,44 @@ class CommissionBaseCalculationTest extends TestCase
             ->assertJsonPath('data.0.commission_amount', 12);
     }
 
+    public function test_negative_margin_never_becomes_a_negative_commission_open_or_closed(): void
+    {
+        // Brinde de um produto de custo 30 numa venda paga: receita 0, base `margin` = −30,00. 20%
+        // daria −6,00, que o fechamento descontaria do profissional; a comissão é 0 (a base fica
+        // a real). O outro item (sem custo, sem responsável) só faz a venda ter recebimento — o
+        // fechamento exige recebimento até a data.
+        $this->makeCommissionRule(['calculation_base' => 'margin', 'percent' => 20]);
+        $product = $this->makeProduct(['price' => 100, 'average_cost' => 30, 'controls_stock' => false]);
+        $this->openRegisterFor($this->receptionist);
+        $saleId = $this->postJson('/api/professional/sales', ['kind' => 'sale'])->json('data.id');
+        $itemId = $this->postJson("/api/professional/sales/{$saleId}/items", [
+            'sellable_type' => 'product', 'sellable_id' => $product->id, 'staff_id' => $this->groomerMember->id,
+        ])->assertCreated()->json('data.id');
+        $this->postJson("/api/professional/sales/{$saleId}/items", ['sellable_type' => 'product', 'sellable_id' => $this->makeProduct(['price' => 50, 'controls_stock' => false])->id])
+            ->assertCreated();
+        $this->actingAs($this->owner, 'sanctum')
+            ->putJson("/api/professional/sales/{$saleId}/items/{$itemId}/courtesy", ['kind' => 'gift', 'reason' => 'Brinde'])
+            ->assertOk();
+        $this->actingAs($this->receptionist, 'sanctum')
+            ->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $this->paymentMethodId($this->receptionist, 'cash'), 'amount' => '50.00'])
+            ->assertCreated()
+            ->assertJsonPath('sale.status', 'paid');
+
+        $this->openCommissionsFor($this->groomerMember->id)
+            ->assertJsonPath('data.0.base_amount', -30)
+            ->assertJsonPath('data.0.commission_amount', 0);
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->postJson('/api/professional/commission-settlements', [
+                'staff_id' => $this->groomerMember->id, 'period_from' => now()->subDay()->toDateString(),
+                'period_to' => now()->toDateString(), 'received_until' => now()->toDateString(),
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.total_amount', 0)
+            ->assertJsonPath('data.items.0.commission_amount', 0);
+        $this->assertSame('0.00', (string) \App\Models\CommissionSettlementItem::where('sale_item_id', $itemId)->value('commission_amount'));
+    }
+
     private function paySaleWithDiscount(Product $product, float $discount): void
     {
         $this->openRegisterFor($this->receptionist);

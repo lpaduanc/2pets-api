@@ -12,6 +12,9 @@ use App\Enums\QuoteStatus;
 use App\Enums\SaleKind;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
+use App\Events\Sales\SaleFinalized;
+use App\Events\Sales\SaleReceiptAdded;
+use App\Events\Sales\SaleReceiptCancelled;
 use App\Exceptions\Commercial\CashRegisterRequiredException;
 use App\Exceptions\Commercial\PriceOverrideNotAllowedException;
 use App\Exceptions\Commercial\SaleNotEditableException;
@@ -368,6 +371,7 @@ final class SaleService
             ]);
 
             $this->receivables->persist($receipt, $quote->plan);
+            SaleReceiptAdded::dispatch($sale->id);
 
             // Recebimento em `account_credit` (doc 11): consome o saldo credor do cliente
             // ANTES de mexer em caixa/estoque — 422 aqui desfaz a transação inteira (o
@@ -517,6 +521,10 @@ final class SaleService
                 'cancelled_at' => now(),
                 'cancellation_reason' => $reason,
             ]);
+            // Hoje o estorno de recebimento só existe dentro do cancelamento: um evento por venda
+            // cobre também a venda paga sem recebimento (`finalizeWithoutPayment`). Rentabilidade
+            // de venda cancelada é apagada (PLANO 1.5).
+            SaleReceiptCancelled::dispatch($sale->id);
 
             return $sale->fresh(Sale::RESOURCE_RELATIONS);
         });
@@ -561,6 +569,7 @@ final class SaleService
         // Perna contábil da venda (doc 02): receita no DRE, produto e serviço
         // separados pelo mesmo rateio de desconto do Financeiro do PDV.
         $this->financialEntries->recordForFullyPaidSale($sale->fresh(['items', 'receipts']), $user);
+        SaleFinalized::dispatch($sale->id);
     }
 
     /**

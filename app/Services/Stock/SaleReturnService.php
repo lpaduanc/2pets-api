@@ -4,6 +4,7 @@ namespace App\Services\Stock;
 
 use App\Enums\RefundMethod;
 use App\Enums\StockMovementType;
+use App\Events\Sales\SaleReturned;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -62,6 +63,7 @@ final class SaleReturnService
             ]);
 
             $this->refundEffects->apply($sale, $return, $refundMethod, $refund['items_refund'], $refund['surcharge_refund'], $user);
+            SaleReturned::dispatch($sale->id);
 
             return $return->load('items.saleItem', 'sale', 'user');
         });

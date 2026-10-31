@@ -363,6 +363,8 @@ return [
     // `sales.grant_courtesy` é do cargo na organização da venda (`CourtesyAuthorizer`) — o
     // middleware leria o papel Spatie global; o fechamento usa a `SalePolicy::registerReceipt`.
     'POST api/professional/sales/{id}/finalize',
+    // PLANO 1.5: `reports.profitability` julgada pelo cargo na organização da venda.
+    'GET api/professional/sales/{id}/profitability',
     'PUT api/professional/sales/{id}/items/{itemId}/courtesy',
     'DELETE api/professional/sales/{id}/items/{itemId}/courtesy',
     'POST api/professional/services',

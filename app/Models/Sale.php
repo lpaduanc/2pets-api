@@ -8,6 +8,7 @@ use App\Enums\FiscalOperation;
 use App\Enums\QuoteStatus;
 use App\Enums\SaleKind;
 use App\Enums\SaleStatus;
+use App\Services\Commercial\Profitability\SaleAllocationService;
 use App\Support\Money\Money;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -233,33 +234,14 @@ class Sale extends Model
      * cabeçalho, rateado pelo maior resto — a soma é o total da venda, centavo a centavo. Base
      * da devolução em dinheiro (`SaleReturnService`). Exige `items` carregados.
      *
-     * Linha de brinde/cortesia/retorno (PLANO 1.4) fica FORA do rateio: líquido zero, sempre —
-     * sem isto, uma venda em que só sobram linhas de valor zero dividiria o desconto em partes
-     * iguais (`allocate` com pesos zero) e a cortesia ficaria negativa.
+     * O rateio mora em `SaleAllocationService` (PLANO 1.5, única fonte): linha de brinde/cortesia/
+     * retorno fica fora dele, com líquido zero.
      *
      * @return array<int, Money> por `sale_items.id`
      */
     public function netItemTotals(): array
     {
-        $totals = [];
-
-        foreach ($this->items as $item) {
-            $totals[$item->id] = $item->isCourtesy() ? Money::zero() : Money::of($item->total);
-        }
-
-        $discount = Money::of($this->discount_amount);
-        $weights = array_filter($totals, fn (int $itemId): bool => ! $this->items->firstWhere('id', $itemId)->isCourtesy(), ARRAY_FILTER_USE_KEY);
-
-        if ($weights === [] || $discount->isZero()) {
-            return $totals;
-        }
-
-        // `allocate` preserva as chaves: a parte de cada linha volta no id dela.
-        foreach ($discount->allocate($weights) as $itemId => $share) {
-            $totals[$itemId] = $totals[$itemId]->minus($share);
-        }
-
-        return $totals;
+        return (new SaleAllocationService)->netItemTotals($this);
     }
 
     /**

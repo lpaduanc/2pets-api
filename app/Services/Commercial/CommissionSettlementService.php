@@ -5,6 +5,7 @@ namespace App\Services\Commercial;
 use App\Enums\CommissionSettlementStatus;
 use App\Enums\SaleKind;
 use App\Enums\SaleStatus;
+use App\Events\Sales\CommissionRecalculated;
 use App\Models\CommissionRule;
 use App\Models\CommissionSettlement;
 use App\Models\OrganizationMember;
@@ -87,6 +88,9 @@ final class CommissionSettlementService
             });
 
             $settlement->update(['total_amount' => round($total, 2)]);
+
+            // A comissão fechada passa a ser a da rentabilidade (PLANO 1.5).
+            $items->pluck('sale_id')->unique()->each(fn (int $saleId) => CommissionRecalculated::dispatch($saleId));
 
             return $settlement->fresh('items.saleItem');
         });

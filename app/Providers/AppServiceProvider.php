@@ -156,6 +156,17 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(ReviewCreated::class, SendReviewNotification::class);
         Event::listen(MedicalRecordFinalized::class, SendReviewInviteNotification::class);
 
+        // Rentabilidade por item (PLANO 1.5): todo fato que muda o resultado da venda.
+        foreach ([
+            \App\Events\Sales\SaleFinalized::class,
+            \App\Events\Sales\SaleReceiptAdded::class,
+            \App\Events\Sales\SaleReceiptCancelled::class,
+            \App\Events\Sales\SaleReturned::class,
+            \App\Events\Sales\CommissionRecalculated::class,
+        ] as $profitabilityEvent) {
+            Event::listen($profitabilityEvent, \App\Listeners\RecomputeSaleProfitability::class);
+        }
+
         // Fase 4 do fluxo de agendamento: push para TODA notificação já existente
         // (`App\Notifications\*`) sem editar nenhuma delas — ver o docblock da classe.
         Event::listen(NotificationSent::class, DispatchFallbackPushNotification::class);

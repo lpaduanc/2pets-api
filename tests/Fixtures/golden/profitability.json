@@ -1,0 +1,202 @@
+{
+  "_doc": "Casos de referencia da rentabilidade por item de venda (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.5). Desconto do cabecalho rateado pelo maior resto (pesos = total da linha); receita = total - desconto rateado; custo = round(qtd x custo unitario); taxa absorvida rateada pelo maior resto (pesos = receita); imposto = round(receita x aliquota); comissao do item, nunca negativa; MC = receita - custo - taxa - imposto - comissao; MC% = MC / receita, 2 casas HALF_UP, null com receita 0; totais = somas e MC% da venda = soma MC / soma receita. Linha de cortesia: receita, taxa e imposto 0. Devolucao: cada valor dividido entre ficou e devolvido pelo maior resto (pesos = quantidades). expected = items e totals do GET /api/professional/sales/{id}/profitability. Copia byte a byte em 2pets-pro/tests/fixtures/golden/profitability.json.",
+  "profitability": [
+    {
+      "id": "rentab-01",
+      "_conta": "Racao 1 x 200,00 (custo 140,00) + banho 1 x 60,00 (custo 6,50); desconto do cabecalho 13,00 rateado 1300x200/260 = 1000 e 300 -> 10,00 / 3,00 -> receita 190,00 / 57,00 (soma 247,00). Taxa 247 x 2,99% = 7,39 rateada 739x190/247 = 568,46 e 170,54 -> 568 + 170, sobra 1 centavo ao maior resto (banho) -> 5,68 / 1,71. Imposto 6%: 11,40 / 3,42. Comissao do banho 17,10 (dada). MC racao 190 - 140 - 5,68 - 11,40 = 32,92 (17,33%); banho 57 - 6,50 - 1,71 - 3,42 - 17,10 = 28,27 (49,60%); venda 61,19 / 247 = 24,77% (a media simples dos percentuais, 33,47%, esta errada).",
+      "input": {
+        "header_discount": "13.00",
+        "card_fee": "7.39",
+        "tax_percent": "6.0000",
+        "items": [
+          {
+            "sale_item_id": 1,
+            "description": "Racao Premium 10kg",
+            "quantity": "1.0000",
+            "returned_quantity": "0",
+            "courtesy_kind": null,
+            "total": "200.00",
+            "unit_cost": "140.0000",
+            "commission": "0.00"
+          },
+          {
+            "sale_item_id": 2,
+            "description": "Banho porte medio",
+            "quantity": "1.0000",
+            "returned_quantity": "0",
+            "courtesy_kind": null,
+            "total": "60.00",
+            "unit_cost": "6.5000",
+            "commission": "17.10"
+          }
+        ]
+      },
+      "expected": {
+        "items": [
+          {
+            "sale_item_id": 1,
+            "description": "Racao Premium 10kg",
+            "quantity": "1.0000",
+            "courtesy_kind": null,
+            "gross_total": "200.00",
+            "allocated_header_discount": "10.00",
+            "net_revenue": "190.00",
+            "cost_amount": "140.00",
+            "card_fee_share": "5.68",
+            "tax_amount": "11.40",
+            "commission_amount": "0.00",
+            "contribution_margin": "32.92",
+            "margin_percent": "17.33"
+          },
+          {
+            "sale_item_id": 2,
+            "description": "Banho porte medio",
+            "quantity": "1.0000",
+            "courtesy_kind": null,
+            "gross_total": "60.00",
+            "allocated_header_discount": "3.00",
+            "net_revenue": "57.00",
+            "cost_amount": "6.50",
+            "card_fee_share": "1.71",
+            "tax_amount": "3.42",
+            "commission_amount": "17.10",
+            "contribution_margin": "28.27",
+            "margin_percent": "49.60"
+          }
+        ],
+        "totals": {
+          "net_revenue": "247.00",
+          "cost_amount": "146.50",
+          "card_fee_share": "7.39",
+          "tax_amount": "14.82",
+          "commission_amount": "17.10",
+          "contribution_margin": "61.19",
+          "margin_percent": "24.77"
+        }
+      }
+    },
+    {
+      "id": "rentab-cortesia",
+      "_conta": "Racao 1 x 100,00 (custo 60,00) + brinde da Racao Teste A (cortesia: total 0, custo 21,00) em dinheiro (sem taxa); imposto 6%. Racao: 100 - 60 - 6 = 34,00 (34,00%). Brinde: receita, taxa e imposto zero, custo normal -> MC -21,00, MC% null. Venda: 13,00 / 100 = 13,00%. Comissao nunca negativa: a do brinde (base margin negativa) entra como 0.",
+      "input": {
+        "header_discount": "0.00",
+        "card_fee": "0.00",
+        "tax_percent": "6.0000",
+        "items": [
+          {
+            "sale_item_id": 1,
+            "description": "Racao Premium 10kg",
+            "quantity": "1.0000",
+            "returned_quantity": "0",
+            "courtesy_kind": null,
+            "total": "100.00",
+            "unit_cost": "60.0000",
+            "commission": "0.00"
+          },
+          {
+            "sale_item_id": 2,
+            "description": "Racao Teste A",
+            "quantity": "1.0000",
+            "returned_quantity": "0",
+            "courtesy_kind": "gift",
+            "total": "0.00",
+            "unit_cost": "21.0000",
+            "commission": "-6.30"
+          }
+        ]
+      },
+      "expected": {
+        "items": [
+          {
+            "sale_item_id": 1,
+            "description": "Racao Premium 10kg",
+            "quantity": "1.0000",
+            "courtesy_kind": null,
+            "gross_total": "100.00",
+            "allocated_header_discount": "0.00",
+            "net_revenue": "100.00",
+            "cost_amount": "60.00",
+            "card_fee_share": "0.00",
+            "tax_amount": "6.00",
+            "commission_amount": "0.00",
+            "contribution_margin": "34.00",
+            "margin_percent": "34.00"
+          },
+          {
+            "sale_item_id": 2,
+            "description": "Racao Teste A",
+            "quantity": "1.0000",
+            "courtesy_kind": "gift",
+            "gross_total": "0.00",
+            "allocated_header_discount": "0.00",
+            "net_revenue": "0.00",
+            "cost_amount": "21.00",
+            "card_fee_share": "0.00",
+            "tax_amount": "0.00",
+            "commission_amount": "0.00",
+            "contribution_margin": "-21.00",
+            "margin_percent": null
+          }
+        ],
+        "totals": {
+          "net_revenue": "100.00",
+          "cost_amount": "81.00",
+          "card_fee_share": "0.00",
+          "tax_amount": "6.00",
+          "commission_amount": "0.00",
+          "contribution_margin": "13.00",
+          "margin_percent": "13.00"
+        }
+      }
+    },
+    {
+      "id": "rentab-devolucao-parcial",
+      "_conta": "Racao 3 x 50,00 = 150,00 (custo 30,00 -> 90,00), credito 2,99% -> taxa 4,49, imposto 6% -> 9,00; devolvida 1 unidade. Cada valor dividido pelo maior resto entre ficou (2) e devolvido (1): 150 -> 100/50; custo 90 -> 60/30; taxa 449 x 2/3 = 299,33 e 149,67 -> 299 + 149, sobra ao maior resto (devolvido) -> fica 2,99; imposto 9 -> 6/3. MC = 100 - 60 - 2,99 - 6 = 31,01 (31,01%).",
+      "input": {
+        "header_discount": "0.00",
+        "card_fee": "4.49",
+        "tax_percent": "6.0000",
+        "items": [
+          {
+            "sale_item_id": 1,
+            "description": "Racao Premium 10kg",
+            "quantity": "3.0000",
+            "returned_quantity": "1.0000",
+            "courtesy_kind": null,
+            "total": "150.00",
+            "unit_cost": "30.0000",
+            "commission": "0.00"
+          }
+        ]
+      },
+      "expected": {
+        "items": [
+          {
+            "sale_item_id": 1,
+            "description": "Racao Premium 10kg",
+            "quantity": "2.0000",
+            "courtesy_kind": null,
+            "gross_total": "100.00",
+            "allocated_header_discount": "0.00",
+            "net_revenue": "100.00",
+            "cost_amount": "60.00",
+            "card_fee_share": "2.99",
+            "tax_amount": "6.00",
+            "commission_amount": "0.00",
+            "contribution_margin": "31.01",
+            "margin_percent": "31.01"
+          }
+        ],
+        "totals": {
+          "net_revenue": "100.00",
+          "cost_amount": "60.00",
+          "card_fee_share": "2.99",
+          "tax_amount": "6.00",
+          "commission_amount": "0.00",
+          "contribution_margin": "31.01",
+          "margin_percent": "31.01"
+        }
+      }
+    }
+  ]
+}

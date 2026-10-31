@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\Commercial\ReceivableController;
 use App\Http\Controllers\Api\Commercial\SaleController;
 use App\Http\Controllers\Api\Commercial\SaleFinalizationController;
 use App\Http\Controllers\Api\Commercial\SaleItemCourtesyController;
+use App\Http\Controllers\Api\Commercial\SaleProfitabilityController;
 use App\Http\Controllers\Api\Commercial\ServicePackageController;
 use App\Http\Controllers\Api\Commercial\SoldPackageController;
 use App\Http\Controllers\Api\ConsultationController;
@@ -1026,6 +1027,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::put('sales/{id}/items/{itemId}/courtesy', [SaleItemCourtesyController::class, 'update'])->whereNumber(['id', 'itemId']);
         Route::delete('sales/{id}/items/{itemId}/courtesy', [SaleItemCourtesyController::class, 'destroy'])->whereNumber(['id', 'itemId']);
         Route::post('sales/{id}/finalize', SaleFinalizationController::class)->whereNumber('id');
+        // Rentabilidade por item (PLANO 1.5). `reports.profitability` é julgada pelo cargo na
+        // organização da venda (`SalePermissionGate`), não pelo middleware — papel Spatie é global.
+        Route::get('sales/{id}/profitability', SaleProfitabilityController::class)->whereNumber('id');
         // Prévia de taxa e agenda do recebimento no PDV (docs/gap-petflow 1.1). Literal antes de
         // qualquer `sales/{id}` — e `{id}` é numérico, então não colide.
         Route::post('sales/receipts/simulate-fee', ReceiptSimulationController::class);

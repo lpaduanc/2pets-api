@@ -271,6 +271,10 @@ class RolesAndPermissionsSeeder extends Seeder
             // exceção ao membro. Na venda de organização vale o cargo NAQUELA organização
             // (`CourtesyAuthorizer`). Vender abaixo do custo, por si, não tem permissão que libere.
             'sales.grant_courtesy',
+            // Rentabilidade por item de venda (docs/gap-petflow/PLANO.md, 1.5): mostra custo, taxa,
+            // imposto, comissão e margem. Recepção não vê custo; o dono concede por exceção ao
+            // membro (não é ato clínico). Julgada pelo cargo na organização da venda.
+            'reports.profitability',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -394,6 +398,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'partner-payouts.manage',
             // PLANO 1.4: brinde/cortesia/retorno é decisão de gestão (ver o catálogo acima).
             'sales.grant_courtesy',
+            // PLANO 1.5: rentabilidade (custo e margem) é de gestão.
+            'reports.profitability',
         ]);
 
         // 3. Clinic Owner
@@ -468,6 +474,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'partner-payouts.manage',
             // PLANO 1.4: brinde/cortesia/retorno é decisão de gestão (ver o catálogo acima).
             'sales.grant_courtesy',
+            // PLANO 1.5: rentabilidade (custo e margem) é de gestão.
+            'reports.profitability',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -569,6 +577,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'partner-payouts.manage',
             // PLANO 1.4: brinde/cortesia/retorno é decisão de gestão (ver o catálogo acima).
             'sales.grant_courtesy',
+            // PLANO 1.5: rentabilidade (custo e margem) é de gestão.
+            'reports.profitability',
         ]);
 
         // 6. Petshop Staff
