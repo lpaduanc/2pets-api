@@ -19,6 +19,9 @@ use Carbon\CarbonImmutable;
 final readonly class InsightQuery
 {
     /**
+     * `includeProfitability`: a pessoa tem `reports.profitability` (custo/margem, PLANO 1.6);
+     * `abc`: classificar a série por margem de contribuição.
+     *
      * @param  list<int>  $employeeIds
      * @param  list<int>  $clientIds
      */
@@ -31,6 +34,8 @@ final readonly class InsightQuery
         public SaleKind $kind = SaleKind::SALE,
         public array $employeeIds = [],
         public array $clientIds = [],
+        public bool $includeProfitability = false,
+        public bool $abc = false,
     ) {}
 
     /**
@@ -51,6 +56,8 @@ final readonly class InsightQuery
             kind: $this->kind,
             employeeIds: $employeeIds,
             clientIds: $this->clientIds,
+            includeProfitability: $this->includeProfitability,
+            abc: $this->abc,
         );
     }
 
@@ -65,6 +72,8 @@ final readonly class InsightQuery
             kind: $this->kind,
             employeeIds: $this->employeeIds,
             clientIds: $this->clientIds,
+            includeProfitability: $this->includeProfitability,
+            abc: $this->abc,
         );
     }
 }

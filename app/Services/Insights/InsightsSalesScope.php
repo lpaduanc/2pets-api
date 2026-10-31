@@ -7,6 +7,7 @@ use App\Enums\SaleStatus;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Service;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,8 +48,11 @@ final class InsightsSalesScope
     {
         $saleIds = $this->scopedSales($user, $query)->select('sales.id');
 
+        // `sale_item_profitability` (PLANO 1.6) é 1:1 com o item e só existe para venda paga:
+        // `LEFT JOIN` não multiplica linha e deixa as métricas novas em zero para o resto.
         $items = SaleItem::query()
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->leftJoin('sale_item_profitability', 'sale_item_profitability.sale_item_id', '=', 'sale_items.id')
             ->whereIn('sale_items.sale_id', $saleIds);
 
         if ($query->employeeIds !== []) {
@@ -57,6 +61,10 @@ final class InsightsSalesScope
 
         if ($query->dimension->requiresProductJoin()) {
             $this->joinProducts($items);
+        }
+
+        if ($query->dimension->requiresServiceItems()) {
+            $items->where('sale_items.sellable_type', Service::class);
         }
 
         return $items;

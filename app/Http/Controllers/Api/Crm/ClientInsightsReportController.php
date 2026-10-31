@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Crm\ClientRelationshipProfileResource;
 use App\Models\ClientRelationshipProfile;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Crm\ClientCommercialMetrics;
 use App\Services\Crm\ClientRelationshipProfileRecalculator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ class ClientInsightsReportController extends Controller
     public function __construct(
         private readonly CommercialScopeResolver $scope,
         private readonly ClientRelationshipProfileRecalculator $recalculator,
+        private readonly ClientCommercialMetrics $commercialMetrics,
     ) {}
 
     public function abcRanking(Request $request): JsonResponse
@@ -37,6 +39,7 @@ class ClientInsightsReportController extends Controller
 
         $windowDays = $this->windowDaysFrom($request);
         $profiles = $this->scopedProfiles($request)->orderBy('abc_position')->get();
+        $this->commercialMetrics->attachTo($request->user(), $profiles);
 
         return response()->json([
             'summary' => $this->abcSummary($profiles, $windowDays),

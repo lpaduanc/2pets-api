@@ -1,0 +1,178 @@
+{
+  "_doc": "Casos de referencia dos relatorios de performance (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.6). abc: ordena por MC desc (empate pelo bucket asc), participacao sobre a soma das MCs positivas; classe pelo acumulado ANTES do item: < 80% A, < 95% B, senao C; MC <= 0 vai para C com cumulative_percent null; loss true so com MC < 0 (MC zero nao e prejuizo); cumulative_percent = acumulado incluindo o item, 2 casas HALF_UP; expected na ordem da classificacao. margin: margin_percent = soma MC / soma receita (2 casas HALF_UP); simple_average e a media dos percentuais das linhas, que NAO e a metrica. return_days: media dos intervalos em dias entre compras consecutivas, dia em America/Sao_Paulo, 1 casa; menos de 2 compras = null. Copia byte a byte em 2pets-pro/tests/fixtures/golden/performance.json.",
+  "abc": [
+    {
+      "id": "abc-com-mc-negativa",
+      "_conta": "Soma das MCs positivas 1000. Item 1 (500): antes 0% -> A, acumulado 50%. Item 2 (300): antes 50% -> A, 80%. Item 3 (150): antes 80% (nao < 80) -> B, 95%. Item 4 (50): antes 95% -> C, 100%. Item 6 (MC 0): C sem acumulado e sem loss (zero nao e prejuizo). Item 5 (MC -40): C com loss. 0 vem antes de -40 (MC desc).",
+      "input": [
+        {
+          "bucket": 1,
+          "contribution_margin": "500.00"
+        },
+        {
+          "bucket": 5,
+          "contribution_margin": "-40.00"
+        },
+        {
+          "bucket": 3,
+          "contribution_margin": "150.00"
+        },
+        {
+          "bucket": 2,
+          "contribution_margin": "300.00"
+        },
+        {
+          "bucket": 6,
+          "contribution_margin": "0.00"
+        },
+        {
+          "bucket": 4,
+          "contribution_margin": "50.00"
+        }
+      ],
+      "expected": [
+        {
+          "bucket": 1,
+          "class": "A",
+          "cumulative_percent": "50.00",
+          "loss": false
+        },
+        {
+          "bucket": 2,
+          "class": "A",
+          "cumulative_percent": "80.00",
+          "loss": false
+        },
+        {
+          "bucket": 3,
+          "class": "B",
+          "cumulative_percent": "95.00",
+          "loss": false
+        },
+        {
+          "bucket": 4,
+          "class": "C",
+          "cumulative_percent": "100.00",
+          "loss": false
+        },
+        {
+          "bucket": 6,
+          "class": "C",
+          "cumulative_percent": null,
+          "loss": false
+        },
+        {
+          "bucket": 5,
+          "class": "C",
+          "cumulative_percent": null,
+          "loss": true
+        }
+      ]
+    },
+    {
+      "id": "abc-campeao-sozinho-e-empate",
+      "_conta": "Item 7 tem 90% da MC: antes 0% -> A (cruzar 80% nao o rebaixa). Itens 8 e 9 empatados em 5,00: desempate pelo bucket asc -> 8 (antes 90% -> B, 95%) e 9 (antes 95% -> C, 100%).",
+      "input": [
+        {
+          "bucket": 9,
+          "contribution_margin": "5.00"
+        },
+        {
+          "bucket": 8,
+          "contribution_margin": "5.00"
+        },
+        {
+          "bucket": 7,
+          "contribution_margin": "90.00"
+        }
+      ],
+      "expected": [
+        {
+          "bucket": 7,
+          "class": "A",
+          "cumulative_percent": "90.00",
+          "loss": false
+        },
+        {
+          "bucket": 8,
+          "class": "B",
+          "cumulative_percent": "95.00",
+          "loss": false
+        },
+        {
+          "bucket": 9,
+          "class": "C",
+          "cumulative_percent": "100.00",
+          "loss": false
+        }
+      ]
+    }
+  ],
+  "margin": [
+    {
+      "id": "margem-agregada-rentab-01",
+      "_conta": "Racao 32,92 / 190,00 = 17,33% e banho 28,27 / 57,00 = 49,60%. Agregado: 61,19 / 247,00 = 24,77%. A media simples (17,33 + 49,60) / 2 = 33,465 -> 33,47% esta errada.",
+      "input": [
+        {
+          "net_revenue": "190.00",
+          "contribution_margin": "32.92"
+        },
+        {
+          "net_revenue": "57.00",
+          "contribution_margin": "28.27"
+        }
+      ],
+      "expected": {
+        "margin_percent": "24.77",
+        "simple_average": "33.47"
+      }
+    },
+    {
+      "id": "margem-com-brinde",
+      "_conta": "Venda 100,00 com MC 34,00 + brinde (receita 0, MC -21,00): 13,00 / 100,00 = 13,00%. O brinde nao tem percentual proprio (receita 0), entao a media simples usa so a venda: 34,00%.",
+      "input": [
+        {
+          "net_revenue": "100.00",
+          "contribution_margin": "34.00"
+        },
+        {
+          "net_revenue": "0.00",
+          "contribution_margin": "-21.00"
+        }
+      ],
+      "expected": {
+        "margin_percent": "13.00",
+        "simple_average": "34.00"
+      }
+    }
+  ],
+  "return_days": [
+    {
+      "id": "retorno-1-compra",
+      "_conta": "Uma compra so: sem intervalo -> null (\"—\").",
+      "input": [
+        "2026-01-01T15:00:00Z"
+      ],
+      "expected": null
+    },
+    {
+      "id": "retorno-2-compras",
+      "_conta": "01/01 e 31/01 -> 30 dias.",
+      "input": [
+        "2026-01-31T15:00:00Z",
+        "2026-01-01T15:00:00Z"
+      ],
+      "expected": "30.0"
+    },
+    {
+      "id": "retorno-3-compras-fuso",
+      "_conta": "11/01 02:30 UTC = 10/01 23:30 em Brasilia. Dias 01/01, 10/01 e 10/02 -> intervalos 9 e 31 -> media 20,0 (em UTC daria 10 e 30, tambem 20,0, mas o primeiro intervalo seria 10).",
+      "input": [
+        "2026-01-01T15:00:00Z",
+        "2026-01-11T02:30:00Z",
+        "2026-02-10T12:00:00Z"
+      ],
+      "expected": "20.0"
+    }
+  ]
+}

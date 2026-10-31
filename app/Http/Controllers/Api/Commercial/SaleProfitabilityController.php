@@ -17,8 +17,6 @@ use Illuminate\Http\Request;
  */
 class SaleProfitabilityController extends Controller
 {
-    public const PERMISSION = 'reports.profitability';
-
     public function __construct(
         private readonly CommercialScopeResolver $scope,
         private readonly SalePermissionGate $permissions,
@@ -28,7 +26,7 @@ class SaleProfitabilityController extends Controller
     public function __invoke(Request $request, int $id): JsonResponse
     {
         $sale = $this->scope->scopeQuery(Sale::query(), $request->user())->findOrFail($id);
-        abort_unless($this->permissions->allows($request->user(), $sale, self::PERMISSION), 403, 'Você não tem permissão para ver a rentabilidade desta venda.');
+        abort_unless($this->permissions->allows($request->user(), $sale, SalePermissionGate::PROFITABILITY), 403, 'Você não tem permissão para ver a rentabilidade desta venda.');
 
         return response()->json(['data' => $this->profitability->report($sale)]);
     }

@@ -21,7 +21,7 @@ final class InsightBucketExpression
             InsightDimension::WEEKDAY => 'EXTRACT(ISODOW FROM COALESCE(sales.sold_at, sales.created_at))',
             InsightDimension::EMPLOYEE => 'sale_items.staff_id',
             InsightDimension::ITEM_TYPE => 'sale_items.sellable_type',
-            InsightDimension::PRODUCT => 'sale_items.sellable_id',
+            InsightDimension::PRODUCT, InsightDimension::SERVICE => 'sale_items.sellable_id',
             InsightDimension::GROUP => 'products.product_group_id',
             InsightDimension::BRAND => 'products.brand_id',
         };

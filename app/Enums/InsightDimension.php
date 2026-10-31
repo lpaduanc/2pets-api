@@ -21,6 +21,8 @@ enum InsightDimension: string
     case PRODUCT = 'product';
     case GROUP = 'group';
     case BRAND = 'brand';
+    // Um bucket por serviço (PLANO 1.6, "Performance de serviços") — espelho de `PRODUCT`.
+    case SERVICE = 'service';
 
     /**
      * `product`/`group`/`brand` só existem na tabela `products` — um item de serviço não tem
@@ -31,8 +33,14 @@ enum InsightDimension: string
     {
         return match ($this) {
             self::PRODUCT, self::GROUP, self::BRAND => true,
-            self::DATE, self::WEEKDAY, self::EMPLOYEE, self::ITEM_TYPE => false,
+            self::DATE, self::WEEKDAY, self::EMPLOYEE, self::ITEM_TYPE, self::SERVICE => false,
         };
+    }
+
+    /** `SERVICE` só faz sentido para item que É serviço — os outros itens ficam fora da série. */
+    public function requiresServiceItems(): bool
+    {
+        return $this === self::SERVICE;
     }
 
     /** Coluna anulável (`products.product_group_id`/`brand_id`) — "sem grupo/marca" é um bucket válido. */

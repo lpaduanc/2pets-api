@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Builder;
  */
 final class InsightsDrillDownService
 {
-    private const RELATIONS = ['sale.client:id,name', 'sale.pet:id,name', 'sellable', 'staff.user:id,name'];
+    private const RELATIONS = ['sale.client:id,name', 'sale.pet:id,name', 'sellable', 'staff.user:id,name', 'profitability'];
 
     public function __construct(
         private readonly InsightsSalesScope $scope,
@@ -43,8 +43,8 @@ final class InsightsDrillDownService
             ->get();
 
         return [
-            'data' => $rows->map(fn (SaleItem $item): array => $this->row($item))->all(),
-            'summary' => InsightMetricsAggregator::fromRow($summaryRow),
+            'data' => $rows->map(fn (SaleItem $item): array => $this->row($item) + InsightItemProfitability::of($item, $query->includeProfitability))->all(),
+            'summary' => InsightMetricsAggregator::fromRow($summaryRow, $query->includeProfitability),
             'meta' => [
                 'current_page' => $page,
                 'last_page' => max(1, (int) ceil($total / $perPage)),

@@ -43,7 +43,8 @@ final class InsightBucketFilter
         return match ($dimension) {
             InsightDimension::DATE => (string) CarbonImmutable::parse($bucket),
             InsightDimension::WEEKDAY, InsightDimension::EMPLOYEE,
-            InsightDimension::PRODUCT, InsightDimension::GROUP, InsightDimension::BRAND => (int) $bucket,
+            InsightDimension::PRODUCT, InsightDimension::GROUP, InsightDimension::BRAND,
+            InsightDimension::SERVICE => (int) $bucket,
             InsightDimension::ITEM_TYPE => $bucket === 'product' ? Product::class : Service::class,
         };
     }

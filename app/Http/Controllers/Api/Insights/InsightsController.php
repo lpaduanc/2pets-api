@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Insights;
 
 use App\DataTransferObjects\InsightQuery;
 use App\Enums\InsightIndicator;
+use App\Enums\InsightPreset;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Insights\InsightDrillDownRequest;
 use App\Http\Requests\Insights\InsightQueryRequest;
@@ -90,6 +91,8 @@ class InsightsController extends Controller
             // `GET professional/insights/{indicator}/drill-down`, não `insights/...` solto.
             'drill_down_url' => "/api/professional/insights/{$indicator->value}/drill-down",
             'export_url' => "/api/professional/insights/{$indicator->value}/export",
+            // Atalhos de performance (PLANO 1.6): só para quem vê custo — todos usam métricas de custo.
+            'presets' => $request->canSeeCost() ? array_map(fn (InsightPreset $preset): array => $preset->toArray(), InsightPreset::cases()) : [],
         ];
     }
 }

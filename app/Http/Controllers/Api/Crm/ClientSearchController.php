@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Crm\ClientRelationshipProfileResource;
 use App\Models\ClientRelationshipProfile;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Crm\ClientCommercialMetrics;
 use App\Services\Crm\ClientRelationshipProfileRecalculator;
 use App\Services\Crm\ClientSegmentQueryBuilder;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +27,7 @@ class ClientSearchController extends Controller
         private readonly ClientSegmentQueryBuilder $queryBuilder,
         private readonly ClientRelationshipProfileRecalculator $recalculator,
         private readonly CommercialScopeResolver $scope,
+        private readonly ClientCommercialMetrics $commercialMetrics,
     ) {}
 
     public function search(Request $request): AnonymousResourceCollection
@@ -36,6 +38,7 @@ class ClientSearchController extends Controller
             ->build($request->user(), $this->definitionFrom($request))
             ->orderByDesc('last_interaction_at')
             ->paginate(self::PER_PAGE);
+        $this->commercialMetrics->attachTo($request->user(), $profiles->getCollection());
 
         return ClientRelationshipProfileResource::collection($profiles);
     }
@@ -54,6 +57,7 @@ class ClientSearchController extends Controller
             ->where('client_id', $id)
             ->with(['client.tags', 'clientOrigin'])
             ->firstOrFail();
+        $this->commercialMetrics->attachTo($request->user(), [$profile]);
 
         return response()->json(['data' => new ClientRelationshipProfileResource($profile)]);
     }

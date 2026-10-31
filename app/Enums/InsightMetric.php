@@ -21,6 +21,31 @@ enum InsightMetric: string
     case SALE_COUNT = 'sale_count';
     case ITEM_COUNT = 'item_count';
 
+    // Rentabilidade (PLANO 1.6), lidas de `sale_item_profitability` — só venda paga.
+    case NET_REVENUE = 'net_revenue';
+    case CARD_FEES = 'card_fees';
+    case TAXES = 'taxes';
+    case DISCOUNT_PERCENT = 'discount_percent';
+    case COST = 'cost';
+    case COMMISSIONS = 'commissions';
+    case CONTRIBUTION_MARGIN = 'contribution_margin';
+    case MARGIN_PERCENT = 'margin_percent';
+
+    /**
+     * Métrica que revela custo/margem: só com `reports.profitability` (recepção não vê custo,
+     * PLANO 1.5/1.6). Pedir uma delas sem a permissão é 403; sem pedir, ela só não vem.
+     */
+    public function revealsCost(): bool
+    {
+        return in_array($this, self::costMetrics(), true);
+    }
+
+    /** @return list<self> */
+    public static function costMetrics(): array
+    {
+        return [self::COST, self::COMMISSIONS, self::CONTRIBUTION_MARGIN, self::MARGIN_PERCENT];
+    }
+
     /** @return list<string> */
     public static function values(): array
     {

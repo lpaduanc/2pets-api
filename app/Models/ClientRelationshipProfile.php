@@ -22,6 +22,14 @@ class ClientRelationshipProfile extends Model
     /** Cache considerado válido por até 24h — regra de negócio 4 da spec. */
     public const STALE_AFTER_HOURS = 24;
 
+    /**
+     * Retorno médio, nº de compras e saldo da conta corrente (PLANO 1.6), calculados por página
+     * em `ClientCommercialMetrics::attachTo` — não é coluna nem cache.
+     *
+     * @var array{purchase_count: int, average_return_days: string|null, client_account_balance: string}|null
+     */
+    public ?array $commercialMetrics = null;
+
     protected $fillable = [
         'organization_id',
         'professional_id',

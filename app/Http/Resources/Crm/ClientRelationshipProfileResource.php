@@ -41,6 +41,10 @@ class ClientRelationshipProfileResource extends JsonResource
             'last_interaction_at' => $this->last_interaction_at?->toISOString(),
             'archived_at' => $this->archived_at?->toISOString(),
             'recalculated_at' => $this->recalculated_at?->toISOString(),
+            // PLANO 1.6 — preenchidos por `ClientCommercialMetrics::attachTo` (null sem ele).
+            'purchase_count' => $this->resource->commercialMetrics['purchase_count'] ?? null,
+            'average_return_days' => $this->resource->commercialMetrics['average_return_days'] ?? null,
+            'client_account_balance' => $this->resource->commercialMetrics['client_account_balance'] ?? null,
         ];
     }
 }

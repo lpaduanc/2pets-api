@@ -78,6 +78,12 @@ class SaleItem extends Model
      */
     public ?Money $resolvedNetTotal = null;
 
+    /** Resultado da linha (PLANO 1.5) — só existe para venda paga. */
+    public function profitability(): HasOne
+    {
+        return $this->hasOne(SaleItemProfitability::class);
+    }
+
     public function courtesyMarkedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'courtesy_marked_by');

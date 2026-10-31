@@ -16,6 +16,10 @@ use Illuminate\Support\Collection;
  * mais raro no fluxo de balcão — `SaleService` aplica desconto por item na maioria dos casos)
  * não é rateado entre os itens neste indicador no MVP. Documentado em
  * docs/gap-simplesvet/contratos/20-contrato-api.md §Limitação conhecida.
+ *
+ * PLANO 1.6: a mesma linha SQL soma também `sale_item_profitability` (receita com o rateio do
+ * cabeçalho, custo, taxa, imposto, comissão, MC) — `ProfitabilityInsightMetrics` formata; as de
+ * custo só saem com `$includeCost`.
  */
 final class InsightMetricsAggregator
 {
@@ -24,13 +28,28 @@ final class InsightMetricsAggregator
         COALESCE(SUM(sale_items.total), 0) AS net_sales,
         COALESCE(SUM(sale_items.quantity * sale_items.unit_price), 0) AS gross_sales,
         COALESCE(SUM(sale_items.discount), 0) AS discounts,
-        COALESCE(SUM(sale_items.quantity), 0) AS item_count
+        COALESCE(SUM(sale_items.quantity), 0) AS item_count,
+        COALESCE(SUM(sale_item_profitability.net_revenue), 0) AS p_net_revenue,
+        COALESCE(SUM(sale_item_profitability.card_fee_share), 0) AS p_card_fee_share,
+        COALESCE(SUM(sale_item_profitability.tax_amount), 0) AS p_tax_amount,
+        COALESCE(SUM(sale_item_profitability.cost_amount), 0) AS p_cost_amount,
+        COALESCE(SUM(sale_item_profitability.commission_amount), 0) AS p_commission_amount,
+        COALESCE(SUM(sale_item_profitability.contribution_margin), 0) AS p_contribution_margin,
+        COALESCE(SUM(sale_item_profitability.allocated_header_discount), 0) AS p_header_discount
     ';
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function fromRow(object $row, bool $includeCost = false): array
+    {
+        return self::salesMetrics($row) + ProfitabilityInsightMetrics::fromRow($row, $includeCost);
+    }
 
     /**
      * @return array{net_sales: float, gross_sales: float, discounts: float, sale_count: int, item_count: float, avg_ticket: float}
      */
-    public static function fromRow(object $row): array
+    private static function salesMetrics(object $row): array
     {
         $netSales = round((float) $row->net_sales, 2);
         $saleCount = (int) $row->sale_count;
@@ -47,17 +66,19 @@ final class InsightMetricsAggregator
 
     /**
      * @param  Collection<int, object>  $rows
-     * @return array{net_sales: float, gross_sales: float, discounts: float, sale_count: int, item_count: float, avg_ticket: float}
+     * @return array<string, mixed>
      */
-    public static function totalsFrom(Collection $rows): array
+    public static function totalsFrom(Collection $rows, bool $includeCost = false): array
     {
-        return self::fromRow((object) [
+        $profitability = ProfitabilityInsightMetrics::summedRow($rows);
+
+        return self::salesMetrics((object) [
             'sale_count' => $rows->sum('sale_count'),
             'net_sales' => $rows->sum('net_sales'),
             'gross_sales' => $rows->sum('gross_sales'),
             'discounts' => $rows->sum('discounts'),
             'item_count' => $rows->sum('item_count'),
-        ]);
+        ]) + ProfitabilityInsightMetrics::fromRow($profitability, $includeCost);
     }
 
     /** Ticket médio = líquido ÷ nº de vendas, `0` explícito sem vendas — regra de negócio 1. */

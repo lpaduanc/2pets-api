@@ -16,14 +16,17 @@ use App\Support\Csv\CsvFormulaGuard;
  */
 final class InsightExportService
 {
-    private const HEADER = ['Data', 'Venda', 'Status', 'Cliente', 'Animal', 'Produto', 'Qtd', 'Bruto', 'Desconto', 'Líquido'];
+    private const HEADER = ['Data', 'Venda', 'Status', 'Cliente', 'Animal', 'Produto', 'Qtd', 'Bruto', 'Desconto', 'Líquido', 'Receita líquida', 'Taxa cartão', 'Imposto'];
+
+    /** Só com `reports.profitability` (PLANO 1.6) — sem a permissão, as colunas nem existem. */
+    private const COST_HEADER = ['Custo', 'Comissão', 'MC', 'MC %'];
 
     public function __construct(private readonly InsightsDrillDownService $drillDown) {}
 
     public function toCsv(User $user, InsightQuery $query, ?string $bucket): string
     {
         $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, self::HEADER, ';');
+        fputcsv($handle, $query->includeProfitability ? [...self::HEADER, ...self::COST_HEADER] : self::HEADER, ';');
 
         foreach ($this->rows($user, $query, $bucket) as $row) {
             fputcsv($handle, $row, ';');
@@ -43,10 +46,10 @@ final class InsightExportService
     {
         $items = $this->drillDown->filteredItems($user, $query, $bucket)
             ->select('sale_items.*')
-            ->with(['sale.client:id,name', 'sale.pet:id,name']);
+            ->with(['sale.client:id,name', 'sale.pet:id,name', 'profitability']);
 
         foreach ($items->lazy() as $item) {
-            yield $this->row($item);
+            yield [...$this->row($item), ...$this->profitabilityColumns($item, $query->includeProfitability)];
         }
     }
 
@@ -73,5 +76,19 @@ final class InsightExportService
             number_format((float) $item->discount, 2, ',', ''),
             number_format((float) $item->total, 2, ',', ''),
         ];
+    }
+
+    /**
+     * Receita, taxa e imposto (e custo, comissão, MC e MC% com a permissão) do snapshot de
+     * rentabilidade; vazio para item de venda não paga. Vírgula decimal, como o resto do arquivo.
+     *
+     * @return list<string>
+     */
+    private function profitabilityColumns(SaleItem $item, bool $includeCost): array
+    {
+        $values = InsightItemProfitability::of($item, $includeCost);
+        unset($values['header_discount'], $values['courtesy_kind']);
+
+        return array_values(array_map(fn (?string $value): string => $value === null ? '' : str_replace('.', ',', $value), $values));
     }
 }
