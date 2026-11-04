@@ -176,7 +176,9 @@ final class IncomeStatementService
             FinancialNature::EXPENSE->value => array_fill_keys($months, 0.0),
         ];
 
-        foreach ($rows as $row) {
+        // Só as FOLHAS: a linha-grupo já é a soma das filhas (`withGroupRollups`), e somá-la de
+        // novo dobrava o total (receita 247 virava 494 com categoria-pai), em caixa e competência.
+        foreach ($rows->reject(fn (array $row): bool => $row['is_group']) as $row) {
             $nature = $row['nature'] ?? FinancialNature::EXPENSE->value;
 
             foreach ($row['months'] as $month => $amount) {

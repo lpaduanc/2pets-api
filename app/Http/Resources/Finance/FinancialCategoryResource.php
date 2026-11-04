@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Finance;
 
+use App\Enums\DreTreatment;
 use App\Models\FinancialCategory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -37,6 +38,8 @@ class FinancialCategoryResource extends JsonResource
             'is_system' => $this->is_system,
             'sort_order' => $this->sort_order,
             'active' => $this->active,
+            'dre_treatment' => ($this->dre_treatment ?? DreTreatment::OPERATING)->value,
+            'dre_treatment_label' => ($this->dre_treatment ?? DreTreatment::OPERATING)->label(),
             'children_total' => $this->childrenTotal,
             'children' => FinancialCategoryResource::collection($this->whenLoaded('children')),
         ];

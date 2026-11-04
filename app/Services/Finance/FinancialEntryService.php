@@ -12,6 +12,7 @@ use App\Models\FinancialEntry;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -40,9 +41,9 @@ final class FinancialEntryService
      * `open`: baixa é ato separado (`settle()`).
      *
      * @param  array<string, mixed>  $data
-     * @return Collection<int, FinancialEntry>
+     * @return EloquentCollection<int, FinancialEntry>
      */
-    public function create(User $user, array $data): Collection
+    public function create(User $user, array $data): EloquentCollection
     {
         $category = $this->scope->scopeQuery(FinancialCategory::query(), $user)
             ->findOrFail((int) $data['financial_category_id']);
@@ -60,9 +61,11 @@ final class FinancialEntryService
             $ownership['organization_id'],
         );
 
-        return DB::transaction(fn (): Collection => $plan
+        // Coleção do Eloquent (não a de suporte que o `map` do plano devolve): o controller chama
+        // `->load()` nela para devolver as parcelas com as relações — sem isto, 500.
+        return DB::transaction(fn (): EloquentCollection => new EloquentCollection($plan
             ->map(fn (PlannedFinancialInstallment $installment): FinancialEntry => $this->store($ownership, $category, $resolved, $installment))
-        );
+            ->all()));
     }
 
     /**

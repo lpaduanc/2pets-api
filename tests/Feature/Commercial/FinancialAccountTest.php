@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Commercial;
 
+use App\Enums\CashMovementType;
+use App\Models\CashRegisterMovement;
 use App\Models\FinancialAccount;
 use App\Models\Organization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,22 +30,34 @@ class FinancialAccountTest extends TestCase
         $this->buildClinic();
     }
 
+    /**
+     * N+1 se prova pela FORMA da contagem, não por um teto fixo: a mesma listagem com 2 e com 6
+     * contas (todas com movimentos, para o eager load de `paymentMethod` entrar) tem de rodar o
+     * MESMO número de queries. O teto absoluto de antes media junto o aquecimento do cache de
+     * permissões do Spatie (4 queries no primeiro `permission:` do request), que nada tem a ver
+     * com a listagem e muda conforme o estado do cache — o teste quebrava sem N+1 nenhum.
+     */
     public function test_index_returns_the_account_with_balance_without_n_plus_one(): void
     {
-        $account = $this->makeAccount(['opening_balance' => 100]);
-        $this->makeAccount(['name' => 'Caixa loja', 'type' => 'cash']);
+        $registerId = $this->openRegisterFor($this->receptionist);
+        $account = $this->makeAccountWithMovement($registerId, ['opening_balance' => 100]);
+        $this->makeAccountWithMovement($registerId, ['name' => 'Caixa loja', 'type' => 'cash']);
 
-        DB::enableQueryLog();
+        // Primeira chamada descartada: aquece o cache do Spatie e o usuário autenticado, que
+        // só são lidos uma vez no processo de teste e distorceriam a primeira medição.
+        $this->countIndexQueries();
+        $withTwo = $this->countIndexQueries();
 
-        $response = $this->actingAs($this->receptionist, 'sanctum')
-            ->getJson('/api/professional/financial-accounts')
-            ->assertOk();
+        for ($i = 0; $i < 4; $i++) {
+            $this->makeAccountWithMovement($registerId, ['name' => "Conta extra {$i}"]);
+        }
 
-        $queryCount = count(DB::getQueryLog());
-        DB::disableQueryLog();
+        $withSix = $this->countIndexQueries();
 
-        $this->assertLessThanOrEqual(6, $queryCount, 'A listagem de contas não pode escalar 1 query por conta.');
-        $response->assertJsonFragment(['id' => $account->id, 'balance' => 100.0]);
+        $this->assertSame($withTwo, $withSix, "Listagem de contas escalou com o número de contas ({$withTwo} → {$withSix} queries): N+1.");
+        $this->actingAs($this->receptionist, 'sanctum')->getJson('/api/professional/financial-accounts')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $account->id, 'balance' => 110.0]);
     }
 
     public function test_a_purchase_payment_section_style_call_gets_a_populated_select(): void
@@ -101,6 +115,29 @@ class FinancialAccountTest extends TestCase
     }
 
     /** @param  array<string, mixed>  $overrides */
+    private function countIndexQueries(): int
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->actingAs($this->receptionist, 'sanctum')->getJson('/api/professional/financial-accounts')->assertOk();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    }
+
+    /** Conta com um suprimento de R$ 10,00 lançado nela. @param  array<string, mixed>  $overrides */
+    private function makeAccountWithMovement(int $registerId, array $overrides = []): FinancialAccount
+    {
+        $account = $this->makeAccount($overrides);
+        CashRegisterMovement::create([
+            'cash_register_id' => $registerId, 'type' => CashMovementType::SUPPLY->value, 'account_id' => $account->id,
+            'amount' => 10, 'occurred_at' => now()->subMinute(), 'description' => 'Suprimento', 'user_id' => $this->receptionist->id,
+        ]);
+
+        return $account;
+    }
+
     private function makeAccount(array $overrides = []): FinancialAccount
     {
         return FinancialAccount::create($overrides + [

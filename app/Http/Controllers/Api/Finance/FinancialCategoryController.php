@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Finance\FinancialCategoryProvisioner;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -61,7 +62,9 @@ class FinancialCategoryController extends Controller
         $groups = $this->baseQuery($request->user())
             ->active()
             ->whereNull('parent_id')
-            ->with(['children' => fn (Builder $q) => $q->active()->orderBy('sort_order')->orderBy('name')])
+            // Restrição de eager load recebe a RELAÇÃO (`HasMany`), não o `Builder` — tipar
+            // `Builder` aqui dava TypeError e derrubava a árvore inteira.
+            ->with(['children' => fn (HasMany $q) => $q->active()->orderBy('sort_order')->orderBy('name')])
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();

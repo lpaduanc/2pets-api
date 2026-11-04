@@ -53,6 +53,37 @@ class IncomeStatementRegimeTest extends TestCase
         $this->assertEqualsWithDelta(200.0, $cash['totals']['revenue']['2026-09'], 0.01);
     }
 
+    public function test_totals_count_each_entry_once_even_with_a_parent_category_in_both_regimes(): void
+    {
+        // Folha "Produtos" sob o grupo "Receita de vendas": o grupo aparece em `categories` com o
+        // total das filhas, mas o total da DRE não pode somá-lo de novo (247 virava 494).
+        $group = FinancialCategory::create([
+            'organization_id' => $this->clinic->id, 'professional_id' => $this->owner->id,
+            'name' => 'Receita de vendas', 'nature' => 'revenue', 'kind' => 'group', 'active' => true,
+        ]);
+        $leaf = FinancialCategory::create([
+            'organization_id' => $this->clinic->id, 'professional_id' => $this->owner->id, 'parent_id' => $group->id,
+            'name' => 'Produtos', 'nature' => 'revenue', 'kind' => 'entry', 'active' => true,
+        ]);
+        FinancialEntry::create([
+            'organization_id' => $this->clinic->id, 'professional_id' => $this->owner->id,
+            'financial_category_id' => $leaf->id, 'description' => 'Venda',
+            'nature' => 'revenue', 'due_date' => '2026-08-15', 'accrual_date' => '2026-08-15',
+            'amount' => 247, 'net_amount' => 247, 'paid_at' => '2026-08-15 10:00:00', 'paid_amount' => 247,
+            'status' => 'paid', 'created_by' => $this->owner->id,
+        ]);
+
+        foreach (['accrual', 'cash'] as $regime) {
+            $data = $this->actingAs($this->owner, 'sanctum')
+                ->getJson("/api/professional/reports/income-statement?regime={$regime}&from=2026-08-01&to=2026-08-31")
+                ->assertOk()->json('data');
+
+            $this->assertEqualsWithDelta(247.0, $data['totals']['revenue']['2026-08'], 0.01, $regime);
+            $this->assertEqualsWithDelta(247.0, $data['totals']['net']['2026-08'], 0.01, $regime);
+            $this->assertEqualsWithDelta(247.0, collect($data['categories'])->firstWhere('is_group', true)['total'], 0.01, $regime);
+        }
+    }
+
     public function test_cash_regime_ignores_entries_not_yet_settled(): void
     {
         $category = FinancialCategory::create([

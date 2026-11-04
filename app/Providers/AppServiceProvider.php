@@ -122,6 +122,12 @@ class AppServiceProvider extends ServiceProvider
         // status simulado, loga o payload). Trocar para um provedor real é só mudar este bind.
         $this->app->bind(FiscalProviderGateway::class, \App\Services\Fiscal\LogFiscalProviderGateway::class);
 
+        // O parâmetro `?DueDateService $dueDates = null` do planner existe para o teste puro
+        // (`new FinancialInstallmentPlanner`). O container do Laravel 12 NÃO resolve classe
+        // opcional não registrada — usava o `null` e o vencimento nunca rolava de feriado
+        // (doc 03). O bind explícito injeta o serviço de dias úteis de verdade.
+        $this->app->bind(\App\Services\Finance\FinancialInstallmentPlanner::class, fn ($app) => new \App\Services\Finance\FinancialInstallmentPlanner($app->make(\App\Services\Finance\DueDateService::class)));
+
         // Geocodificação atrás de contrato: os provedores ATIVOS em `services.geocoding.providers`,
         // na ordem da config, viram uma cadeia com fallback. Provedor novo = classe implementando
         // `GeocodingProvider` + uma entrada em `GEOCODING_PROVIDERS` e na config. O autocomplete

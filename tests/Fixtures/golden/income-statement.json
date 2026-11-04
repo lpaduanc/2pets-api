@@ -1,0 +1,557 @@
+{
+  "_doc": "Casos de referencia da DRE gerencial (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.7). Linhas por mes: receita liquida = bruto - (desconto da linha + do cabecalho rateado) - devolucoes - impostos; lucro bruto = receita liquida - CMV/CSP; MC = lucro bruto - taxas de cartao - comissoes; resultado operacional = MC + outras receitas operacionais - despesas operacionais; lucro liquido = resultado operacional + (receitas - despesas financeiras). Totais = soma dos meses. margin_percent = soma MC / soma receita de vendas antes do imposto (sales_revenue), 2 casas HALF_UP. Ponto de equilibrio = despesas operacionais x receita / MC, para CIMA no centavo; null com reason no_revenue ou non_positive_margin. input.sales e input.ledger sao as somas por mes que o back le do snapshot e do financeiro. Copia byte a byte em 2pets-pro/tests/fixtures/golden/income-statement.json.",
+  "managerial": [
+    {
+      "id": "dre-gerencial-periodo",
+      "_conta": "Venda paga do rentab-01 (1.5): bruto 260,00; desconto do cabecalho 13,00; imposto 14,82 -> receita liquida 232,18; CMV 140,00 + CSP 6,50 -> lucro bruto 85,68; taxa 7,39 e comissao 17,10 -> MC 61,19 (61,19 / 247,00 = 24,77%). Aluguel 30,00 (operating) -> resultado operacional 31,19; juros pagos 5,00 (financial) -> lucro liquido 26,19. A compra de mercadoria (inventory_purchase) e a taxa de cartao lancada no financeiro (card_fee) NAO entram: nem chegam a esta conta (o feature test prova o filtro). Ponto de equilibrio = 30,00 x 247,00 / 61,19 = 121,0982... -> 121,10 (para CIMA).",
+      "input": {
+        "months": [
+          "2026-10"
+        ],
+        "sales": {
+          "2026-10": {
+            "gross_revenue": "260.00",
+            "line_discounts": "0.00",
+            "header_discounts": "13.00",
+            "returns": "0.00",
+            "taxes": "14.82",
+            "sales_revenue": "247.00",
+            "cost_products": "140.00",
+            "cost_services": "6.50",
+            "card_fees": "7.39",
+            "commissions": "17.10"
+          }
+        },
+        "ledger": {
+          "2026-10": {
+            "operating_expenses": "30.00",
+            "financial_expenses": "5.00"
+          }
+        }
+      },
+      "expected": {
+        "lines": {
+          "gross_revenue": {
+            "months": {
+              "2026-10": "260.00"
+            },
+            "total": "260.00"
+          },
+          "discounts": {
+            "months": {
+              "2026-10": "13.00"
+            },
+            "total": "13.00"
+          },
+          "returns": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "sales_taxes": {
+            "months": {
+              "2026-10": "14.82"
+            },
+            "total": "14.82"
+          },
+          "net_revenue": {
+            "months": {
+              "2026-10": "232.18"
+            },
+            "total": "232.18"
+          },
+          "cost_of_sales": {
+            "months": {
+              "2026-10": "146.50"
+            },
+            "total": "146.50"
+          },
+          "gross_profit": {
+            "months": {
+              "2026-10": "85.68"
+            },
+            "total": "85.68"
+          },
+          "card_fees": {
+            "months": {
+              "2026-10": "7.39"
+            },
+            "total": "7.39"
+          },
+          "commissions": {
+            "months": {
+              "2026-10": "17.10"
+            },
+            "total": "17.10"
+          },
+          "contribution_margin": {
+            "months": {
+              "2026-10": "61.19"
+            },
+            "total": "61.19"
+          },
+          "other_operating_revenue": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "operating_expenses": {
+            "months": {
+              "2026-10": "30.00"
+            },
+            "total": "30.00"
+          },
+          "operating_result": {
+            "months": {
+              "2026-10": "31.19"
+            },
+            "total": "31.19"
+          },
+          "financial_result": {
+            "months": {
+              "2026-10": "-5.00"
+            },
+            "total": "-5.00"
+          },
+          "net_income": {
+            "months": {
+              "2026-10": "26.19"
+            },
+            "total": "26.19"
+          }
+        },
+        "cost_breakdown": {
+          "products": "140.00",
+          "services": "6.50"
+        },
+        "margin_percent": "24.77",
+        "break_even": {
+          "amount": "121.10",
+          "basis": "operating_expenses",
+          "fixed_expenses": "30.00",
+          "reason": null
+        }
+      }
+    },
+    {
+      "id": "dre-gerencial-dois-meses-com-devolucao",
+      "_conta": "Dois meses. Outubro: receita 100,00, imposto 6,00, CMV 110,00 -> MC -16,00; aluguel 50,00 e fatura de atendimento 20,00 (receita operating -> outras receitas operacionais). Novembro: bruto 50,00, desconto 5,00, devolucao 10,00 -> receita 35,00, CSP 4,00 -> MC 31,00. Soma MC 15,00 / receita 135,00 = 11,11%. Equilibrio: 50,00 x 135,00 / 15,00 = 450,00.",
+      "input": {
+        "months": [
+          "2026-10",
+          "2026-11"
+        ],
+        "sales": {
+          "2026-10": {
+            "gross_revenue": "100.00",
+            "sales_revenue": "100.00",
+            "taxes": "6.00",
+            "cost_products": "110.00"
+          },
+          "2026-11": {
+            "gross_revenue": "50.00",
+            "line_discounts": "5.00",
+            "returns": "10.00",
+            "sales_revenue": "35.00",
+            "cost_services": "4.00"
+          }
+        },
+        "ledger": {
+          "2026-10": {
+            "operating_expenses": "50.00",
+            "operating_revenue": "20.00"
+          }
+        }
+      },
+      "expected": {
+        "lines": {
+          "gross_revenue": {
+            "months": {
+              "2026-10": "100.00",
+              "2026-11": "50.00"
+            },
+            "total": "150.00"
+          },
+          "discounts": {
+            "months": {
+              "2026-10": "0.00",
+              "2026-11": "5.00"
+            },
+            "total": "5.00"
+          },
+          "returns": {
+            "months": {
+              "2026-10": "0.00",
+              "2026-11": "10.00"
+            },
+            "total": "10.00"
+          },
+          "sales_taxes": {
+            "months": {
+              "2026-10": "6.00",
+              "2026-11": "0.00"
+            },
+            "total": "6.00"
+          },
+          "net_revenue": {
+            "months": {
+              "2026-10": "94.00",
+              "2026-11": "35.00"
+            },
+            "total": "129.00"
+          },
+          "cost_of_sales": {
+            "months": {
+              "2026-10": "110.00",
+              "2026-11": "4.00"
+            },
+            "total": "114.00"
+          },
+          "gross_profit": {
+            "months": {
+              "2026-10": "-16.00",
+              "2026-11": "31.00"
+            },
+            "total": "15.00"
+          },
+          "card_fees": {
+            "months": {
+              "2026-10": "0.00",
+              "2026-11": "0.00"
+            },
+            "total": "0.00"
+          },
+          "commissions": {
+            "months": {
+              "2026-10": "0.00",
+              "2026-11": "0.00"
+            },
+            "total": "0.00"
+          },
+          "contribution_margin": {
+            "months": {
+              "2026-10": "-16.00",
+              "2026-11": "31.00"
+            },
+            "total": "15.00"
+          },
+          "other_operating_revenue": {
+            "months": {
+              "2026-10": "20.00",
+              "2026-11": "0.00"
+            },
+            "total": "20.00"
+          },
+          "operating_expenses": {
+            "months": {
+              "2026-10": "50.00",
+              "2026-11": "0.00"
+            },
+            "total": "50.00"
+          },
+          "operating_result": {
+            "months": {
+              "2026-10": "-46.00",
+              "2026-11": "31.00"
+            },
+            "total": "-15.00"
+          },
+          "financial_result": {
+            "months": {
+              "2026-10": "0.00",
+              "2026-11": "0.00"
+            },
+            "total": "0.00"
+          },
+          "net_income": {
+            "months": {
+              "2026-10": "-46.00",
+              "2026-11": "31.00"
+            },
+            "total": "-15.00"
+          }
+        },
+        "cost_breakdown": {
+          "products": "110.00",
+          "services": "4.00"
+        },
+        "margin_percent": "11.11",
+        "break_even": {
+          "amount": "450.00",
+          "basis": "operating_expenses",
+          "fixed_expenses": "50.00",
+          "reason": null
+        }
+      }
+    },
+    {
+      "id": "dre-gerencial-so-prejuizo",
+      "_conta": "Receita 100,00, imposto 6,00, CMV 110,00 -> MC -16,00 (MC% -16,00). Ponto de equilibrio sem sentido: amount null, reason non_positive_margin.",
+      "input": {
+        "months": [
+          "2026-10"
+        ],
+        "sales": {
+          "2026-10": {
+            "gross_revenue": "100.00",
+            "sales_revenue": "100.00",
+            "taxes": "6.00",
+            "cost_products": "110.00"
+          }
+        },
+        "ledger": {
+          "2026-10": {
+            "operating_expenses": "50.00"
+          }
+        }
+      },
+      "expected": {
+        "lines": {
+          "gross_revenue": {
+            "months": {
+              "2026-10": "100.00"
+            },
+            "total": "100.00"
+          },
+          "discounts": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "returns": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "sales_taxes": {
+            "months": {
+              "2026-10": "6.00"
+            },
+            "total": "6.00"
+          },
+          "net_revenue": {
+            "months": {
+              "2026-10": "94.00"
+            },
+            "total": "94.00"
+          },
+          "cost_of_sales": {
+            "months": {
+              "2026-10": "110.00"
+            },
+            "total": "110.00"
+          },
+          "gross_profit": {
+            "months": {
+              "2026-10": "-16.00"
+            },
+            "total": "-16.00"
+          },
+          "card_fees": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "commissions": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "contribution_margin": {
+            "months": {
+              "2026-10": "-16.00"
+            },
+            "total": "-16.00"
+          },
+          "other_operating_revenue": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "operating_expenses": {
+            "months": {
+              "2026-10": "50.00"
+            },
+            "total": "50.00"
+          },
+          "operating_result": {
+            "months": {
+              "2026-10": "-66.00"
+            },
+            "total": "-66.00"
+          },
+          "financial_result": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "net_income": {
+            "months": {
+              "2026-10": "-66.00"
+            },
+            "total": "-66.00"
+          }
+        },
+        "cost_breakdown": {
+          "products": "110.00",
+          "services": "0.00"
+        },
+        "margin_percent": "-16.00",
+        "break_even": {
+          "amount": null,
+          "basis": "operating_expenses",
+          "fixed_expenses": "50.00",
+          "reason": "non_positive_margin"
+        }
+      }
+    },
+    {
+      "id": "dre-gerencial-sem-venda",
+      "_conta": "So despesa operacional 80,00, nenhuma venda paga: receita 0 -> MC% null, ponto de equilibrio null com reason no_revenue.",
+      "input": {
+        "months": [
+          "2026-10"
+        ],
+        "sales": {},
+        "ledger": {
+          "2026-10": {
+            "operating_expenses": "80.00"
+          }
+        }
+      },
+      "expected": {
+        "lines": {
+          "gross_revenue": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "discounts": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "returns": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "sales_taxes": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "net_revenue": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "cost_of_sales": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "gross_profit": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "card_fees": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "commissions": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "contribution_margin": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "other_operating_revenue": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "operating_expenses": {
+            "months": {
+              "2026-10": "80.00"
+            },
+            "total": "80.00"
+          },
+          "operating_result": {
+            "months": {
+              "2026-10": "-80.00"
+            },
+            "total": "-80.00"
+          },
+          "financial_result": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "net_income": {
+            "months": {
+              "2026-10": "-80.00"
+            },
+            "total": "-80.00"
+          }
+        },
+        "cost_breakdown": {
+          "products": "0.00",
+          "services": "0.00"
+        },
+        "margin_percent": null,
+        "break_even": {
+          "amount": null,
+          "basis": "operating_expenses",
+          "fixed_expenses": "80.00",
+          "reason": "no_revenue"
+        }
+      }
+    }
+  ],
+  "break_even_percent": [
+    {
+      "id": "equilibrio-exemplo-do-plano",
+      "_conta": "Despesas fixas 18.000,00 e MC% 24,77: 18000 / 0,2477 = 72.668,5506... -> 72.668,56 (para CIMA, regra do preco minimo). O texto do PLANO diz 72.668,55: arredondou para baixo/HALF_UP; aqui vale a regra para cima.",
+      "input": {
+        "fixed_expenses": "18000.00",
+        "margin_percent": "24.77"
+      },
+      "expected": "72668.56"
+    },
+    {
+      "id": "equilibrio-mc-zero",
+      "_conta": "MC% 0: sem ponto de equilibrio.",
+      "input": {
+        "fixed_expenses": "18000.00",
+        "margin_percent": "0.00"
+      },
+      "expected": null
+    }
+  ]
+}

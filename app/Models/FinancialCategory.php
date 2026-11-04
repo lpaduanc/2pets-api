@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DreTreatment;
 use App\Enums\FinancialCategoryKind;
 use App\Enums\FinancialNature;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,6 +33,8 @@ class FinancialCategory extends Model
         'is_system',
         'sort_order',
         'active',
+        // DRE gerencial (PLANO 1.7): como a categoria entra no terceiro regime.
+        'dre_treatment',
     ];
 
     /**
@@ -45,6 +48,7 @@ class FinancialCategory extends Model
             'is_system' => 'boolean',
             'sort_order' => 'integer',
             'active' => 'boolean',
+            'dre_treatment' => DreTreatment::class,
         ];
     }
 

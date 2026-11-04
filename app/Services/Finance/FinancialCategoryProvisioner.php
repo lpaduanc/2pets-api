@@ -2,6 +2,7 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\DreTreatment;
 use App\Enums\FinancialCategoryKind;
 use App\Enums\FinancialNature;
 use App\Models\FinancialCategory;
@@ -52,6 +53,7 @@ final class FinancialCategoryProvisioner
                 $parent = FinancialCategory::create([
                     'name' => $group['name'],
                     'nature' => $group['nature']->value,
+                    'dre_treatment' => DreTreatment::defaultFor($group['name'], $group['nature'])->value,
                     'kind' => FinancialCategoryKind::GROUP->value,
                     'is_system' => true,
                     'sort_order' => $order,
@@ -63,6 +65,7 @@ final class FinancialCategoryProvisioner
                         'parent_id' => $parent->id,
                         'name' => $childName,
                         'nature' => $group['nature']->value,
+                        'dre_treatment' => DreTreatment::defaultFor($childName, $group['nature'])->value,
                         'kind' => FinancialCategoryKind::ENTRY->value,
                         'is_system' => true,
                         'sort_order' => $childOrder,
@@ -104,6 +107,8 @@ final class FinancialCategoryProvisioner
             'parent_id' => $parentId,
             'name' => $name,
             'nature' => $nature->value,
+            // Categoria do sistema já nasce com o tratamento da DRE gerencial (PLANO 1.7).
+            'dre_treatment' => DreTreatment::defaultFor($name, $nature)->value,
             'kind' => FinancialCategoryKind::ENTRY->value,
             'is_system' => true,
             'sort_order' => 99,

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Finance;
 
 use App\Http\Controllers\Controller;
 use App\Models\FinancialEntry;
+use App\Services\Commercial\Authorization\SalePermissionGate;
 use App\Services\Finance\CashFlowProjectionService;
 use App\Services\Finance\IncomeStatementService;
+use App\Services\Finance\Managerial\ManagerialIncomeStatementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -21,6 +23,8 @@ class FinancialReportController extends Controller
     public function __construct(
         private readonly IncomeStatementService $incomeStatement,
         private readonly CashFlowProjectionService $cashFlow,
+        private readonly ManagerialIncomeStatementService $managerial,
+        private readonly SalePermissionGate $permissions,
     ) {}
 
     public function incomeStatement(Request $request): JsonResponse
@@ -28,19 +32,28 @@ class FinancialReportController extends Controller
         Gate::forUser($request->user())->authorize('viewAny', FinancialEntry::class);
 
         $request->validate([
-            'regime' => ['nullable', Rule::in(['cash', 'accrual'])],
+            'regime' => ['nullable', Rule::in(['cash', 'accrual', ManagerialIncomeStatementService::REGIME])],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
         ]);
 
-        $data = $this->incomeStatement->generate(
-            $request->user(),
-            $request->string('regime', 'accrual')->toString(),
-            \Carbon\CarbonImmutable::parse($request->date('from')),
-            \Carbon\CarbonImmutable::parse($request->date('to')),
-        );
+        $regime = $request->string('regime', 'accrual')->toString();
+        $from = \Carbon\CarbonImmutable::parse($request->date('from'));
+        $to = \Carbon\CarbonImmutable::parse($request->date('to'));
 
-        return response()->json(['data' => $data]);
+        if ($regime === ManagerialIncomeStatementService::REGIME) {
+            // Gerencial mostra custo e margem (PLANO 1.7): além de `reports.dre.view`, a mesma
+            // `reports.profitability` da rentabilidade, pelo cargo em toda organização do escopo.
+            abort_unless(
+                $this->permissions->allowsAcrossScope($request->user(), SalePermissionGate::PROFITABILITY),
+                403,
+                'A DRE gerencial mostra custo e margem: é preciso a permissão de rentabilidade (reports.profitability).',
+            );
+
+            return response()->json(['data' => $this->managerial->generate($request->user(), $from, $to)]);
+        }
+
+        return response()->json(['data' => $this->incomeStatement->generate($request->user(), $regime, $from, $to)]);
     }
 
     public function cashFlow(Request $request): JsonResponse

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Finance;
 
+use App\Enums\DreTreatment;
 use App\Enums\FinancialCategoryKind;
 use App\Enums\FinancialNature;
 use Illuminate\Foundation\Http\FormRequest;
@@ -31,6 +32,8 @@ class StoreFinancialCategoryRequest extends FormRequest
             'parent_id' => ['nullable', 'integer', 'exists:financial_categories,id'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:999'],
             'active' => ['nullable', 'boolean'],
+            // DRE gerencial (PLANO 1.7); ausente = `operating` na criação, mantém na edição.
+            'dre_treatment' => ['sometimes', Rule::enum(DreTreatment::class)],
         ];
     }
 }
