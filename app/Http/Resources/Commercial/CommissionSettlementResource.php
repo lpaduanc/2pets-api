@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Commercial;
 
 use App\Models\CommissionSettlement;
+use App\Support\Money\Money;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -11,7 +12,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class CommissionSettlementResource extends JsonResource
 {
-    public const RESOURCE_RELATIONS = ['staff.user:id,name', 'items.saleItem', 'items.commissionRule'];
+    public const RESOURCE_RELATIONS = ['staff.user:id,name', 'items.saleItem', 'items.commissionRule', 'deductions.clawback.saleItem:id,sale_id,description'];
 
     /**
      * @return array<string, mixed>
@@ -27,6 +28,19 @@ class CommissionSettlementResource extends JsonResource
             'period_to' => $this->period_to->toDateString(),
             'received_until' => $this->received_until->toDateString(),
             'total_amount' => (float) $this->total_amount,
+            // PLANO 2.3: comissão estornada descontada aqui. bruto = total + descontos.
+            'deductions_amount' => $this->whenLoaded('deductions', fn () => Money::sum($this->deductions->pluck('amount'))->toString()),
+            'gross_amount' => $this->whenLoaded('deductions', fn () => Money::of($this->total_amount)->plus(Money::sum($this->deductions->pluck('amount')))->toString()),
+            'deductions' => $this->whenLoaded('deductions', fn () => $this->deductions->map(fn ($deduction) => [
+                'id' => $deduction->id,
+                'clawback_id' => $deduction->commission_clawback_id,
+                'amount' => (string) $deduction->amount,
+                'reason' => $deduction->clawback?->reason,
+                'sale_item_id' => $deduction->clawback?->sale_item_id,
+                'sale_id' => $deduction->clawback?->saleItem?->sale_id,
+                'description' => $deduction->clawback?->saleItem?->description,
+                'reversed_settlement_item_id' => $deduction->clawback?->commission_settlement_item_id,
+            ])->values()),
 
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
@@ -43,6 +57,9 @@ class CommissionSettlementResource extends JsonResource
                 'commission_rule_id' => $item->commission_rule_id,
                 'base_amount' => (float) $item->base_amount,
                 'commission_amount' => (float) $item->commission_amount,
+                // Estornado com o recebimento (PLANO 2.3): fica no histórico, o valor volta como desconto.
+                'reversed_at' => $item->reversed_at?->toIso8601String(),
+                'reversal_reason' => $item->reversal_reason,
             ])),
 
             'created_at' => $this->created_at?->toIso8601String(),

@@ -165,7 +165,9 @@ class SaleItem extends Model
      */
     public function commissionSettlementItem(): HasOne
     {
-        return $this->hasOne(CommissionSettlementItem::class);
+        // Só o fechamento que vale: o estornado com o recebimento (PLANO 2.3) fica no histórico,
+        // e a linha paga de novo pode entrar num fechamento novo.
+        return $this->hasOne(CommissionSettlementItem::class)->whereNull('reversed_at');
     }
 
     /**

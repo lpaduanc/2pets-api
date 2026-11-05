@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Commercial;
 
 use App\Models\SaleReceipt;
+use App\Services\Commercial\Reversal\ReceiptCancellability;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -41,6 +42,20 @@ class SaleReceiptResource extends JsonResource
             'payment_method_id' => $this->payment_method_id,
             'account_id' => $this->account_id,
             'notes' => $this->notes,
+            // Estorno de um recebimento (PLANO 2.3). `cancelled_at` = `reversed_at` (estornado aqui
+            // ou no cancelamento da venda).
+            'cancelled_at' => $this->reversed_at?->toIso8601String(),
+            'cancel_reason' => $this->cancel_reason,
+            'cancelled_by' => $this->whenLoaded('cancelledBy', fn () => $this->cancelledBy === null ? null : ['id' => $this->cancelledBy->id, 'name' => $this->cancelledBy->name],
+                fn () => $this->cancelled_by === null ? null : ['id' => $this->cancelled_by, 'name' => null]),
+            'can_cancel' => $this->cancelBlockedReason($request) === null,
+            'cancel_blocked_reason' => $this->cancelBlockedReason($request),
         ];
+    }
+
+    private function cancelBlockedReason(Request $request): ?string
+    {
+        // Singleton por request: a permissão é lida uma vez por venda, não por recebimento.
+        return app(ReceiptCancellability::class)->blockedReason($this->resource, $request->user());
     }
 }

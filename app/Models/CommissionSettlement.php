@@ -65,6 +65,12 @@ class CommissionSettlement extends Model
         return $this->belongsTo(User::class, 'closed_by');
     }
 
+    /** Comissão estornada descontada neste fechamento (PLANO 2.3). */
+    public function deductions(): HasMany
+    {
+        return $this->hasMany(CommissionSettlementDeduction::class);
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(CommissionSettlementItem::class);

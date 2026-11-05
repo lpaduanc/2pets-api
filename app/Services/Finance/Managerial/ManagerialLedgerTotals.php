@@ -24,7 +24,7 @@ use Carbon\CarbonImmutable;
  */
 final class ManagerialLedgerTotals
 {
-    private const SALE_REFERENCES = ['sale', SaleReturnFinancialEntryRecorder::REFERENCE_TYPE, SaleRevenueReversalRecorder::REFERENCE_TYPE];
+    private const SALE_REFERENCES = [...SaleRevenueReversalRecorder::REVENUE_REFERENCES, SaleReturnFinancialEntryRecorder::REFERENCE_TYPE];
 
     public function __construct(private readonly CommercialScopeResolver $scope) {}
 

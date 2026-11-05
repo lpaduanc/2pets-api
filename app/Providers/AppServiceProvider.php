@@ -126,6 +126,9 @@ class AppServiceProvider extends ServiceProvider
         // (`new FinancialInstallmentPlanner`). O container do Laravel 12 NÃO resolve classe
         // opcional não registrada — usava o `null` e o vencimento nunca rolava de feriado
         // (doc 03). O bind explícito injeta o serviço de dias úteis de verdade.
+        // Memo da permissão de estorno por usuário × venda durante o request (PLANO 2.3).
+        $this->app->scoped(\App\Services\Commercial\Reversal\ReceiptCancellability::class);
+
         $this->app->bind(\App\Services\Finance\FinancialInstallmentPlanner::class, fn ($app) => new \App\Services\Finance\FinancialInstallmentPlanner($app->make(\App\Services\Finance\DueDateService::class)));
 
         // Geocodificação atrás de contrato: os provedores ATIVOS em `services.geocoding.providers`,

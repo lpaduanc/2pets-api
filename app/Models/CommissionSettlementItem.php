@@ -20,11 +20,15 @@ class CommissionSettlementItem extends Model
         'commission_rule_id',
         'base_amount',
         'commission_amount',
+        // Comissão estornada com o recebimento (PLANO 2.3) — o histórico do fechamento fica.
+        'reversed_at',
+        'reversal_reason',
     ];
 
     protected $casts = [
         'base_amount' => 'decimal:2',
         'commission_amount' => 'decimal:2',
+        'reversed_at' => 'datetime',
     ];
 
     public function commissionSettlement(): BelongsTo
@@ -40,5 +44,10 @@ class CommissionSettlementItem extends Model
     public function commissionRule(): BelongsTo
     {
         return $this->belongsTo(CommissionRule::class);
+    }
+
+    public function settlement(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(CommissionSettlement::class, 'commission_settlement_id');
     }
 }

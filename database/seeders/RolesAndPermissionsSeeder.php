@@ -275,6 +275,10 @@ class RolesAndPermissionsSeeder extends Seeder
             // imposto, comissão e margem. Recepção não vê custo; o dono concede por exceção ao
             // membro (não é ato clínico). Julgada pelo cargo na organização da venda.
             'reports.profitability',
+            // Estorno de UM recebimento (docs/gap-petflow/PLANO.md, 2.3): devolve dinheiro do caixa e
+            // tira a venda de "paga". Gestão; o dono concede por exceção ao membro (não é ato
+            // clínico). Julgada pelo cargo na organização da venda.
+            'sales.cancel_receipt',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -400,6 +404,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'sales.grant_courtesy',
             // PLANO 1.5: rentabilidade (custo e margem) é de gestão.
             'reports.profitability',
+            // PLANO 2.3: estorno de recebimento é de gestão.
+            'sales.cancel_receipt',
         ]);
 
         // 3. Clinic Owner
@@ -476,6 +482,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'sales.grant_courtesy',
             // PLANO 1.5: rentabilidade (custo e margem) é de gestão.
             'reports.profitability',
+            // PLANO 2.3: estorno de recebimento é de gestão.
+            'sales.cancel_receipt',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -579,6 +587,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'sales.grant_courtesy',
             // PLANO 1.5: rentabilidade (custo e margem) é de gestão.
             'reports.profitability',
+            // PLANO 2.3: estorno de recebimento é de gestão.
+            'sales.cancel_receipt',
         ]);
 
         // 6. Petshop Staff

@@ -255,7 +255,9 @@ class Sale extends Model
         $net = $this->netItemTotals();
         $this->items->each(fn (SaleItem $item) => $item->resolvedNetTotal = $net[$item->id]);
 
-        return $this->items;
+        // Ordem de lançamento: a relação não tem `ORDER BY`, e o Postgres devolve as linhas em
+        // qualquer ordem depois de um UPDATE — a tela (e o `QuoteFlowTest`) viam a ordem trocar.
+        return $this->items->sortBy('id')->values();
     }
 
     /** Total sem o acréscimo de repasse: o que os itens valem para o cliente após o desconto. */

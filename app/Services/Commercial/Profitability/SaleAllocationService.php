@@ -57,7 +57,8 @@ final class SaleAllocationService
      */
     public function absorbedCardFee(Sale $sale): Money
     {
-        return Money::sum($sale->receipts->map(
+        // Recebimento estornado (PLANO 2.3) não cobra taxa da clínica.
+        return Money::sum($sale->receipts->whereNull('reversed_at')->map(
             fn ($receipt): Money => Money::of($receipt->operator_fee)->minus($receipt->surcharge_amount ?? '0')->max(Money::zero())
         ));
     }

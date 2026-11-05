@@ -44,6 +44,10 @@ class SaleReceipt extends Model
         'received_at',
         // Estornado (cancelamento da venda; PLANO 2.3 depois) — chave de idempotência do estorno.
         'reversed_at',
+        // Estorno de um recebimento (PLANO 2.3): motivo, autor e o caixa onde o recebimento entrou.
+        'cancel_reason',
+        'cancelled_by',
+        'cash_register_id',
         'operator_fee',
         'net_amount',
         'expected_settlement_date',
@@ -89,6 +93,32 @@ class SaleReceipt extends Model
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function cashRegister(): BelongsTo
+    {
+        return $this->belongsTo(CashRegister::class);
+    }
+
+    public function isReversed(): bool
+    {
+        return $this->reversed_at !== null;
+    }
+
+    /**
+     * Recebimento que vale — não estornado (PLANO 2.3). Toda soma de "quanto a venda recebeu"
+     * passa por aqui: o estornado continua no histórico, mas não paga nada.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->whereNull('reversed_at');
     }
 
     /** Parcelas que a adquirente vai depositar (docs/gap-petflow 1.1). */

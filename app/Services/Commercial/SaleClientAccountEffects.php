@@ -2,13 +2,12 @@
 
 namespace App\Services\Commercial;
 
-use App\Enums\ClientAccountEntryType;
 use App\Enums\SaleStatus;
-use App\Models\ClientAccountEntry;
 use App\Models\PaymentMethod;
 use App\Models\Sale;
 use App\Models\SaleReceipt;
 use App\Models\User;
+use App\Support\Money\Money;
 
 /**
  * Efeito da venda sobre a conta corrente do cliente — contrato
@@ -35,14 +34,16 @@ final class SaleClientAccountEffects
     }
 
     /**
-     * Venda que ficou `unpaid` (fiado) pela primeira vez: débito pelo valor em aberto. Recebe
-     * mais de uma vez a mesma venda continuando `unpaid` (pagamentos parciais sucessivos) não
-     * duplica o débito — a reconciliação de pagamentos adicionais é manual, via
-     * `POST clients/{client}/account-entries` (fora deste fluxo).
+     * Venda que ficou `unpaid` (fiado) sem débito ATIVO na conta: débito pelo valor em aberto.
+     * Recebe mais de uma vez a mesma venda continuando `unpaid` (pagamentos parciais sucessivos)
+     * não duplica o débito — a reconciliação de pagamentos adicionais é manual, via
+     * `POST clients/{client}/account-entries` (fora deste fluxo). "Ativo" = já descontados os
+     * ajustes de estorno de recebimento (PLANO 2.3): venda que voltou a `open` com débito zerado
+     * e ficou `unpaid` de novo é debitada de novo, uma vez.
      */
     public function debitIfSaleWentUnpaid(Sale $sale, User $actor): void
     {
-        if ($sale->status !== SaleStatus::UNPAID || $sale->client_id === null || $this->alreadyDebited($sale)) {
+        if ($sale->status !== SaleStatus::UNPAID || $sale->client_id === null || $this->accounts->saleDebitBalance($sale->id)->isPositive()) {
             return;
         }
 
@@ -69,13 +70,36 @@ final class SaleClientAccountEffects
         $this->accounts->refundConsumedCredit($sale->client, $this->ownershipOf($sale), (float) $receipt->amount, $sale->id, $actor);
     }
 
-    private function alreadyDebited(Sale $sale): bool
+    /**
+     * Recebimento na venda que JÁ tem fiado ativo na conta: o débito vai para o saldo devido (0 se
+     * a venda quitou), com ajuste referenciando o recebimento. Pagamento feito pela conta corrente
+     * (crédito manual) quita a venda com um recebimento `account_credit`, que consome esse crédito
+     * — o consumo (débito) e este ajuste (crédito) se anulam no saldo, sem abater em dobro.
+     */
+    public function settleDebitWithReceipt(Sale $sale, SaleReceipt $receipt, User $actor): void
     {
-        return ClientAccountEntry::query()
-            ->where('reference_type', 'sale')
-            ->where('reference_id', $sale->id)
-            ->where('type', ClientAccountEntryType::SALE_DEBIT->value)
-            ->exists();
+        if ($sale->client_id === null || ! $this->accounts->saleDebitBalance($sale->id)->isPositive()) {
+            return;
+        }
+
+        $target = $sale->status === SaleStatus::PAID ? Money::zero() : $sale->amountDueMoney();
+        $this->accounts->adjustSaleDebitTo($sale->client, $this->ownershipOf($sale), $target, $sale->id, $receipt->id, $actor, ClientAccountService::RECEIPT_SETTLEMENT_REFERENCE);
+    }
+
+    /**
+     * Depois do estorno de um recebimento (PLANO 2.3), o fiado da venda reflete o estado dela:
+     * `unpaid` (ainda com recebimento valendo) → débito = saldo devido; `open` (nenhum
+     * recebimento valendo) → débito 0, deixa de ser fiado; `paid` → nada muda. Por lançamento de
+     * ajuste, idempotente.
+     */
+    public function reconcileAfterReceiptCancellation(Sale $sale, SaleReceipt $receipt, User $actor): void
+    {
+        if ($sale->client_id === null || $sale->status === SaleStatus::PAID) {
+            return;
+        }
+
+        $target = $sale->status === SaleStatus::UNPAID ? $sale->amountDueMoney() : Money::zero();
+        $this->accounts->adjustSaleDebitTo($sale->client, $this->ownershipOf($sale), $target, $sale->id, $receipt->id, $actor);
     }
 
     /** @return array{organization_id: int|null, professional_id: int} */

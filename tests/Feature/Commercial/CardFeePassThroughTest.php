@@ -183,7 +183,8 @@ class CardFeePassThroughTest extends TestCase
         $sale = Sale::findOrFail($saleId);
         $this->assertSame(['220.00', '3.09', '223.09', '103.09'], [$sale->subtotal, $sale->surcharge_amount, $sale->total, $sale->paid_amount]);
         $this->assertSame('120.00', $sale->amountDueMoney()->toString());
-        $this->assertSame('unpaid', $sale->status->value);
+        // Parcial: a venda segue em andamento (o fiado só é julgado ao concluir).
+        $this->assertSame('open', $sale->status->value);
 
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $this->paymentMethodId($this->receptionist, 'cash'), 'amount' => '120.00'])
             ->assertCreated()

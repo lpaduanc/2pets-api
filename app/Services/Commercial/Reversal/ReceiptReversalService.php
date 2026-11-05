@@ -46,14 +46,18 @@ final class ReceiptReversalService
         ));
     }
 
-    public function reverse(Sale $sale, SaleReceipt $receipt, User $user, ?CashRegister $register): void
+    /**
+     * `$description`: texto do movimento de estorno no caixa (o estorno de UM recebimento, 2.3,
+     * diz qual recebimento e de qual caixa ele veio).
+     */
+    public function reverse(Sale $sale, SaleReceipt $receipt, User $user, ?CashRegister $register, ?string $description = null): void
     {
         if ($receipt->reversed_at !== null) {
             return;
         }
 
         $this->assertReversible($receipt);
-        $this->giveMoneyBack($sale, $receipt, $user, $register);
+        $this->giveMoneyBack($sale, $receipt, $user, $register, $description);
 
         Receivable::query()
             ->where('sale_receipt_id', $receipt->id)
@@ -63,7 +67,7 @@ final class ReceiptReversalService
         $receipt->forceFill(['reversed_at' => now()])->save();
     }
 
-    private function giveMoneyBack(Sale $sale, SaleReceipt $receipt, User $user, ?CashRegister $register): void
+    private function giveMoneyBack(Sale $sale, SaleReceipt $receipt, User $user, ?CashRegister $register, ?string $description): void
     {
         if ($receipt->paymentMethod?->kind->isDeferredToClientAccount()) {
             $this->clientAccounts->refundForCancelledReceipt($sale, $receipt, $user);
@@ -79,11 +83,12 @@ final class ReceiptReversalService
             $register,
             CashMovementType::REFUND,
             (float) $receipt->amount,
-            'Estorno da venda '.($sale->number ?? $sale->id),
+            $description ?? 'Estorno da venda '.($sale->number ?? $sale->id),
             $user,
             $receipt->payment_method_id,
             $receipt->account_id,
-            $sale,
+            // Estorno de UM recebimento aponta o recebimento original; o da venda cancelada, a venda.
+            $description === null ? $sale : $receipt,
         );
     }
 }

@@ -32,17 +32,20 @@ final class SaleFinancialEntryRecorder
     public function __construct(
         private readonly FinancialCategoryProvisioner $categories,
         private readonly FinancialOverviewService $overview,
+        private readonly SaleRevenueReversalRecorder $reversals,
     ) {}
 
     public function recordForFullyPaidSale(Sale $sale, User $user): void
     {
-        if (FinancialEntry::where('reference_type', 'sale')->where('reference_id', $sale->id)->exists()) {
+        // Idempotente pelo saldo ATIVO: receita já lançada e não estornada não entra de novo; venda
+        // paga de novo depois de um estorno de recebimento (PLANO 2.3) volta a lançar.
+        if ($this->reversals->hasActiveRevenue($sale)) {
             return;
         }
 
         $byType = $this->overview->saleTotalsByItemType($sale);
         $accrualDate = ($sale->sold_at ?? now())->toDateString();
-        $paidAt = $sale->receipts->max('received_at') ?? now();
+        $paidAt = $sale->receipts->whereNull('reversed_at')->max('received_at') ?? now();
 
         foreach (self::CATEGORY_BY_TYPE as $type => $label) {
             if ($byType[$type] <= 0) {

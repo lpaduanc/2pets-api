@@ -30,6 +30,7 @@ use App\Models\SaleReceipt;
 use App\Models\SaleReturnItem;
 use App\Models\Service;
 use App\Models\ServicePackage;
+use App\Models\StockMovement;
 use App\Models\User;
 use App\Services\Commercial\Card\ReceiptPricing;
 use App\Services\Commercial\Card\ReceivableScheduleService;
@@ -293,6 +294,12 @@ final class SaleService
      * venda é carimbada. Enquanto não cobrir, fica `unpaid` — é o pagamento parcial, que o
      * balcão usa o dia inteiro.
      *
+     * Recebimento parcial NÃO decide fiado: a venda em andamento (`open`/`in_service`) continua
+     * no status em que está, com saldo devido — dinheiro + cartão são duas chamadas, e o cliente
+     * sem fiado liberado não pode esbarrar na trava entre uma e outra. O fiado (trava de crédito,
+     * `sale_debit`, status `unpaid`) é julgado ao CONCLUIR a venda (`SaleCompletionService`).
+     * Venda já concluída a prazo (`unpaid`) segue `unpaid` até quitar.
+     *
      * @param  array<string, mixed>  $attributes
      */
     public function registerReceipt(Sale $sale, User $user, array $attributes): SaleReceipt
@@ -368,6 +375,8 @@ final class SaleService
                 'expected_settlement_date' => $quote->plan === [] ? null : $quote->plan[0]->expectedDate->toDateString(),
                 'received_by' => $user->id,
                 'notes' => $attributes['notes'] ?? null,
+                // Caixa em que o dinheiro entrou: o estorno (PLANO 2.3) volta nele se seguir aberto.
+                'cash_register_id' => $register?->id,
             ]);
 
             $this->receivables->persist($receipt, $quote->plan);
@@ -388,19 +397,15 @@ final class SaleService
             // O acréscimo entra no total ANTES de comparar com o pago: sem isso o pago (base +
             // acréscimo) abateria do saldo mais do que a base, e o resto da venda (R$ 220 − 100 em
             // cartão com repasse) não fecharia em R$ 120,00 exatos.
-            $sale->surcharge_amount = Money::of($sale->receipts()->sum('surcharge_amount'))->toString();
-            $sale->recalculateTotals();
-            $sale->paid_amount = Money::of($sale->receipts()->sum('amount'))->toString();
-            $sale->status = $sale->isFullyPaid() ? SaleStatus::PAID : SaleStatus::UNPAID;
+            $this->refreshPaidTotals($sale);
+            $sale->status = $sale->isFullyPaid() ? SaleStatus::PAID : $sale->status;
+            // Fiado já lançado: este recebimento abate o débito na conta até o saldo devido.
+            $this->clientAccounts->settleDebitWithReceipt($sale, $receipt, $user);
 
             if ($sale->status === SaleStatus::PAID) {
                 $this->settlePaidSale($sale, $user);
             } else {
                 $sale->save();
-                // Venda que fecha `unpaid` (fiado, doc 11): débito no cliente pelo valor em
-                // aberto — bloqueia com 422 se ele não tiver `allow_credit_sale` ou estourar o
-                // limite, desfazendo também o recebimento que acabou de ser criado.
-                $this->clientAccounts->debitIfSaleWentUnpaid($sale, $user);
             }
 
             return $receipt->load('paymentMethod');
@@ -555,6 +560,17 @@ final class SaleService
             'medical_record_id' => $attributes['medical_record_id'] ?? null,
             'hospitalization_id' => $attributes['hospitalization_id'] ?? null,
         ];
+    }
+
+    /**
+     * Acréscimo, total e pago a partir dos recebimentos QUE VALEM — o estornado (PLANO 2.3) fica
+     * no histórico e não paga nada. Usado pelo recebimento e pelo estorno de um recebimento.
+     */
+    public function refreshPaidTotals(Sale $sale): void
+    {
+        $sale->surcharge_amount = Money::of($sale->receipts()->active()->sum('surcharge_amount'))->toString();
+        $sale->recalculateTotals();
+        $sale->paid_amount = Money::of($sale->receipts()->active()->sum('amount'))->toString();
     }
 
     /**
@@ -771,7 +787,15 @@ final class SaleService
      */
     private function deductStock(Sale $sale, User $user): void
     {
-        foreach ($this->stockItems($sale) as $item) {
+        // Venda paga de novo depois de um estorno de recebimento (PLANO 2.3): o estoque nunca
+        // voltou, então não baixa outra vez.
+        $alreadyDeducted = StockMovement::query()
+            ->where('reference_type', $sale->getMorphClass())
+            ->where('reference_id', $sale->id)
+            ->where('type', StockMovementType::SALE_OUT->value)
+            ->exists();
+
+        foreach ($alreadyDeducted ? [] : $this->stockItems($sale) as $item) {
             // Quantidade exata vendida — antes era `ceil()`: 1,25 kg de ração baixava 2 kg.
             $this->stock->out($item->sellable, StockMovementType::SALE_OUT, $item->quantity, [
                 'reference' => $sale,

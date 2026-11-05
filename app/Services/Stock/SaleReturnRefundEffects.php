@@ -84,7 +84,7 @@ final class SaleReturnRefundEffects
      */
     private function refundReceipt(Sale $sale): ?SaleReceipt
     {
-        $receipts = $sale->receipts()->with('paymentMethod')->orderBy('id')->get();
+        $receipts = $sale->receipts()->active()->with('paymentMethod')->orderBy('id')->get();
 
         return $receipts->first(fn (SaleReceipt $receipt): bool => $receipt->paymentMethod?->kind === PaymentMethodKind::CASH)
             ?? $receipts->first();

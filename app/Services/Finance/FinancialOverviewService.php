@@ -171,7 +171,9 @@ final class FinancialOverviewService
 
     private function receiptsQuery(User $user, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
+        // Recebimento estornado (PLANO 2.3) não é dinheiro recebido.
         return SaleReceipt::query()
+            ->active()
             ->whereBetween('received_at', [$from->startOfDay(), $to->endOfDay()])
             ->whereHas('sale', fn (Builder $sale) => $this->scope->scopeQuery($sale, $user)
                 ->where('kind', SaleKind::SALE->value)

@@ -11,6 +11,8 @@ use App\Models\CommissionSettlement;
 use App\Models\OrganizationMember;
 use App\Models\SaleItem;
 use App\Models\User;
+use App\Services\Commercial\Reversal\CommissionDeductionApplier;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -31,6 +33,7 @@ final class CommissionSettlementService
         private readonly CommercialScopeResolver $scope,
         private readonly CommissionRuleResolver $resolver,
         private readonly CommissionCalculator $calculator,
+        private readonly CommissionDeductionApplier $deductions,
     ) {}
 
     /**
@@ -87,7 +90,10 @@ final class CommissionSettlementService
                 return $priced['commission_amount'];
             });
 
-            $settlement->update(['total_amount' => round($total, 2)]);
+            // Comissão estornada que o profissional ainda deve (PLANO 2.3) sai deste fechamento,
+            // sem nunca deixá-lo negativo; o que não couber fica para o próximo.
+            $gross = Money::of($total);
+            $settlement->update(['total_amount' => $gross->minus($this->deductions->applyTo($settlement, $gross))->toString()]);
 
             // A comissão fechada passa a ser a da rentabilidade (PLANO 1.5).
             $items->pluck('sale_id')->unique()->each(fn (int $saleId) => CommissionRecalculated::dispatch($saleId));
@@ -150,7 +156,7 @@ final class CommissionSettlementService
                 $query->where('status', SaleStatus::PAID->value)
                     ->where('kind', SaleKind::SALE->value)
                     ->whereRaw(
-                        '(select max(received_at) from sale_receipts where sale_receipts.sale_id = sales.id) <= ?',
+                        '(select max(received_at) from sale_receipts where sale_receipts.sale_id = sales.id and sale_receipts.reversed_at is null) <= ?',
                         [$receivedUntilEndOfDay]
                     );
             });

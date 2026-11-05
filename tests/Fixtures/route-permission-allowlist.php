@@ -362,7 +362,11 @@ return [
     // PLANO 1.4: brinde/cortesia/retorno e fechamento de saldo zero. A permissão
     // `sales.grant_courtesy` é do cargo na organização da venda (`CourtesyAuthorizer`) — o
     // middleware leria o papel Spatie global; o fechamento usa a `SalePolicy::registerReceipt`.
+    // "Concluir venda": mesma `SalePolicy::registerReceipt` do recebimento.
+    'POST api/professional/sales/{id}/complete',
     'POST api/professional/sales/{id}/finalize',
+    // PLANO 2.3: `sales.cancel_receipt` julgada pelo cargo na organização da venda.
+    'POST api/professional/sales/{id}/receipts/{receiptId}/cancel',
     // PLANO 1.5: `reports.profitability` julgada pelo cargo na organização da venda.
     'GET api/professional/sales/{id}/profitability',
     'PUT api/professional/sales/{id}/items/{itemId}/courtesy',

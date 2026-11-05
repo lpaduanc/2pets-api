@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Commercial\PayCommissionSettlementRequest;
 use App\Http\Requests\Commercial\StoreCommissionSettlementRequest;
 use App\Http\Resources\Commercial\CommissionSettlementResource;
+use App\Models\CommissionClawback;
 use App\Models\CommissionSettlement;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\CommissionSettlementService;
+use App\Services\Commercial\Reversal\CommissionDeductionApplier;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +29,7 @@ class CommissionSettlementController extends Controller
     public function __construct(
         private readonly CommercialScopeResolver $scope,
         private readonly CommissionSettlementService $settlements,
+        private readonly CommissionDeductionApplier $deductions,
     ) {}
 
     /**
@@ -50,6 +54,9 @@ class CommissionSettlementController extends Controller
                 'commission_amount' => $priced['commission_amount'],
             ]),
             'meta' => ['total' => round($items->sum('commission_amount'), 2)],
+            // Comissão estornada que o próximo fechamento deste profissional vai descontar
+            // (PLANO 2.3) — visível mesmo sem fechamento novo.
+            'pending_deductions' => $this->pendingDeductions($request->integer('staff_id')),
         ]);
     }
 
@@ -96,6 +103,26 @@ class CommissionSettlementController extends Controller
         return new CommissionSettlementResource(
             $this->settlements->pay($settlement, $request->validated())->load(CommissionSettlementResource::RESOURCE_RELATIONS)
         );
+    }
+
+    /** @return array{total: string, items: list<array<string, mixed>>} */
+    private function pendingDeductions(int $staffId): array
+    {
+        $clawbacks = $this->deductions->pendingFor($staffId);
+
+        return [
+            'total' => Money::sum($clawbacks->map(fn (CommissionClawback $clawback): Money => $clawback->pendingAmount()))->toString(),
+            'items' => $clawbacks->map(fn (CommissionClawback $clawback): array => [
+                'clawback_id' => $clawback->id,
+                'sale_item_id' => $clawback->sale_item_id,
+                'sale_id' => $clawback->saleItem?->sale_id,
+                'description' => $clawback->saleItem?->description,
+                'reason' => $clawback->reason,
+                'amount' => (string) $clawback->amount,
+                'pending_amount' => $clawback->pendingAmount()->toString(),
+                'created_at' => $clawback->created_at?->toIso8601String(),
+            ])->values()->all(),
+        ];
     }
 
     private function findForUser(User $user, int $id, string $ability): CommissionSettlement

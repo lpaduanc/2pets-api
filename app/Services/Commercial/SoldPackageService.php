@@ -109,6 +109,12 @@ final class SoldPackageService
 
     private function activateItem(Sale $sale, SaleItem $item): void
     {
+        // Idempotente: venda paga de novo depois de um estorno de recebimento (PLANO 2.3) não cria
+        // um segundo pacote para a mesma linha.
+        if (SoldPackage::query()->where('sale_item_id', $item->id)->exists()) {
+            return;
+        }
+
         /** @var ServicePackage $catalog */
         $catalog = $item->sellable;
         $soldAt = $sale->sold_at ?? now();

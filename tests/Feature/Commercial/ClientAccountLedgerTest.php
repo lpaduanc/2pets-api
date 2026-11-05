@@ -36,10 +36,14 @@ class ClientAccountLedgerTest extends TestCase
             ->assertCreated()->json('data.id');
         $this->postJson("/api/professional/sales/{$saleId}/items", ['sellable_type' => 'product', 'sellable_id' => $product->id]);
 
-        // Paga só R$ 50 agora: os R$ 150 restantes viram fiado (débito automático).
+        // Paga só R$ 50 agora (a venda segue em andamento) e conclui: os R$ 150 restantes viram
+        // fiado (débito automático) — o fiado é julgado ao concluir, não no recebimento parcial.
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 50])
             ->assertCreated()
-            ->assertJsonPath('sale.status', 'unpaid');
+            ->assertJsonPath('sale.status', 'open');
+        $this->postJson("/api/professional/sales/{$saleId}/complete")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'unpaid');
 
         $statement = $this->actingAs($this->owner, 'sanctum')
             ->getJson("/api/professional/clients/{$this->tutor->id}/account-statement")
@@ -69,8 +73,12 @@ class ClientAccountLedgerTest extends TestCase
             ->assertCreated()->json('data.id');
         $this->postJson("/api/professional/sales/{$saleId}/items", ['sellable_type' => 'product', 'sellable_id' => $product->id]);
 
+        // O parcial é aceito (a venda segue em andamento); concluir com saldo sem fiado liberado, não.
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 50])
-            ->assertStatus(422);
+            ->assertCreated()
+            ->assertJsonPath('sale.status', 'open');
+        $this->postJson("/api/professional/sales/{$saleId}/complete")->assertStatus(422);
+        $this->assertSame('open', \App\Models\Sale::findOrFail($saleId)->status->value);
     }
 
     public function test_a_credit_sale_above_the_limit_is_rejected_with_a_readable_message(): void
@@ -85,8 +93,10 @@ class ClientAccountLedgerTest extends TestCase
             ->assertCreated()->json('data.id');
         $this->postJson("/api/professional/sales/{$saleId}/items", ['sellable_type' => 'product', 'sellable_id' => $product->id]);
 
-        // Falta R$ 150 (limite é só R$ 100).
+        // Falta R$ 150 (limite é só R$ 100): o parcial passa, concluir a prazo é recusado.
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 50])
+            ->assertCreated();
+        $this->postJson("/api/professional/sales/{$saleId}/complete")
             ->assertStatus(422)
             ->assertJsonFragment(['message' => $this->creditLimitMessage(100, 0)]);
     }

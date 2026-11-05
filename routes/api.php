@@ -26,10 +26,12 @@ use App\Http\Controllers\Api\Commercial\ProductGroupController;
 use App\Http\Controllers\Api\Commercial\QuoteController;
 use App\Http\Controllers\Api\Commercial\ReceiptSimulationController;
 use App\Http\Controllers\Api\Commercial\ReceivableController;
+use App\Http\Controllers\Api\Commercial\SaleCompletionController;
 use App\Http\Controllers\Api\Commercial\SaleController;
 use App\Http\Controllers\Api\Commercial\SaleFinalizationController;
 use App\Http\Controllers\Api\Commercial\SaleItemCourtesyController;
 use App\Http\Controllers\Api\Commercial\SaleProfitabilityController;
+use App\Http\Controllers\Api\Commercial\SaleReceiptCancellationController;
 use App\Http\Controllers\Api\Commercial\ServicePackageController;
 use App\Http\Controllers\Api\Commercial\SoldPackageController;
 use App\Http\Controllers\Api\ConsultationController;
@@ -1027,6 +1029,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::put('sales/{id}/items/{itemId}/courtesy', [SaleItemCourtesyController::class, 'update'])->whereNumber(['id', 'itemId']);
         Route::delete('sales/{id}/items/{itemId}/courtesy', [SaleItemCourtesyController::class, 'destroy'])->whereNumber(['id', 'itemId']);
         Route::post('sales/{id}/finalize', SaleFinalizationController::class)->whereNumber('id');
+        // "Concluir venda" do PDV: o fiado é julgado aqui, não a cada recebimento parcial.
+        Route::post('sales/{id}/complete', SaleCompletionController::class)->whereNumber('id');
         // Rentabilidade por item (PLANO 1.5). `reports.profitability` é julgada pelo cargo na
         // organização da venda (`SalePermissionGate`), não pelo middleware — papel Spatie é global.
         Route::get('sales/{id}/profitability', SaleProfitabilityController::class)->whereNumber('id');
@@ -1035,6 +1039,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('sales/receipts/simulate-fee', ReceiptSimulationController::class);
         Route::get('sales/{id}/receipts', [SaleController::class, 'receipts'])->whereNumber('id');
         Route::post('sales/{id}/receipts', [SaleController::class, 'storeReceipt'])->whereNumber('id');
+        // Estorno de UM recebimento (PLANO 2.3); `sales.cancel_receipt` pelo cargo na organização
+        // da venda (`SalePermissionGate`), não pelo middleware — papel Spatie é global.
+        Route::post('sales/{id}/receipts/{receiptId}/cancel', SaleReceiptCancellationController::class)->whereNumber(['id', 'receiptId']);
         Route::post('sales/{id}/convert', [SaleController::class, 'convert'])->whereNumber('id');
         Route::post('sales/{id}/cancel', [SaleController::class, 'cancel'])->whereNumber('id');
 

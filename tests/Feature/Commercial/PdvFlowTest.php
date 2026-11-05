@@ -61,9 +61,11 @@ class PdvFlowTest extends TestCase
         $this->assertEquals([5.0, 30.0], $items->map(fn (SaleItem $item): float => (float) $item->commission_percent)->all());
 
         // Dinheiro + cartão na mesma venda: 2 recebimentos, 2 movimentos de caixa.
+        // Entre as duas chamadas a venda segue em andamento (`open`): o cliente sem fiado liberado
+        // não esbarra na trava do doc 11, que só vale ao concluir com saldo.
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 60])
             ->assertCreated()
-            ->assertJsonPath('sale.status', 'unpaid')
+            ->assertJsonPath('sale.status', 'open')
             ->assertJsonPath('sale.amount_due', 100);
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $credit, 'amount' => 100, 'installments' => 2])
             ->assertCreated()

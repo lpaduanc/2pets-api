@@ -55,9 +55,10 @@ class CommissionOnlyWhenReceivedTest extends TestCase
         ])->assertCreated();
 
         $cash = $this->paymentMethodId($this->receptionist, 'cash');
+        // Parcial: a venda segue em andamento (não concluída), sem comissão.
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 40])
             ->assertCreated()
-            ->assertJsonPath('sale.status', 'unpaid');
+            ->assertJsonPath('sale.status', 'open');
 
         $this->actingAs($this->owner, 'sanctum')
             ->getJson('/api/professional/commissions/open?staff_id='.$this->groomerMember->id.'&received_until='.now()->toDateString())

@@ -6,7 +6,9 @@ use App\Enums\ClientAccountEntryDirection;
 use App\Enums\ClientAccountEntryType;
 use App\Models\ClientAccountEntry;
 use App\Models\CompanyClientAccount;
+use App\Models\SaleReceipt;
 use App\Models\User;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +27,12 @@ use Illuminate\Support\Facades\DB;
  */
 final class ClientAccountService
 {
+    /** Ajuste do débito de venda feito pelo estorno de um recebimento (PLANO 2.3). */
+    public const RECEIPT_CANCELLATION_REFERENCE = 'sale_receipt_cancellation';
+
+    /** Ajuste do débito de venda por um recebimento posterior na venda (fiado sendo pago). */
+    public const RECEIPT_SETTLEMENT_REFERENCE = 'sale_receipt_settlement';
+
     /**
      * @param  array{organization_id: int|null, professional_id: int}  $ownership
      */
@@ -98,9 +106,15 @@ final class ClientAccountService
      */
     public function consumeCredit(User $client, array $ownership, float $amount, int $saleId, User $actor): ClientAccountEntry
     {
-        return $this->record($client, $ownership, function (CompanyClientAccount $account) use ($amount): void {
+        // Fiado ativo DESTA venda conta como disponível: quitar a venda com a conta corrente
+        // depois de o cliente pagar o fiado na conta (crédito manual) consome esse crédito, e o
+        // ajuste do recebimento (`settleDebitWithReceipt`) devolve o mesmo valor — o saldo não
+        // muda e nada é abatido em dobro.
+        $ownDebit = $this->saleDebitBalance($saleId)->toFloat();
+
+        return $this->record($client, $ownership, function (CompanyClientAccount $account) use ($amount, $ownDebit): void {
             abort_if(
-                (float) $account->current_balance - $amount < -0.01,
+                (float) $account->current_balance + $ownDebit - $amount < -0.01,
                 422,
                 sprintf('Saldo credor insuficiente: disponível R$ %s.', number_format((float) $account->current_balance, 2, ',', '.'))
             );
@@ -143,18 +157,64 @@ final class ClientAccountService
      */
     public function reverseSaleDebit(User $client, array $ownership, int $saleId, User $actor): ?ClientAccountEntry
     {
-        $bySale = fn (ClientAccountEntryType $type) => ClientAccountEntry::query()
+        $alreadyReversed = ClientAccountEntry::query()
             ->where('reference_type', 'sale')
             ->where('reference_id', $saleId)
-            ->where('type', $type->value);
+            ->where('type', ClientAccountEntryType::SALE_DEBIT_REVERSAL->value)
+            ->exists();
+        // O que a venda deve HOJE na conta: o débito original já ajustado pelos estornos de
+        // recebimento (PLANO 2.3) — estornar só o débito original devolveria o ajuste em dobro.
+        $debited = $this->saleDebitBalance($saleId);
 
-        $debited = (float) $bySale(ClientAccountEntryType::SALE_DEBIT)->sum('amount');
-
-        if ($debited <= 0 || $bySale(ClientAccountEntryType::SALE_DEBIT_REVERSAL)->exists()) {
+        if (! $debited->isPositive() || $alreadyReversed) {
             return null;
         }
 
-        return $this->record($client, $ownership, null, ClientAccountEntryType::SALE_DEBIT_REVERSAL, ClientAccountEntryDirection::CREDIT, $debited, $actor, 'sale', $saleId);
+        return $this->record($client, $ownership, null, ClientAccountEntryType::SALE_DEBIT_REVERSAL, ClientAccountEntryDirection::CREDIT, $debited->toFloat(), $actor, 'sale', $saleId);
+    }
+
+    /**
+     * Débito líquido da venda na conta corrente: débito de venda a prazo, estorno dele e os
+     * ajustes de estorno de recebimento (PLANO 2.3). Positivo = o cliente deve.
+     */
+    public function saleDebitBalance(int $saleId): Money
+    {
+        $entries = ClientAccountEntry::query()
+            ->where(fn ($query) => $query
+                ->where(fn ($sale) => $sale->where('reference_type', 'sale')->where('reference_id', $saleId)
+                    ->whereIn('type', [ClientAccountEntryType::SALE_DEBIT->value, ClientAccountEntryType::SALE_DEBIT_REVERSAL->value]))
+                ->orWhere(fn ($adjustment) => $adjustment->whereIn('reference_type', [self::RECEIPT_CANCELLATION_REFERENCE, self::RECEIPT_SETTLEMENT_REFERENCE])
+                    ->whereIn('reference_id', SaleReceipt::query()->where('sale_id', $saleId)->select('id'))))
+            ->get(['direction', 'amount']);
+
+        // `sign()` da direção é o do SALDO (crédito +); a posição de débito é o inverso.
+        return Money::sum($entries->map(fn (ClientAccountEntry $entry): Money => Money::of($entry->amount)->times(-$entry->direction->sign())));
+    }
+
+    /**
+     * Leva o débito da venda na conta ao valor `$target` com UM lançamento de ajuste (débito ou
+     * crédito) referenciando o recebimento que mudou o saldo devido — estornado (PLANO 2.3) ou
+     * recebido depois do fiado. O lançamento original nunca é editado. Já no valor certo, nada é
+     * gravado (idempotente). Sem trava de fiado: é o estado real da venda, não uma venda nova a prazo.
+     *
+     * @param  array{organization_id: int|null, professional_id: int}  $ownership
+     */
+    public function adjustSaleDebitTo(User $client, array $ownership, Money $target, int $saleId, int $receiptId, User $actor, string $referenceType = self::RECEIPT_CANCELLATION_REFERENCE): ?ClientAccountEntry
+    {
+        $difference = $target->minus($this->saleDebitBalance($saleId));
+
+        if ($difference->isZero()) {
+            return null;
+        }
+
+        [$type, $direction] = $difference->isPositive()
+            ? [ClientAccountEntryType::ADJUSTMENT_DEBIT, ClientAccountEntryDirection::DEBIT]
+            : [ClientAccountEntryType::ADJUSTMENT_CREDIT, ClientAccountEntryDirection::CREDIT];
+
+        $why = $referenceType === self::RECEIPT_SETTLEMENT_REFERENCE ? 'pelo recebimento' : 'pelo estorno do recebimento';
+
+        return $this->record($client, $ownership, null, $type, $direction, $difference->abs()->toFloat(), $actor,
+            $referenceType, $receiptId, "Fiado da venda {$saleId} ajustado {$why} #{$receiptId}.");
     }
 
     /**

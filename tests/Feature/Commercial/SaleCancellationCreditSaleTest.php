@@ -70,7 +70,9 @@ class SaleCancellationCreditSaleTest extends TestCase
         $saleId = $this->postJson('/api/professional/sales', ['kind' => 'sale', 'client_id' => $this->tutor->id])->json('data.id');
         $this->postJson("/api/professional/sales/{$saleId}/items", ['sellable_type' => 'product', 'sellable_id' => $product->id])->assertCreated();
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 40])
-            ->assertCreated()->assertJsonPath('sale.status', 'unpaid');
+            ->assertCreated()->assertJsonPath('sale.status', 'open');
+        // Concluir com saldo é o que faz a venda virar a prazo (fiado).
+        $this->postJson("/api/professional/sales/{$saleId}/complete")->assertOk()->assertJsonPath('data.status', 'unpaid');
 
         return $saleId;
     }

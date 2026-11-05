@@ -78,9 +78,10 @@ class SaleToFinancialEntryTest extends TestCase
 
         $saleId = $this->postJson('/api/professional/sales', ['kind' => 'sale'])->assertCreated()->json('data.id');
         $this->postJson("/api/professional/sales/{$saleId}/items", ['sellable_type' => 'product', 'sellable_id' => $product->id]);
+        // Parcial: a venda segue em andamento, sem receita lançada.
         $this->postJson("/api/professional/sales/{$saleId}/receipts", ['payment_method_id' => $cash, 'amount' => 40])
             ->assertCreated()
-            ->assertJsonPath('sale.status', 'unpaid');
+            ->assertJsonPath('sale.status', 'open');
 
         $this->assertSame(0, FinancialEntry::where('reference_type', 'sale')->where('reference_id', $saleId)->count());
     }

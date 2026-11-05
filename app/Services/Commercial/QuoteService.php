@@ -354,6 +354,8 @@ final class QuoteService
                 $this->tokens->consume($quote);
             }
 
+            // Pagamento parcial na conversão deixa a venda em aberto, como no PDV: o fiado só é
+            // julgado ao concluir (`SaleCompletionService`).
             foreach ($receipts as $receipt) {
                 $this->sales->registerReceipt($sale, $user, $receipt);
                 $sale->refresh();
