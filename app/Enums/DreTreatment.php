@@ -41,6 +41,8 @@ enum DreTreatment: string
             'Fornecedores' => self::INVENTORY_PURCHASE,
             'Devoluções de vendas' => self::IGNORE,
             'Estorno de acréscimo de parcelamento' => self::IGNORE,
+            // PLANO 2.1: a taxa de antecipação é custo financeiro, não operacional.
+            'Antecipação de recebíveis' => self::FINANCIAL,
         ],
     ];
 

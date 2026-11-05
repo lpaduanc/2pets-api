@@ -61,6 +61,12 @@ class Receivable extends Model
         return $this->belongsTo(PaymentMethod::class);
     }
 
+    /** Antecipação vigente (PLANO 2.1). */
+    public function anticipation(): BelongsTo
+    {
+        return $this->belongsTo(ReceivableAnticipation::class);
+    }
+
     public function settlement(): BelongsTo
     {
         return $this->belongsTo(AcquirerSettlement::class, 'acquirer_settlement_id');

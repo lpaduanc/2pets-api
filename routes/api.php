@@ -933,6 +933,16 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::match(['put', 'patch'], 'financial-accounts/{id}', [FinancialAccountController::class, 'update'])->whereNumber('id');
         });
 
+        // Antecipação de recebíveis (docs/gap-petflow/PLANO.md, 2.1). `finance.anticipation` é
+        // julgada pelo cargo nas organizações do escopo (`SalePermissionGate`), não pelo middleware
+        // — o papel Spatie é global (a atendente que é vet volante teria a permissão).
+        Route::group([], function (): void {
+            Route::post('receivables/anticipations/simulate', [\App\Http\Controllers\Api\Finance\ReceivableAnticipationController::class, 'simulate']);
+            Route::get('receivables/anticipations', [\App\Http\Controllers\Api\Finance\ReceivableAnticipationController::class, 'index']);
+            Route::post('receivables/anticipations', [\App\Http\Controllers\Api\Finance\ReceivableAnticipationController::class, 'store']);
+            Route::post('receivables/anticipations/{id}/cancel', [\App\Http\Controllers\Api\Finance\ReceivableAnticipationController::class, 'cancel'])->whereNumber('id');
+        });
+
         Route::middleware('permission:acquirer-settlements.view')->group(function (): void {
             // Agenda de recebíveis de cartão (docs/gap-petflow 1.1).
             Route::get('receivables', [ReceivableController::class, 'index']);

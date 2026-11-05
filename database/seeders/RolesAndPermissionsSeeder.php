@@ -279,6 +279,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // tira a venda de "paga". Gestão; o dono concede por exceção ao membro (não é ato
             // clínico). Julgada pelo cargo na organização da venda.
             'sales.cancel_receipt',
+            // Antecipação de recebíveis (docs/gap-petflow/PLANO.md, 2.1): decisão financeira de
+            // gestão (custo financeiro). Concedível por exceção ao membro.
+            'finance.anticipation',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -406,6 +409,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.profitability',
             // PLANO 2.3: estorno de recebimento é de gestão.
             'sales.cancel_receipt',
+            // PLANO 2.1: antecipação de recebíveis é decisão financeira de gestão.
+            'finance.anticipation',
         ]);
 
         // 3. Clinic Owner
@@ -484,6 +489,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.profitability',
             // PLANO 2.3: estorno de recebimento é de gestão.
             'sales.cancel_receipt',
+            // PLANO 2.1: antecipação de recebíveis é decisão financeira de gestão.
+            'finance.anticipation',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -589,6 +596,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.profitability',
             // PLANO 2.3: estorno de recebimento é de gestão.
             'sales.cancel_receipt',
+            // PLANO 2.1: antecipação de recebíveis é decisão financeira de gestão.
+            'finance.anticipation',
         ]);
 
         // 6. Petshop Staff

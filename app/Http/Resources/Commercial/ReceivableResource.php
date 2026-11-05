@@ -31,6 +31,14 @@ class ReceivableResource extends JsonResource
             'expected_date' => $this->expected_date?->toDateString(),
             'status' => $this->status->value,
             'settled_at' => $this->settled_at?->toIso8601String(),
+            // Antecipação vigente (PLANO 2.1): com ela, `expected_date` é a data da antecipação.
+            'anticipation_id' => $this->anticipation_id,
+            'anticipation' => $this->whenLoaded('anticipation', fn () => $this->anticipation === null ? null : [
+                'id' => $this->anticipation->id,
+                'anticipated_at' => $this->anticipation->anticipated_at->toDateString(),
+                'fee_amount' => (string) $this->anticipation->items->firstWhere('receivable_id', $this->id)?->fee_amount,
+                'original_expected_date' => $this->anticipation->items->firstWhere('receivable_id', $this->id)?->original_expected_date?->toDateString(),
+            ]),
         ];
     }
 }

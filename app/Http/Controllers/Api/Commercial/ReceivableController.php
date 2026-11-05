@@ -38,7 +38,7 @@ class ReceivableController extends Controller
         $rows = (clone $query)->get(['gross_amount', 'fee_amount', 'net_amount']);
 
         return ReceivableResource::collection(
-            $query->with(['paymentMethod:id,name', 'receipt.sale:id,number'])->orderBy('expected_date')->orderBy('id')->paginate(self::PER_PAGE)
+            $query->with(['paymentMethod:id,name', 'receipt.sale:id,number', 'anticipation.items'])->orderBy('expected_date')->orderBy('id')->paginate(self::PER_PAGE)
         )->additional(['summary' => [
             'gross_amount' => Money::sum($rows->pluck('gross_amount'))->toString(),
             'fee_amount' => Money::sum($rows->pluck('fee_amount'))->toString(),

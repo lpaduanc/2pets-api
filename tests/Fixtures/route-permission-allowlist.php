@@ -365,6 +365,11 @@ return [
     // "Concluir venda": mesma `SalePolicy::registerReceipt` do recebimento.
     'POST api/professional/sales/{id}/complete',
     'POST api/professional/sales/{id}/finalize',
+    // PLANO 2.1: `finance.anticipation` julgada pelo cargo nas organizações do escopo.
+    'GET api/professional/receivables/anticipations',
+    'POST api/professional/receivables/anticipations',
+    'POST api/professional/receivables/anticipations/simulate',
+    'POST api/professional/receivables/anticipations/{id}/cancel',
     // PLANO 2.3: `sales.cancel_receipt` julgada pelo cargo na organização da venda.
     'POST api/professional/sales/{id}/receipts/{receiptId}/cancel',
     // PLANO 1.5: `reports.profitability` julgada pelo cargo na organização da venda.

@@ -24,6 +24,9 @@ final class SalePermissionGate
     /** Ver custo, margem e comissão (rentabilidade 1.5 e métricas de custo do BI 1.6). */
     public const PROFITABILITY = 'reports.profitability';
 
+    /** Antecipar recebíveis de cartão (PLANO 2.1). */
+    public const ANTICIPATION = 'finance.anticipation';
+
     /** Estornar UM recebimento da venda (PLANO 2.3). */
     public const CANCEL_RECEIPT = 'sales.cancel_receipt';
 

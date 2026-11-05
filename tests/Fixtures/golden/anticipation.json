@@ -1,0 +1,188 @@
+{
+  "_doc": "Casos de referencia da antecipacao de recebiveis (docs/gap-petflow/PLANO.md, secoes 0.3 e 2.1). Desconto simples sobre o LIQUIDO de cada parcela. monthly_rate: dias = data da antecipacao ate a data da parcela; taxa_i = round(liquido_i x taxa/100 x dias/30), HALF_UP. fixed_rate: taxa_total = round(soma liquido x taxa/100); taxa_i = rateio pelo maior resto com pesos = liquido_i. received_amount = liquido - taxa; net_total = soma recebida; effective_cost_percent = soma taxa / soma liquido x 100, 2 casas. expected = data do POST /api/professional/receivables/anticipations/simulate. Copia byte a byte em 2pets-pro/tests/fixtures/golden/anticipation.json.",
+  "anticipation": [
+    {
+      "id": "antecip-01",
+      "_conta": "3 parcelas liquidas de 96,51 em D+30/60/90, 1,99% a.m.: 96,51 x 0,0199 x 30/30 = 1,9205 -> 1,92; x 60/30 = 3,8411 -> 3,84; x 90/30 = 5,7616 -> 5,76. Soma 11,52; recebe 289,53 - 11,52 = 278,01; custo efetivo 11,52 / 289,53 = 3,9789% -> 3,98%.",
+      "input": {
+        "anticipated_at": "2026-11-05",
+        "mode": "monthly_rate",
+        "rate": "1.99",
+        "items": [
+          {
+            "receivable_id": 1,
+            "net_amount": "96.51",
+            "expected_date": "2026-12-05"
+          },
+          {
+            "receivable_id": 2,
+            "net_amount": "96.51",
+            "expected_date": "2027-01-04"
+          },
+          {
+            "receivable_id": 3,
+            "net_amount": "96.51",
+            "expected_date": "2027-02-03"
+          }
+        ]
+      },
+      "expected": {
+        "anticipated_at": "2026-11-05",
+        "mode": "monthly_rate",
+        "rate": "1.9900",
+        "items": [
+          {
+            "receivable_id": 1,
+            "expected_date": "2026-12-05",
+            "days": 30,
+            "net_amount": "96.51",
+            "fee_amount": "1.92",
+            "received_amount": "94.59"
+          },
+          {
+            "receivable_id": 2,
+            "expected_date": "2027-01-04",
+            "days": 60,
+            "net_amount": "96.51",
+            "fee_amount": "3.84",
+            "received_amount": "92.67"
+          },
+          {
+            "receivable_id": 3,
+            "expected_date": "2027-02-03",
+            "days": 90,
+            "net_amount": "96.51",
+            "fee_amount": "5.76",
+            "received_amount": "90.75"
+          }
+        ],
+        "gross_total": "289.53",
+        "fee_total": "11.52",
+        "net_total": "278.01",
+        "effective_cost_percent": "3.98"
+      }
+    },
+    {
+      "id": "antecip-taxa-fixa-sobra",
+      "_conta": "Taxa fixa 2,5% sobre 100,00 = 2,50 (250 centavos), rateada pelo liquido 33,33 / 33,33 / 33,34: 250 x 3333/10000 = 83,325 -> 83; 83; 250 x 3334/10000 = 83,35 -> 83. Soma 249: o centavo que sobra vai ao maior resto (0,35, a 3a parcela) -> 0,83 / 0,83 / 0,84. Recebe 97,50; custo efetivo 2,50%.",
+      "input": {
+        "anticipated_at": "2026-11-05",
+        "mode": "fixed_rate",
+        "rate": "2.5",
+        "items": [
+          {
+            "receivable_id": 10,
+            "net_amount": "33.33",
+            "expected_date": "2026-12-05"
+          },
+          {
+            "receivable_id": 11,
+            "net_amount": "33.33",
+            "expected_date": "2027-01-04"
+          },
+          {
+            "receivable_id": 12,
+            "net_amount": "33.34",
+            "expected_date": "2027-02-03"
+          }
+        ]
+      },
+      "expected": {
+        "anticipated_at": "2026-11-05",
+        "mode": "fixed_rate",
+        "rate": "2.5000",
+        "items": [
+          {
+            "receivable_id": 10,
+            "expected_date": "2026-12-05",
+            "days": 30,
+            "net_amount": "33.33",
+            "fee_amount": "0.83",
+            "received_amount": "32.50"
+          },
+          {
+            "receivable_id": 11,
+            "expected_date": "2027-01-04",
+            "days": 60,
+            "net_amount": "33.33",
+            "fee_amount": "0.83",
+            "received_amount": "32.50"
+          },
+          {
+            "receivable_id": 12,
+            "expected_date": "2027-02-03",
+            "days": 90,
+            "net_amount": "33.34",
+            "fee_amount": "0.84",
+            "received_amount": "32.50"
+          }
+        ],
+        "gross_total": "100.00",
+        "fee_total": "2.50",
+        "net_total": "97.50",
+        "effective_cost_percent": "2.50"
+      }
+    },
+    {
+      "id": "antecip-liquidos-diferentes",
+      "_conta": "2,5% a.m. com liquidos diferentes: 150,00 em D+15 -> 150 x 0,025 x 15/30 = 1,875 -> 1,88; 80,25 em D+45 -> 3,009375 -> 3,01; 49,90 em D+75 -> 3,11875 -> 3,12. Soma 8,01 de 280,15; recebe 272,14; custo efetivo 8,01 / 280,15 = 2,8592% -> 2,86%.",
+      "input": {
+        "anticipated_at": "2026-11-05",
+        "mode": "monthly_rate",
+        "rate": "2.5",
+        "items": [
+          {
+            "receivable_id": 20,
+            "net_amount": "150.00",
+            "expected_date": "2026-11-20"
+          },
+          {
+            "receivable_id": 21,
+            "net_amount": "80.25",
+            "expected_date": "2026-12-20"
+          },
+          {
+            "receivable_id": 22,
+            "net_amount": "49.90",
+            "expected_date": "2027-01-19"
+          }
+        ]
+      },
+      "expected": {
+        "anticipated_at": "2026-11-05",
+        "mode": "monthly_rate",
+        "rate": "2.5000",
+        "items": [
+          {
+            "receivable_id": 20,
+            "expected_date": "2026-11-20",
+            "days": 15,
+            "net_amount": "150.00",
+            "fee_amount": "1.88",
+            "received_amount": "148.12"
+          },
+          {
+            "receivable_id": 21,
+            "expected_date": "2026-12-20",
+            "days": 45,
+            "net_amount": "80.25",
+            "fee_amount": "3.01",
+            "received_amount": "77.24"
+          },
+          {
+            "receivable_id": 22,
+            "expected_date": "2027-01-19",
+            "days": 75,
+            "net_amount": "49.90",
+            "fee_amount": "3.12",
+            "received_amount": "46.78"
+          }
+        ],
+        "gross_total": "280.15",
+        "fee_total": "8.01",
+        "net_total": "272.14",
+        "effective_cost_percent": "2.86"
+      }
+    }
+  ]
+}
