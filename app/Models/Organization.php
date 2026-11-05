@@ -71,6 +71,10 @@ class Organization extends Model implements HasDepositSettings
         // Precificação (PLANO 1.4): alíquota efetiva informada e taxa de referência do cartão.
         'effective_sales_tax_rate',
         'card_fee_reference_mode',
+        // Crediário (PLANO 2.2): política de encargos de atraso.
+        'credit_late_fee_percent',
+        'credit_monthly_interest_percent',
+        'credit_grace_days',
     ];
 
     /**
@@ -96,6 +100,9 @@ class Organization extends Model implements HasDepositSettings
             'card_surcharge_return_policy' => CardSurchargeReturnPolicy::class,
             'effective_sales_tax_rate' => 'decimal:4',
             'card_fee_reference_mode' => CardFeeReferenceMode::class,
+            'credit_late_fee_percent' => 'decimal:2',
+            'credit_monthly_interest_percent' => 'decimal:4',
+            'credit_grace_days' => 'integer',
         ];
     }
 

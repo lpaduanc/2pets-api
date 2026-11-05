@@ -121,6 +121,8 @@ class Sale extends Model
         'cashRegister',
         'createdBy',
         'fiscalDocuments',
+        // Crediário (PLANO 2.2): o front esconde "Adicionar recebimento" em venda com plano.
+        'creditPlan:id,sale_id,client_id,installments_count,status',
     ];
 
     public function organization(): BelongsTo
@@ -183,6 +185,12 @@ class Sale extends Model
     public function hospitalization(): BelongsTo
     {
         return $this->belongsTo(Hospitalization::class);
+    }
+
+    /** Plano de crediário não cancelado (PLANO 2.2) — no máximo um por venda. */
+    public function creditPlan(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ClientCreditPlan::class)->where('status', '!=', ClientCreditPlan::CANCELLED);
     }
 
     public function items(): HasMany

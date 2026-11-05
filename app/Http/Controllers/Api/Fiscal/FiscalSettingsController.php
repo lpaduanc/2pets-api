@@ -72,6 +72,10 @@ class FiscalSettingsController extends Controller
             // Precificação (PLANO 1.4): percentual como string de 4 casas, igual ao `simulate`.
             'effective_sales_tax_rate' => $organization->effective_sales_tax_rate,
             'card_fee_reference_mode' => ($organization->card_fee_reference_mode ?? CardFeeReferenceMode::WEIGHTED_90D)->value,
+            // Crediário (PLANO 2.2).
+            'credit_late_fee_percent' => (string) ($organization->credit_late_fee_percent ?? '2.00'),
+            'credit_monthly_interest_percent' => (string) ($organization->credit_monthly_interest_percent ?? '1.0000'),
+            'credit_grace_days' => (int) ($organization->credit_grace_days ?? 0),
         ];
     }
 }

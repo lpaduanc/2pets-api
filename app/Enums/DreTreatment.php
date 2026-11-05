@@ -34,6 +34,8 @@ enum DreTreatment: string
             'Produtos' => self::IGNORE,
             'Serviços' => self::IGNORE,
             'Acréscimo de parcelamento' => self::IGNORE,
+            // PLANO 2.2: multa e juros de atraso do crediário são receita financeira.
+            'Encargos de crediário' => self::FINANCIAL,
         ],
         'expense' => [
             'Taxas e tarifas' => self::CARD_FEE,

@@ -282,6 +282,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // Antecipação de recebíveis (docs/gap-petflow/PLANO.md, 2.1): decisão financeira de
             // gestão (custo financeiro). Concedível por exceção ao membro.
             'finance.anticipation',
+            // Desconto nos encargos de atraso do crediário (PLANO 2.2): abre mão de receita.
+            // Gestão; concedível por exceção ao membro.
+            'finance.credit_fee_discount',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -411,6 +414,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'sales.cancel_receipt',
             // PLANO 2.1: antecipação de recebíveis é decisão financeira de gestão.
             'finance.anticipation',
+            // PLANO 2.2: desconto de encargo do crediário é de gestão.
+            'finance.credit_fee_discount',
         ]);
 
         // 3. Clinic Owner
@@ -491,6 +496,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'sales.cancel_receipt',
             // PLANO 2.1: antecipação de recebíveis é decisão financeira de gestão.
             'finance.anticipation',
+            // PLANO 2.2: desconto de encargo do crediário é de gestão.
+            'finance.credit_fee_discount',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -598,6 +605,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'sales.cancel_receipt',
             // PLANO 2.1: antecipação de recebíveis é decisão financeira de gestão.
             'finance.anticipation',
+            // PLANO 2.2: desconto de encargo do crediário é de gestão.
+            'finance.credit_fee_discount',
         ]);
 
         // 6. Petshop Staff

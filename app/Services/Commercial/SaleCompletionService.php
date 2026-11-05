@@ -6,6 +6,7 @@ use App\Enums\SaleStatus;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\Commercial\Pricing\SalePricingGuard;
+use App\Services\Finance\ClientCredit\ClientCreditPlanService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,9 +27,14 @@ final class SaleCompletionService
         private readonly SaleService $sales,
         private readonly SalePricingGuard $pricingRules,
         private readonly SaleClientAccountEffects $clientAccounts,
+        private readonly ClientCreditPlanService $creditPlans,
     ) {}
 
-    public function complete(Sale $sale, User $user): Sale
+    /**
+     * `$creditInstallments`/`$firstDueDate` (PLANO 2.2): concluída a prazo, o saldo vira crediário
+     * parcelado. Sem parcelas, é o fiado de sempre (um débito só na conta corrente).
+     */
+    public function complete(Sale $sale, User $user, ?int $creditInstallments = null, ?string $firstDueDate = null): Sale
     {
         abort_if($sale->isQuote(), 422, 'Orçamento não é concluído no PDV. Converta em venda primeiro.');
         abort_if($sale->status === SaleStatus::CANCELLED, 422, 'Venda cancelada não pode ser concluída.');
@@ -41,10 +47,10 @@ final class SaleCompletionService
             return $this->sales->finalizeWithoutPayment($sale, $user);
         }
 
-        return $this->completeOnCredit($sale, $user);
+        return $this->completeOnCredit($sale, $user, $creditInstallments, $firstDueDate);
     }
 
-    private function completeOnCredit(Sale $sale, User $user): Sale
+    private function completeOnCredit(Sale $sale, User $user, ?int $creditInstallments, ?string $firstDueDate): Sale
     {
         abort_if(! $sale->items()->exists(), 422, 'Adicione ao menos um item antes de receber.');
 
@@ -54,11 +60,15 @@ final class SaleCompletionService
 
         $this->pricingRules->assertReadyToReceive($sale);
 
-        return DB::transaction(function () use ($sale, $user): Sale {
+        return DB::transaction(function () use ($sale, $user, $creditInstallments, $firstDueDate): Sale {
             $sale->status = SaleStatus::UNPAID;
             $sale->save();
             // Trava do doc 11 (fiado liberado e limite): 422 aqui desfaz a conclusão inteira.
             $this->clientAccounts->debitIfSaleWentUnpaid($sale, $user);
+
+            if ($creditInstallments !== null) {
+                $this->creditPlans->createForSale($sale, $user, $creditInstallments, $firstDueDate ?? now()->addMonthNoOverflow()->toDateString());
+            }
 
             return $sale->fresh(Sale::RESOURCE_RELATIONS);
         });

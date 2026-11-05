@@ -6,6 +6,7 @@ use App\Models\CashRegister;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\Commercial\SaleClientAccountEffects;
+use App\Services\Finance\ClientCredit\ClientCreditPlanService;
 use App\Services\Finance\SaleRevenueReversalRecorder;
 
 /**
@@ -21,6 +22,7 @@ final class SaleCancellationReversal
         private readonly ReceiptReversalService $receipts,
         private readonly SaleRevenueReversalRecorder $revenue,
         private readonly SaleClientAccountEffects $clientAccounts,
+        private readonly ClientCreditPlanService $creditPlans,
     ) {}
 
     public function reverse(Sale $sale, User $user, ?CashRegister $register): void
@@ -33,5 +35,9 @@ final class SaleCancellationReversal
         $this->revenue->reverse($sale, $user);
         // Venda a prazo (total ou o resto no fiado): o débito do cliente volta a zero.
         $this->clientAccounts->reverseDebitForCancelledSale($sale, $user);
+        // Crediário (PLANO 2.2): o plano e as parcelas abertas morrem com a venda; o principal dos
+        // recebimentos estornados acima volta às parcelas antes disso (histórico coerente).
+        $receipts->each(fn ($receipt) => $this->creditPlans->reverseReceipt($receipt));
+        $this->creditPlans->cancelForSale($sale);
     }
 }

@@ -1093,6 +1093,13 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('clients/{id}/account-statement', [\App\Http\Controllers\Api\Commercial\ClientAccountController::class, 'statement'])
             ->whereNumber('id')
             ->middleware('permission:client-account.view.own|client-account.view.any');
+        // Crediário parcelado (docs/gap-petflow/PLANO.md, 2.2): quem vê o saldo do cliente vê e
+        // recebe as parcelas (o balcão); desconto de encargo pede `finance.credit_fee_discount`.
+        Route::middleware('permission:client-account.view.own|client-account.view.any')->group(function (): void {
+            Route::get('clients/{id}/credit-installments', [\App\Http\Controllers\Api\Finance\ClientCreditController::class, 'installments'])->whereNumber('id');
+            Route::post('clients/{id}/credit-payments/quote', [\App\Http\Controllers\Api\Finance\ClientCreditController::class, 'quote'])->whereNumber('id');
+            Route::post('clients/{id}/credit-payments', [\App\Http\Controllers\Api\Finance\ClientCreditController::class, 'pay'])->whereNumber('id');
+        });
         Route::middleware('permission:client-account.manage')->group(function (): void {
             Route::post('clients/{id}/account-entries', [\App\Http\Controllers\Api\Commercial\ClientAccountController::class, 'storeEntry'])->whereNumber('id');
             Route::put('clients/{id}/account-settings', [\App\Http\Controllers\Api\Commercial\ClientAccountController::class, 'updateSettings'])->whereNumber('id');

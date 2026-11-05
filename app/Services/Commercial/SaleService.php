@@ -19,6 +19,7 @@ use App\Exceptions\Commercial\CashRegisterRequiredException;
 use App\Exceptions\Commercial\PriceOverrideNotAllowedException;
 use App\Exceptions\Commercial\SaleNotEditableException;
 use App\Models\CashRegister;
+use App\Models\ClientCreditPlan;
 use App\Models\FinancialAccount;
 use App\Models\OrganizationMember;
 use App\Models\PaymentMethod;
@@ -300,10 +301,16 @@ final class SaleService
      * `sale_debit`, status `unpaid`) é julgado ao CONCLUIR a venda (`SaleCompletionService`).
      * Venda já concluída a prazo (`unpaid`) segue `unpaid` até quitar.
      *
+     * `$viaCreditPlan`: recebimento lançado pelo crediário (PLANO 2.2). Venda com plano de
+     * crediário ativo só recebe por ali — senão o recebimento abateria a venda sem abater as
+     * parcelas, e as duas contas divergiriam.
+     *
      * @param  array<string, mixed>  $attributes
      */
-    public function registerReceipt(Sale $sale, User $user, array $attributes): SaleReceipt
+    public function registerReceipt(Sale $sale, User $user, array $attributes, bool $viaCreditPlan = false): SaleReceipt
     {
+        abort_if(! $viaCreditPlan && ClientCreditPlan::query()->where('sale_id', $sale->id)->where('status', ClientCreditPlan::ACTIVE)->exists(), 422,
+            'Esta venda está no crediário: receba pelas parcelas do cliente (Receber crediário).');
         abort_if($sale->isQuote(), 422, 'Orçamento não recebe pagamento. Converta em venda primeiro.');
         abort_if($sale->status === SaleStatus::CANCELLED, 422, 'Venda cancelada não recebe pagamento.');
         abort_if($sale->status === SaleStatus::PAID, 422, 'Esta venda já está paga.');

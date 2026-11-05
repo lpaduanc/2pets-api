@@ -65,6 +65,11 @@ class SaleResource extends JsonResource
                 'name' => $this->createdBy->name,
             ]),
 
+            // Crediário (PLANO 2.2): venda com plano não cancelado só recebe pelas parcelas do cliente.
+            // `whenLoaded` devolve null quando a relação carregada é vazia; aqui o falso importa.
+            // A listagem traz `creditPlan` no eager load (`Sale::RESOURCE_RELATIONS`).
+            'has_credit_plan' => $this->creditPlan !== null,
+            'credit_plan' => $this->creditPlanSummary(),
             'items' => SaleItemResource::collection($this->whenLoaded('items', fn () => $this->itemsWithNetTotals())),
             'receipts' => SaleReceiptResource::collection($this->whenLoaded('receipts')),
 
@@ -79,5 +84,13 @@ class SaleResource extends JsonResource
 
             'created_at' => $this->created_at?->toIso8601String(),
         ];
+    }
+
+    /** @return array{id: int, installments_count: int, client_id: int, status: string}|null */
+    private function creditPlanSummary(): ?array
+    {
+        $plan = $this->creditPlan;
+
+        return $plan === null ? null : ['id' => $plan->id, 'installments_count' => (int) $plan->installments_count, 'client_id' => $plan->client_id, 'status' => $plan->status];
     }
 }

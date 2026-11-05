@@ -42,6 +42,11 @@ class UpdateFiscalSettingsRequest extends FormRequest
             // com até 4 casas; `null` = não informada (o preço mínimo usa 0 e avisa).
             'effective_sales_tax_rate' => ['sometimes', 'nullable', 'numeric', 'decimal:0,4', 'min:0', 'max:100'],
             'card_fee_reference_mode' => ['sometimes', Rule::enum(CardFeeReferenceMode::class)],
+            // Crediário (PLANO 2.2): multa ≤ 2% (CDC art. 52 §1º), juros de mora ≤ 1% a.m.
+            // (CC art. 406 c/c CTN art. 161 §1º), carência em dias.
+            'credit_late_fee_percent' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0', 'max:2'],
+            'credit_monthly_interest_percent' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0', 'max:1'],
+            'credit_grace_days' => ['sometimes', 'integer', 'min:0', 'max:30'],
         ];
     }
 }

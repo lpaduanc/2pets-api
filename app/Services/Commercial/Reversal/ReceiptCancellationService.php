@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Commercial\CashRegisterService;
 use App\Services\Commercial\SaleClientAccountEffects;
 use App\Services\Commercial\SaleService;
+use App\Services\Finance\ClientCredit\ClientCreditPlanService;
 use App\Services\Finance\SaleRevenueReversalRecorder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -40,6 +41,7 @@ final class ReceiptCancellationService
         private readonly SaleRevenueReversalRecorder $revenue,
         private readonly CommissionReversal $commissions,
         private readonly SaleClientAccountEffects $clientAccounts,
+        private readonly ClientCreditPlanService $creditPlans,
     ) {}
 
     public function cancel(Sale $sale, SaleReceipt $receipt, User $user, string $reason): Sale
@@ -52,6 +54,8 @@ final class ReceiptCancellationService
             $wasCompleted = $wasPaid || $sale->status === SaleStatus::UNPAID;
             $this->reversal->reverse($sale, $receipt, $user, $register, $this->movementDescription($sale, $receipt, $register));
             $receipt->forceFill(['cancel_reason' => $reason, 'cancelled_by' => $user->id])->save();
+            // Recebimento de crediário (PLANO 2.2): o principal volta às parcelas.
+            $this->creditPlans->reverseReceipt($receipt);
 
             $this->sales->refreshPaidTotals($sale);
             $sale->status = $this->statusAfter($sale, $wasCompleted);
@@ -135,6 +139,11 @@ final class ReceiptCancellationService
 
         if (! $wasCompleted) {
             return $sale->status;
+        }
+
+        // Venda no crediário (PLANO 2.2) continua a prazo: as parcelas seguem devidas.
+        if ($this->creditPlans->hasActivePlan($sale)) {
+            return SaleStatus::UNPAID;
         }
 
         return $sale->receipts()->active()->exists() ? SaleStatus::UNPAID : SaleStatus::OPEN;
