@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Gate;
 class CommissionRuleController extends Controller
 {
     /** @var list<string> */
-    private const AUDITED_FIELDS = ['staff_id', 'scope', 'scope_id', 'percent', 'fixed_amount', 'calculation_base', 'active'];
+    private const AUDITED_FIELDS = ['staff_id', 'scope', 'scope_id', 'percent', 'fixed_amount', 'calculation_base', 'trigger', 'active'];
 
     public function __construct(private readonly CommercialScopeResolver $scope) {}
 
@@ -99,8 +99,10 @@ class CommissionRuleController extends Controller
                 continue;
             }
 
-            $old = $rule->getAttribute($field);
-            $new = $incoming[$field];
+            // Enum (`scope`, `calculation_base`, `trigger`) não converte para string sozinho:
+            // compara e grava o valor cru.
+            $old = $this->rawValue($rule->getAttribute($field));
+            $new = $this->rawValue($incoming[$field]);
 
             if ((string) $old === (string) $new) {
                 continue;
@@ -114,5 +116,10 @@ class CommissionRuleController extends Controller
                 'new_value' => $new === null ? null : (string) $new,
             ]);
         }
+    }
+
+    private function rawValue(mixed $value): mixed
+    {
+        return $value instanceof \BackedEnum ? $value->value : $value;
     }
 }

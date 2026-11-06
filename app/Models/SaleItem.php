@@ -158,6 +158,12 @@ class SaleItem extends Model
         return $this->belongsTo(OrganizationMember::class, 'staff_id');
     }
 
+    /** Agendamento que executou este serviço (PLANO 1.3); a comissão `on_execution` lê dele (2.6). */
+    public function appointment(): BelongsTo
+    {
+        return $this->belongsTo(Appointment::class);
+    }
+
     /**
      * Fechamento de comissão (doc 09) que já consumiu este item, se houver — `unique
      * (sale_item_id)` no banco garante no máximo um. `whereDoesntHave` sobre esta relação é

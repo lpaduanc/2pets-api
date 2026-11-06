@@ -52,6 +52,10 @@ class CommissionSettlementController extends Controller
                 'description' => $priced['sale_item']->description,
                 'base_amount' => $priced['base_amount'],
                 'commission_amount' => $priced['commission_amount'],
+                // PLANO 2.6: por qual gatilho e em que data a comissão nasceu.
+                'trigger' => $priced['trigger']->value,
+                'trigger_label' => $priced['trigger']->label(),
+                'born_at' => $priced['born_at']->toIso8601String(),
             ]),
             'meta' => ['total' => round($items->sum('commission_amount'), 2)],
             // Comissão estornada que o próximo fechamento deste profissional vai descontar

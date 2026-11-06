@@ -2,9 +2,13 @@
 
 namespace App\Services\Commercial\Reversal;
 
+use App\Enums\CommissionTrigger;
+use App\Models\Appointment;
 use App\Models\CommissionClawback;
+use App\Models\CommissionRule;
 use App\Models\CommissionSettlementItem;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\User;
 
 /**
@@ -29,11 +33,31 @@ final class CommissionReversal
             ->with('settlement')
             ->get();
 
-        return $items->map(fn (CommissionSettlementItem $item): array => $this->reverseItem($item, $reason, $user))->all();
+        return $items->map(fn (CommissionSettlementItem $item): array => $this->reverseItem($item, $reason, $user->id))->all();
+    }
+
+    /**
+     * Agendamento que deixou de estar concluído (PLANO 2.6): só a comissão fechada pelo gatilho
+     * `on_execution` perde o fato que a fez nascer — a de venda/recebimento do mesmo item segue
+     * valendo. O gatilho lido é o da regra GRAVADA no fechamento (inclusive apagada depois),
+     * não o da regra de hoje: o fechamento é documento (regra de negócio 4 do doc 09).
+     *
+     * @return list<array{settlement_item_id: int, sale_item_id: int, commission_amount: string, clawback_id: int}>
+     */
+    public function reverseForExecution(Appointment $appointment, string $reason, ?int $userId): array
+    {
+        $items = CommissionSettlementItem::query()
+            ->whereIn('sale_item_id', SaleItem::query()->where('appointment_id', $appointment->id)->select('id'))
+            ->whereNull('reversed_at')
+            ->whereIn('commission_rule_id', CommissionRule::withTrashed()->where('trigger', CommissionTrigger::ON_EXECUTION->value)->select('id'))
+            ->with('settlement')
+            ->get();
+
+        return $items->map(fn (CommissionSettlementItem $item): array => $this->reverseItem($item, $reason, $userId))->all();
     }
 
     /** @return array{settlement_item_id: int, sale_item_id: int, commission_amount: string, clawback_id: int} */
-    private function reverseItem(CommissionSettlementItem $item, string $reason, User $user): array
+    private function reverseItem(CommissionSettlementItem $item, string $reason, ?int $userId): array
     {
         $item->forceFill(['reversed_at' => now(), 'reversal_reason' => $reason])->save();
         $clawback = CommissionClawback::create([
@@ -44,7 +68,7 @@ final class CommissionReversal
             'sale_item_id' => $item->sale_item_id,
             'amount' => (string) $item->commission_amount,
             'reason' => $reason,
-            'created_by' => $user->id,
+            'created_by' => $userId,
         ]);
 
         return [

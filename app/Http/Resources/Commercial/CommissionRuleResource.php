@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Commercial;
 
+use App\Enums\CommissionTrigger;
 use App\Models\CommissionRule;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -31,7 +32,10 @@ class CommissionRuleResource extends JsonResource
             'fixed_amount' => $this->fixed_amount === null ? null : (float) $this->fixed_amount,
             'calculation_base' => $this->calculation_base->value,
             'calculation_base_label' => $this->calculation_base->label(),
-            'only_when_received' => $this->only_when_received,
+            'trigger' => $this->trigger->value,
+            'trigger_label' => $this->trigger->label(),
+            // Deprecado (PLANO 2.6): derivado do gatilho só para cliente antigo; use `trigger`.
+            'only_when_received' => $this->trigger === CommissionTrigger::ON_RECEIPT,
 
             'valid_from' => $this->valid_from?->toDateString(),
             'valid_to' => $this->valid_to?->toDateString(),

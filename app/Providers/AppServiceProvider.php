@@ -25,6 +25,7 @@ use App\Models\Professional;
 use App\Models\Service;
 use App\Models\Specialty;
 use App\Models\User;
+use App\Observers\AppointmentCompletionObserver;
 use App\Observers\AppointmentSupplyConsumptionObserver;
 use App\Observers\Organization\OrganizationMemberRoleReconciliationObserver;
 use App\Observers\Organization\TeamSpecialtyMembershipObserver;
@@ -193,6 +194,8 @@ class AppServiceProvider extends ServiceProvider
 
         // PLANO 1.3 — baixa dos insumos do serviço quando o agendamento é concluído.
         Appointment::observe(AppointmentSupplyConsumptionObserver::class);
+        // PLANO 2.6 — `completed_at` e a comissão `on_execution` (nasce e é estornada aqui).
+        Appointment::observe(AppointmentCompletionObserver::class);
     }
 
     /**

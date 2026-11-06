@@ -4,6 +4,7 @@ namespace App\Http\Requests\Commercial;
 
 use App\Enums\CommissionCalculationBase;
 use App\Enums\CommissionScope;
+use App\Enums\CommissionTrigger;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -33,11 +34,46 @@ class StoreCommissionRuleRequest extends FormRequest
             'percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'fixed_amount' => ['nullable', 'numeric', 'min:0'],
             'calculation_base' => ['nullable', Rule::enum(CommissionCalculationBase::class)],
+            'trigger' => ['sometimes', Rule::enum(CommissionTrigger::class)],
+            // Deprecado (PLANO 2.6): aceito só por compatibilidade e traduzido para `trigger`.
             'only_when_received' => ['nullable', 'boolean'],
             'valid_from' => ['nullable', 'date'],
             'valid_to' => ['nullable', 'date', 'after_or_equal:valid_from'],
             'active' => ['nullable', 'boolean'],
         ];
+    }
+
+    /**
+     * Cliente antigo manda só `only_when_received`: vira `trigger` (true → on_receipt,
+     * false → on_sale). Mandando os dois, vale `trigger`.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('trigger') || ! $this->filled('only_when_received')) {
+            return;
+        }
+
+        $received = filter_var($this->input('only_when_received'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        if ($received === null) {
+            return;
+        }
+
+        $this->merge(['trigger' => $received ? CommissionTrigger::ON_RECEIPT->value : CommissionTrigger::ON_SALE->value]);
+    }
+
+    /**
+     * `only_when_received` não é mais coluna: sai do que vai para o model (que recusa atributo
+     * desconhecido fora de produção, `preventSilentlyDiscardingAttributes`).
+     *
+     * @param  array-key|null  $key
+     */
+    public function validated($key = null, $default = null): mixed
+    {
+        $validated = parent::validated();
+        unset($validated['only_when_received']);
+
+        return $key === null ? $validated : data_get($validated, $key, $default);
     }
 
     /**

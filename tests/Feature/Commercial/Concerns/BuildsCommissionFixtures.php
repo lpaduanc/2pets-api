@@ -19,7 +19,7 @@ trait BuildsCommissionFixtures
             'scope' => 'all',
             'percent' => 5,
             'calculation_base' => 'gross',
-            'only_when_received' => true,
+            'trigger' => 'on_receipt',
             'active' => true,
         ]);
     }

@@ -60,6 +60,7 @@ class Appointment extends Model
         'requires_confirmation' => 'boolean',
         'confirmed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'completed_at' => 'datetime',
         'deposit_amount' => 'decimal:2',
         'checked_in_at' => 'datetime',
     ];

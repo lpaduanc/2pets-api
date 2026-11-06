@@ -521,7 +521,7 @@ final class SaleService
 
             // Estorno de cada recebimento (caixa, conta corrente, recebíveis) e da receita no
             // financeiro; recebível já pago/antecipado pela adquirente recusa com 422.
-            $this->cancellation->reverse($sale, $user, $register);
+            $this->cancellation->reverse($sale, $user, $register, $reason);
 
             if ($sale->status === SaleStatus::PAID) {
                 $this->restoreStock($sale, $user);

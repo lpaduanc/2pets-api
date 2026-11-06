@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CommissionCalculationBase;
 use App\Enums\CommissionScope;
+use App\Enums\CommissionTrigger;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +22,16 @@ class CommissionRule extends Model
 {
     use SoftDeletes;
 
+    /**
+     * Espelha os defaults do banco: a regra recém-criada sem esses campos já responde no resource
+     * sem `refresh()` (antes, criar sem `calculation_base` dava erro 500 no resource).
+     */
+    protected $attributes = [
+        'calculation_base' => 'gross',
+        'trigger' => 'on_receipt',
+        'active' => true,
+    ];
+
     protected $fillable = [
         'organization_id',
         'professional_id',
@@ -30,7 +41,7 @@ class CommissionRule extends Model
         'percent',
         'fixed_amount',
         'calculation_base',
-        'only_when_received',
+        'trigger',
         'valid_from',
         'valid_to',
         'active',
@@ -46,7 +57,7 @@ class CommissionRule extends Model
             'calculation_base' => CommissionCalculationBase::class,
             'percent' => 'decimal:4',
             'fixed_amount' => 'decimal:2',
-            'only_when_received' => 'boolean',
+            'trigger' => CommissionTrigger::class,
             'valid_from' => 'date',
             'valid_to' => 'date',
             'active' => 'boolean',

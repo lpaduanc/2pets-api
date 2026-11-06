@@ -6,6 +6,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReturnItem;
 use App\Services\Commercial\CommissionCalculator;
+use App\Services\Commercial\CommissionEligibility;
 use App\Services\Commercial\CommissionRuleResolver;
 use App\Support\Money\Money;
 
@@ -17,7 +18,9 @@ use App\Support\Money\Money;
  *
  * Comissão: a do fechamento quando a linha já foi fechada (`commission_settlement_items`), senão
  * a do `CommissionCalculator` com a regra vigente — só para linha com responsável (`staff_id`),
- * igual ao fechamento. Nunca negativa: o `CommissionCalculator` garante na fonte.
+ * igual ao fechamento. Nunca negativa: o `CommissionCalculator` garante na fonte. Regra
+ * `on_execution` com agendamento cancelado/não compareceu/apagado não projeta comissão: ela nunca
+ * vai ser devida (PLANO 2.6).
  */
 final class SaleProfitabilityInputs
 {
@@ -25,12 +28,13 @@ final class SaleProfitabilityInputs
         private readonly SaleAllocationService $allocation,
         private readonly CommissionCalculator $commissions,
         private readonly CommissionRuleResolver $rules,
+        private readonly CommissionEligibility $eligibility,
     ) {}
 
     /** @return array{header_discount: string, card_fee: string, tax_percent: string|null, items: list<array<string, mixed>>} */
     public function for(Sale $sale): array
     {
-        $sale->loadMissing(['items.sellable', 'items.commissionSettlementItem', 'receipts', 'organization']);
+        $sale->loadMissing(['items.sellable', 'items.commissionSettlementItem', 'items.appointment', 'receipts', 'organization']);
         $returned = SaleReturnItem::query()->whereIn('sale_item_id', $sale->items->pluck('id'))
             ->groupBy('sale_item_id')->selectRaw('sale_item_id, SUM(quantity) AS quantity')->pluck('quantity', 'sale_item_id');
         $tax = $sale->organization?->effective_sales_tax_rate;
@@ -63,7 +67,12 @@ final class SaleProfitabilityInputs
         }
 
         $item->setRelation('sale', $sale);
+        $rule = $this->rules->resolve($item);
 
-        return Money::of($this->commissions->calculate($item, $this->rules->resolve($item))['commission_amount']);
+        if ($this->eligibility->willNeverBeDue($item, $rule)) {
+            return Money::zero();
+        }
+
+        return Money::of($this->commissions->calculate($item, $rule)['commission_amount']);
     }
 }

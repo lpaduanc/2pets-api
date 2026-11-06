@@ -12,7 +12,8 @@ use App\Services\Finance\SaleRevenueReversalRecorder;
 /**
  * Efeito financeiro do cancelamento da venda: estorna cada recebimento (`ReceiptReversalService`,
  * a unidade do PLANO 2.3), a receita lançada (`SaleRevenueReversalRecorder`) e o débito de venda a
- * prazo na conta corrente do cliente (`SaleClientAccountEffects`). Checa TODOS os
+ * prazo na conta corrente do cliente (`SaleClientAccountEffects`) e a comissão já fechada
+ * (`CommissionReversal`). Checa TODOS os
  * recebimentos antes de mexer em qualquer um — um recebível já pago pela adquirente recusa o
  * cancelamento inteiro sem deixar estorno pela metade.
  */
@@ -23,9 +24,10 @@ final class SaleCancellationReversal
         private readonly SaleRevenueReversalRecorder $revenue,
         private readonly SaleClientAccountEffects $clientAccounts,
         private readonly ClientCreditPlanService $creditPlans,
+        private readonly CommissionReversal $commissions,
     ) {}
 
-    public function reverse(Sale $sale, User $user, ?CashRegister $register): void
+    public function reverse(Sale $sale, User $user, ?CashRegister $register, ?string $reason = null): void
     {
         $receipts = $sale->receipts()->with('paymentMethod')->orderBy('id')->get();
 
@@ -39,5 +41,10 @@ final class SaleCancellationReversal
         // recebimentos estornados acima volta às parcelas antes disso (histórico coerente).
         $receipts->each(fn ($receipt) => $this->creditPlans->reverseReceipt($receipt));
         $this->creditPlans->cancelForSale($sale);
+        // Comissão já fechada sobre a venda cancelada vira estorno a descontar no próximo
+        // fechamento (mecanismo da 2.3). Faltava: o cancelamento estorna os recebimentos pelo
+        // `ReceiptReversalService`, que não passa pelo estorno de comissão do
+        // `ReceiptCancellationService` — a comissão fechada ficava paga sobre venda cancelada.
+        $this->commissions->reverseForSale($sale, mb_substr('Venda cancelada'.($reason === null ? '' : ': '.$reason), 0, 500), $user);
     }
 }
