@@ -261,14 +261,45 @@ final class SaleService
         });
     }
 
-    public function removeItem(Sale $sale, int $itemId): void
+    /**
+     * Remove um item. Devolve `true` quando a venda ficou vazia e foi descartada: o PDV cria a
+     * venda no primeiro item, e esvaziar o carrinho deixava uma venda aberta sem nada na lista
+     * de vendas. Só descarta rascunho sem histórico (ver `isDisposableDraft`).
+     */
+    public function removeItem(Sale $sale, int $itemId): bool
     {
         $this->assertEditable($sale);
 
-        DB::transaction(function () use ($sale, $itemId): void {
+        return DB::transaction(function () use ($sale, $itemId): bool {
             $sale->items()->whereKey($itemId)->delete();
+            if ($this->isDisposableDraft($sale)) {
+                $sale->delete();
+
+                return true;
+            }
             $this->refreshTotals($sale);
+
+            return false;
         });
+    }
+
+    /**
+     * Venda aberta, sem itens e sem nada que dependa dela: nenhum recebimento (nem estornado),
+     * documento fiscal, orçamento de origem, prontuário ou internação. Orçamento nunca é
+     * descartado aqui — ele tem fluxo e histórico próprios.
+     */
+    private function isDisposableDraft(Sale $sale): bool
+    {
+        return $sale->kind === SaleKind::SALE
+            && $sale->status === SaleStatus::OPEN
+            && $sale->parent_quote_id === null
+            && $sale->root_quote_id === null
+            && $sale->medical_record_id === null
+            && $sale->hospitalization_id === null
+            && ! $sale->items()->exists()
+            && ! $sale->receipts()->exists()
+            && ! $sale->fiscalDocuments()->exists()
+            && ! $sale->sourceQuote()->exists();
     }
 
     public function applyDiscount(Sale $sale, DiscountType $type, float $value): Sale

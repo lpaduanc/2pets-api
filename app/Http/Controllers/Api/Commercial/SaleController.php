@@ -271,11 +271,16 @@ class SaleController extends Controller
     public function destroyItem(Request $request, int $id, int $itemId): JsonResponse
     {
         $sale = $this->findForUser($request->user(), $id, 'update');
-        $this->sales->removeItem($sale, $itemId);
+        // Último item de um rascunho sem histórico: a venda é descartada e `sale` vem null
+        // (o PDV volta ao carrinho vazio sem deixar venda aberta na lista).
+        if ($this->sales->removeItem($sale, $itemId)) {
+            return response()->json(['message' => 'Item removido. A venda vazia foi descartada.', 'sale' => null, 'discarded' => true]);
+        }
 
         return response()->json([
             'message' => 'Item removido.',
             'sale' => new SaleResource($sale->fresh(Sale::RESOURCE_RELATIONS)),
+            'discarded' => false,
         ]);
     }
 
