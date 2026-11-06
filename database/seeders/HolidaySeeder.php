@@ -30,6 +30,8 @@ class HolidaySeeder extends Seeder
         ['month' => 10, 'day' => 12, 'name' => 'Nossa Senhora Aparecida'],
         ['month' => 11, 'day' => 2, 'name' => 'Finados'],
         ['month' => 11, 'day' => 15, 'name' => 'Proclamação da República'],
+        // Feriado nacional desde a Lei 14.759/2023; faltava e contava 20/11 como dia útil.
+        ['month' => 11, 'day' => 20, 'name' => 'Dia Nacional de Zumbi e da Consciência Negra'],
         ['month' => 12, 'day' => 25, 'name' => 'Natal'],
     ];
 

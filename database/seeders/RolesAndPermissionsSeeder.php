@@ -288,6 +288,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // Prorrogar a validade de pacote vendido (PLANO 2.7): mexe no direito do cliente e
             // na receita diferida. Gestão; concedível por exceção ao membro. Fica no log.
             'packages.extend_validity',
+            // Cadastrar metas de venda (PLANO 2.5). Ver o andamento exige `reports.dre.view`
+            // (valores de venda). Gestão; concedível por exceção ao membro.
+            'sales-goals.manage',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -421,6 +424,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'finance.credit_fee_discount',
             // PLANO 2.7: prorrogar validade de pacote é de gestão.
             'packages.extend_validity',
+            // PLANO 2.5: metas de venda são de gestão.
+            'sales-goals.manage',
         ]);
 
         // 3. Clinic Owner
@@ -505,6 +510,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'finance.credit_fee_discount',
             // PLANO 2.7: prorrogar validade de pacote é de gestão.
             'packages.extend_validity',
+            // PLANO 2.5: metas de venda são de gestão.
+            'sales-goals.manage',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -616,6 +623,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'finance.credit_fee_discount',
             // PLANO 2.7: prorrogar validade de pacote é de gestão.
             'packages.extend_validity',
+            // PLANO 2.5: metas de venda são de gestão.
+            'sales-goals.manage',
         ]);
 
         // 6. Petshop Staff

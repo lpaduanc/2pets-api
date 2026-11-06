@@ -1,0 +1,29 @@
+{
+  "_doc": "Casos de referencia da meta de venda (docs/gap-petflow/PLANO.md, secoes 2.5 e 3). atingido% = realizado / meta x 100; projecao = round(realizado / dias_uteis_decorridos x dias_uteis_do_mes); projecao% = projecao / meta x 100; falta = max(meta - realizado, 0); precisa/dia = round(falta / dias_uteis_restantes). Percentuais com 2 casas HALF_UP; dinheiro com 2 casas HALF_UP, uma vez por fato. Bordas: meta batida -> precisa/dia 0,00 (nunca negativo); 0 dias decorridos -> projecao = realizado (sem ritmo para extrapolar, sem divisao por zero); 0 dias restantes com falta -> precisa/dia null. Decorridos = dias uteis antes de hoje (hoje conta nos restantes). Copia byte a byte em 2pets-pro/tests/fixtures/golden/sales-goal.json. Altere aqui e copie para la.",
+  "salesGoals": [
+    {
+      "id": "meta-01",
+      "_conta": "Meta 60.000,00, realizado 25.000,00 em 10 de 22 dias uteis. Projecao 25.000 / 10 x 22 = 55.000,00 (91,67%). Atingido 41,67%. Faltam 35.000,00 em 12 dias -> 2.916,666.. = 2.916,67/dia.",
+      "input": { "target": "60000.00", "actual": "25000.00", "total_days": 22, "elapsed_days": 10, "remaining_days": 12 },
+      "expected": { "achieved_percent": "41.67", "projection": "55000.00", "projection_percent": "91.67", "remaining_amount": "35000.00", "needed_per_day": "2916.67" }
+    },
+    {
+      "id": "meta-02",
+      "_conta": "Meta ja batida: 12.500,00 de 10.000,00 em 15 de 22 dias. Projecao 12.500 / 15 x 22 = 18.333,33 (183,33%). Falta 0,00 e precisa/dia 0,00, nunca negativo.",
+      "input": { "target": "10000.00", "actual": "12500.00", "total_days": 22, "elapsed_days": 15, "remaining_days": 7 },
+      "expected": { "achieved_percent": "125.00", "projection": "18333.33", "projection_percent": "183.33", "remaining_amount": "0.00", "needed_per_day": "0.00" }
+    },
+    {
+      "id": "meta-03",
+      "_conta": "Primeiro dia util do mes: 0 decorridos (hoje conta nos restantes). Sem ritmo para extrapolar, a projecao e o proprio realizado do dia (1.200,00 = 2,00%). Faltam 58.800,00 em 22 dias -> 2.672,7272.. = 2.672,73/dia.",
+      "input": { "target": "60000.00", "actual": "1200.00", "total_days": 22, "elapsed_days": 0, "remaining_days": 22 },
+      "expected": { "achieved_percent": "2.00", "projection": "1200.00", "projection_percent": "2.00", "remaining_amount": "58800.00", "needed_per_day": "2672.73" }
+    },
+    {
+      "id": "meta-04",
+      "_conta": "Mes sem dias uteis restantes (encerrado): 58.000,00 de 60.000,00 em 22 de 22 dias. Projecao = realizado (58.000,00 = 96,67%). Faltaram 2.000,00, mas nao ha dia para vender: precisa/dia null.",
+      "input": { "target": "60000.00", "actual": "58000.00", "total_days": 22, "elapsed_days": 22, "remaining_days": 0 },
+      "expected": { "achieved_percent": "96.67", "projection": "58000.00", "projection_percent": "96.67", "remaining_amount": "2000.00", "needed_per_day": null }
+    }
+  ]
+}

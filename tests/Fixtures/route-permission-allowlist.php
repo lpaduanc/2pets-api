@@ -135,6 +135,13 @@ return [
     // Centros de custo (PLANO 2.4): leitura no escopo da organização; escrita com permissão.
     'GET api/professional/cost-centers',
     'GET api/professional/cost-centers/{id}',
+    // Metas de venda (PLANO 2.5): permissão pelo cargo na organização, no controller.
+    'GET api/professional/sales-goals',
+    'GET api/professional/sales-goals/progress',
+    'POST api/professional/sales-goals',
+    'PUT api/professional/sales-goals/{id}',
+    'PATCH api/professional/sales-goals/{id}',
+    'DELETE api/professional/sales-goals/{id}',
     'GET api/professional/clients',
     'GET api/professional/clients/{client}',
     'GET api/professional/clients/{id}/message-history',

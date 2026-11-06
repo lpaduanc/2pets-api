@@ -991,6 +991,14 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('financial-categories/tree', [\App\Http\Controllers\Api\Finance\FinancialCategoryController::class, 'tree']);
             Route::get('financial-categories', [\App\Http\Controllers\Api\Finance\FinancialCategoryController::class, 'index']);
         });
+        // Metas de venda (PLANO 2.5): ver exige `reports.dre.view`, cadastrar `sales-goals.manage`,
+        // ambos pelo cargo na organização (conferido no controller, `SalePermissionGate`).
+        Route::get('sales-goals/progress', [\App\Http\Controllers\Api\Commercial\SalesGoalController::class, 'progress']);
+        Route::get('sales-goals', [\App\Http\Controllers\Api\Commercial\SalesGoalController::class, 'index']);
+        Route::post('sales-goals', [\App\Http\Controllers\Api\Commercial\SalesGoalController::class, 'store']);
+        Route::match(['put', 'patch'], 'sales-goals/{id}', [\App\Http\Controllers\Api\Commercial\SalesGoalController::class, 'update'])->whereNumber('id');
+        Route::delete('sales-goals/{id}', [\App\Http\Controllers\Api\Commercial\SalesGoalController::class, 'destroy'])->whereNumber('id');
+
         // Centros de custo (PLANO 2.4): leitura de qualquer membro, no escopo (produto/serviço e
         // lançamento escolhem um centro); escrita de quem gerencia o plano de contas.
         Route::get('cost-centers', [\App\Http\Controllers\Api\Finance\CostCenterController::class, 'index']);

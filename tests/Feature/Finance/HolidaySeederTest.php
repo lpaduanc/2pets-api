@@ -25,7 +25,9 @@ class HolidaySeederTest extends TestCase
 
         $this->assertTrue(Holiday::whereNull('organization_id')->whereNull('professional_id')->where('name', 'Tiradentes')->exists());
         $this->assertTrue(Holiday::whereNull('organization_id')->whereNull('professional_id')->where('name', 'Natal')->exists());
-        $this->assertSame(8, Holiday::whereNull('organization_id')->whereNull('professional_id')->where('recurring_annually', true)->count());
+        // 20/11 é feriado nacional desde a Lei 14.759/2023.
+        $this->assertTrue(Holiday::whereNull('organization_id')->where('name', 'Dia Nacional de Zumbi e da Consciência Negra')->where('recurring_annually', true)->exists());
+        $this->assertSame(9, Holiday::whereNull('organization_id')->whereNull('professional_id')->where('recurring_annually', true)->count());
     }
 
     public function test_movable_holidays_are_computed_correctly_for_2026_and_2027(): void

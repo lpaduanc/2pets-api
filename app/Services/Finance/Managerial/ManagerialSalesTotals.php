@@ -42,8 +42,19 @@ final class ManagerialSalesTotals
      */
     public function byCenterAndMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
     {
+        return $this->byDimensionAndMonth($user, $from, $to, ManagerialSalesDimension::COST_CENTER);
+    }
+
+    /**
+     * Mesmas somas, agrupadas pela dimensão pedida (centro, tipo do item ou profissional) e mês —
+     * é daqui que as metas de venda (PLANO 2.5) tiram o realizado, sem conta paralela.
+     *
+     * @return array<string, array<string, array<string, string>>>
+     */
+    public function byDimensionAndMonth(User $user, CarbonImmutable $from, CarbonImmutable $to, ManagerialSalesDimension $dimension): array
+    {
         $this->computeMissingSnapshots($user, $from, $to);
-        [$centerSql, $centerBindings] = $this->costCenters->saleItemExpression();
+        [$centerSql, $centerBindings] = $this->dimensionExpression($dimension);
 
         $rows = SaleItem::query()
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
@@ -75,6 +86,16 @@ final class ManagerialSalesTotals
         }
 
         return $byCenter;
+    }
+
+    /** @return array{0: string, 1: list<string>} */
+    private function dimensionExpression(ManagerialSalesDimension $dimension): array
+    {
+        return match ($dimension) {
+            ManagerialSalesDimension::COST_CENTER => $this->costCenters->saleItemExpression(),
+            ManagerialSalesDimension::ITEM_TYPE => ['CASE WHEN sale_items.sellable_type = ? THEN ? ELSE ? END', [Product::class, ManagerialSalesDimension::PRODUCTS, ManagerialSalesDimension::SERVICES]],
+            ManagerialSalesDimension::STAFF => ['sale_items.staff_id', []],
+        };
     }
 
     private function paidSales(User $user, CarbonImmutable $from, CarbonImmutable $to): \Illuminate\Database\Eloquent\Builder

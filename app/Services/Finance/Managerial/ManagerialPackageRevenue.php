@@ -45,9 +45,25 @@ final class ManagerialPackageRevenue
      */
     public function byCenterAndMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
     {
+        return $this->byDimensionAndMonth($user, $from, $to, ManagerialSalesDimension::COST_CENTER);
+    }
+
+    /**
+     * Pela dimensão pedida: centro do serviço consumido, tipo (sempre `services`) ou quem
+     * executou a sessão (`staff_id`).
+     *
+     * @return array<string, array<string, array<string, string>>>
+     */
+    public function byDimensionAndMonth(User $user, CarbonImmutable $from, CarbonImmutable $to, ManagerialSalesDimension $dimension): array
+    {
         $byCenter = [];
         $packages = $this->packagesTouching($user, $from, $to);
         $centers = $this->costCenters->forServices($packages->flatMap(fn (SoldPackage $p) => $p->sessions->map(fn (SoldPackageSession $s): int => $s->soldPackageItem->service_id))->all());
+        $keyOf = fn (SoldPackageSession $session): ?string => match ($dimension) {
+            ManagerialSalesDimension::COST_CENTER => isset($centers[$session->soldPackageItem->service_id]) ? (string) $centers[$session->soldPackageItem->service_id] : null,
+            ManagerialSalesDimension::ITEM_TYPE => ManagerialSalesDimension::SERVICES,
+            ManagerialSalesDimension::STAFF => $session->staff_id === null ? null : (string) $session->staff_id,
+        };
 
         foreach ($packages as $package) {
             $shares = $this->economics->lineShares($package);
@@ -60,8 +76,7 @@ final class ManagerialPackageRevenue
                 }
 
                 $share = $shares[$session->id] ?? ['card_fee' => Money::zero(), 'tax' => Money::zero()];
-                $center = $centers[$session->soldPackageItem->service_id] ?? null;
-                $this->add($byCenter[$center === null ? ManagerialCostCenters::UNALLOCATED : (string) $center][$date->format('Y-m')], $this->valuesOf($session, $share));
+                $this->add($byCenter[$keyOf($session) ?? ManagerialCostCenters::UNALLOCATED][$date->format('Y-m')], $this->valuesOf($session, $share));
             }
         }
 
