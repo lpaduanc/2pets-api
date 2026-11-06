@@ -44,6 +44,8 @@ class StoreProductRequest extends FormRequest
             'is_supply' => ['sometimes', 'boolean'],
 
             'product_group_id' => ['nullable', 'integer', 'exists:product_groups,id'],
+            // PLANO 2.4: centro de custo (vazio herda o do grupo).
+            'cost_center_id' => ['nullable', 'integer', new \App\Rules\ScopedCostCenterExists($this->user())],
             'brand_id' => ['nullable', 'integer', 'exists:brands,id'],
             'category_id' => ['nullable', 'integer', 'exists:product_categories,id'],
 

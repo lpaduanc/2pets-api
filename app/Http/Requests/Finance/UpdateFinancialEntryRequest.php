@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Finance;
 
+use App\Rules\ScopedCostCenterExists;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -29,6 +30,11 @@ class UpdateFinancialEntryRequest extends FormRequest
             'accrual_date' => ['sometimes', 'date'],
             'amount' => ['sometimes', 'numeric', 'min:0.01'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            // PLANO 2.4: rateio por centro de custo. Σ percent = 100,0000 conferido no service
+            // (`CostCenterAllocator`), em inteiros de 4 casas.
+            'allocations' => ['nullable', 'array', 'max:20'],
+            'allocations.*.cost_center_id' => ['required', 'integer', 'distinct', new ScopedCostCenterExists($this->user())],
+            'allocations.*.percent' => ['required', 'numeric', 'gt:0', 'max:100'],
         ];
     }
 }

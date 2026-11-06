@@ -3,8 +3,9 @@
 namespace App\Services\Finance\Managerial;
 
 use App\Enums\InsightPreset;
+use App\Models\CostCenter;
 use App\Models\User;
-use App\Support\Money\Money;
+use App\Services\Commercial\CommercialScopeResolver;
 use Carbon\CarbonImmutable;
 
 /**
@@ -22,43 +23,65 @@ final class ManagerialIncomeStatementService
         private readonly ManagerialLedgerTotals $ledger,
         private readonly ManagerialIncomeStatementCalculator $calculator,
         private readonly ManagerialPackageRevenue $packages,
+        private readonly CommercialScopeResolver $scope,
     ) {}
 
-    /** @return array<string, mixed> */
-    public function generate(User $user, CarbonImmutable $from, CarbonImmutable $to): array
+    /**
+     * `$costCenter`: id do centro, `unallocated` ("Não rateado") ou null (todos). Com
+     * `$breakdown`, devolve também a DRE de cada centro — a soma deles é a DRE total (PLANO 2.4).
+     *
+     * @return array<string, mixed>
+     */
+    public function generate(User $user, CarbonImmutable $from, CarbonImmutable $to, ?string $costCenter = null, bool $breakdown = false): array
     {
         $months = self::monthKeys($from, $to);
-        $sales = self::merge($this->sales->byMonth($user, $from, $to), $this->packages->byMonth($user, $from, $to));
-        $result = $this->calculator->calculate($months, $sales, $this->ledger->byMonth($user, $from, $to));
+        $sales = ManagerialCostCenters::mergeCenters($this->sales->byCenterAndMonth($user, $from, $to), $this->packages->byCenterAndMonth($user, $from, $to));
+        $ledger = $this->ledger->byCenterAndMonth($user, $from, $to);
+
+        $pick = fn (array $byCenter): array => $costCenter === null ? ManagerialCostCenters::total($byCenter) : ($byCenter[$costCenter] ?? []);
+        $result = $this->calculator->calculate($months, $pick($sales), $pick($ledger));
 
         return [
             'regime' => self::REGIME,
             'period' => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+            'cost_center_id' => $costCenter,
             'months' => $months,
             'lines' => $this->lines($result, $from, $to),
             'margin_percent' => $result['margin_percent'],
             'break_even' => $result['break_even'],
-            // PLANO 2.7: receita diferida de pacotes (passivo, fora do resultado) no período.
+            // PLANO 2.7: receita diferida de pacotes (passivo, fora do resultado) no período, sempre
+            // da organização inteira (não é quebrada por centro).
             'package_deferral' => $this->packages->deferral($user, $from, $to),
+            'cost_centers' => $breakdown ? $this->breakdown($user, $months, $sales, $ledger, $from, $to) : null,
         ];
     }
 
     /**
-     * Soma, mês a mês e chave a chave, as vendas e a receita de pacote por competência.
+     * Uma DRE por centro com movimento no período, mais "Não rateado" se houver.
      *
-     * @param  array<string, array<string, string>>  $sales
-     * @param  array<string, array<string, string>>  $packages
-     * @return array<string, array<string, string>>
+     * @param  list<string>  $months
+     * @param  array<string, array<string, array<string, string>>>  $sales
+     * @param  array<string, array<string, array<string, string>>>  $ledger
+     * @return list<array<string, mixed>>
      */
-    private static function merge(array $sales, array $packages): array
+    private function breakdown(User $user, array $months, array $sales, array $ledger, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        foreach ($packages as $month => $values) {
-            foreach ($values as $key => $value) {
-                $sales[$month][$key] = Money::of($sales[$month][$key] ?? '0')->plus($value)->toString();
-            }
-        }
+        $keys = array_values(array_unique([...array_keys($sales), ...array_keys($ledger)]));
+        $centers = $this->scope->scopeQuery(CostCenter::withTrashed(), $user)->whereIn('id', array_filter($keys, 'is_numeric'))->get()->keyBy('id');
+        usort($keys, fn (string $a, string $b): int => [$a === ManagerialCostCenters::UNALLOCATED, $centers->get($a)?->name ?? ''] <=> [$b === ManagerialCostCenters::UNALLOCATED, $centers->get($b)?->name ?? '']);
 
-        return $sales;
+        return array_map(function (string $key) use ($months, $sales, $ledger, $centers, $from, $to): array {
+            $result = $this->calculator->calculate($months, $sales[$key] ?? [], $ledger[$key] ?? []);
+            $center = $centers->get($key);
+
+            return [
+                'cost_center' => $center === null
+                    ? ['id' => ManagerialCostCenters::UNALLOCATED, 'name' => 'Não rateado', 'type' => null]
+                    : ['id' => $center->id, 'name' => $center->name, 'type' => $center->type->value],
+                'lines' => array_map(fn (array $line): array => ['key' => $line['key'], 'total' => $line['total'], 'months' => $line['months'] ?? null], $this->lines($result, $from, $to)),
+                'margin_percent' => $result['margin_percent'],
+            ];
+        }, $keys);
     }
 
     /**

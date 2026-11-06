@@ -40,6 +40,8 @@ class FinancialCategoryResource extends JsonResource
             'active' => $this->active,
             'dre_treatment' => ($this->dre_treatment ?? DreTreatment::OPERATING)->value,
             'dre_treatment_label' => ($this->dre_treatment ?? DreTreatment::OPERATING)->label(),
+            // PLANO 2.4: `[{cost_center_id, percent}]` ou null.
+            'default_allocation' => $this->default_allocation,
             'children_total' => $this->childrenTotal,
             'children' => FinancialCategoryResource::collection($this->whenLoaded('children')),
         ];

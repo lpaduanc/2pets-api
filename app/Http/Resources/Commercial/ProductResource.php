@@ -43,6 +43,8 @@ class ProductResource extends JsonResource
                 'name' => $this->brand->name,
             ]),
             'product_group_id' => $this->product_group_id,
+            // PLANO 2.4: centro do cadastro; vazio = herda o do grupo (`CostCenterResolver`).
+            'cost_center_id' => $this->cost_center_id,
             'brand_id' => $this->brand_id,
             'immunization_product_id' => $this->immunization_product_id,
 

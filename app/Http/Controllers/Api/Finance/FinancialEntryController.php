@@ -11,6 +11,7 @@ use App\Http\Requests\Finance\UpdateFinancialEntryRequest;
 use App\Http\Resources\Finance\FinancialEntryResource;
 use App\Models\FinancialEntry;
 use App\Models\User;
+use App\Rules\ScopedCostCenterExists;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Finance\FinancialEntryService;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,7 +30,7 @@ use Illuminate\Validation\Rule;
  */
 class FinancialEntryController extends Controller
 {
-    private const RELATIONS = ['category', 'account', 'supplier', 'paymentMethod'];
+    private const RELATIONS = ['category', 'account', 'supplier', 'paymentMethod', 'allocations.costCenter'];
 
     public function __construct(
         private readonly FinancialEntryService $entries,
@@ -98,7 +99,13 @@ class FinancialEntryController extends Controller
     {
         Gate::forUser($request->user())->authorize('create', FinancialEntry::class);
 
-        $request->validate(['from_installment' => ['required', 'integer', 'min:1']]);
+        $request->validate([
+            'from_installment' => ['required', 'integer', 'min:1'],
+            // PLANO 2.4: o centro tem de ser da organização (Σ = 100 conferido no editor).
+            'allocations' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'allocations.*.cost_center_id' => ['required', 'integer', 'distinct', new ScopedCostCenterExists($request->user())],
+            'allocations.*.percent' => ['required', 'numeric', 'gt:0', 'max:100'],
+        ]);
 
         $updated = $this->entries->updateSeriesFrom(
             $seriesId,

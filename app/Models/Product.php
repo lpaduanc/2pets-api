@@ -43,6 +43,8 @@ class Product extends Model implements Sellable
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        // PLANO 2.4: centro de custo (produto/serviço sem centro herdam o do grupo).
+        'cost_center_id',
         'professional_id',
         'organization_id',
         'category_id',

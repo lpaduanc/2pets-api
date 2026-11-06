@@ -6,6 +6,8 @@ use App\Enums\FinancialEntryStatus;
 use App\Models\FinancialEntry;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Finance\CostCenter\CostCenterAllocator;
+use App\Services\Finance\CostCenter\FinancialEntryAllocationService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -17,7 +19,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class FinancialEntrySeriesEditor
 {
-    private const RELATIONS = ['category', 'account', 'supplier', 'paymentMethod'];
+    private const RELATIONS = ['category', 'account', 'supplier', 'paymentMethod', 'allocations.costCenter'];
 
     public function __construct(private readonly CommercialScopeResolver $scope) {}
 
@@ -34,11 +36,23 @@ final class FinancialEntrySeriesEditor
             'description', 'due_date', 'payment_method_id', 'account_id', 'supplier_id', 'notes', 'amount',
         ])->all();
 
-        DB::transaction(function () use ($entries, $allowed): void {
+        // PLANO 2.4: `allocations` presente vale para cada parcela editada (mesmos percentuais,
+        // valor de cada uma); a validação de Σ = 100 vem antes de mexer em qualquer parcela.
+        $allocations = array_key_exists('allocations', $changes) ? ($changes['allocations'] ?? []) : null;
+
+        if (is_array($allocations) && $allocations !== []) {
+            app(CostCenterAllocator::class)->assertValid($allocations);
+        }
+
+        DB::transaction(function () use ($entries, $allowed, $allocations): void {
             foreach ($entries as $entry) {
                 $amount = $allowed['amount'] ?? (float) $entry->amount;
                 $netAmount = round((float) $amount - (float) $entry->discount + (float) $entry->fine + (float) $entry->interest, 2);
                 $entry->update($allowed + ['net_amount' => $netAmount]);
+
+                if ($allocations !== null) {
+                    app(FinancialEntryAllocationService::class)->replace($entry->fresh(), $allocations);
+                }
             }
         });
 

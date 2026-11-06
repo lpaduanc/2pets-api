@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Finance\SaleReturnFinancialEntryRecorder;
 use App\Services\Finance\SaleRevenueReversalRecorder;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 
 /**
@@ -28,28 +29,42 @@ final class ManagerialLedgerTotals
 
     public function __construct(private readonly CommercialScopeResolver $scope) {}
 
-    /** @return array<string, array<string, string>> por mês `YYYY-MM` */
-    public function byMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
+    /**
+     * Por centro de custo (PLANO 2.4) e mês: lançamento rateado entra pelo `amount` de cada
+     * rateio (Σ = net_amount); sem rateio, o `net_amount` inteiro vai para "Não rateado".
+     *
+     * @return array<string, array<string, array<string, string>>>
+     */
+    public function byCenterAndMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
     {
         $treatment = "COALESCE(financial_categories.dre_treatment, '".DreTreatment::OPERATING->value."')";
-        $rows = $this->scope->scopeQuery(FinancialEntry::query(), $user)
+        $base = fn () => $this->scope->scopeQuery(FinancialEntry::query(), $user)
             ->leftJoin('financial_categories', 'financial_categories.id', '=', 'financial_entries.financial_category_id')
             ->where('financial_entries.status', '!=', FinancialEntryStatus::CANCELLED->value)
             ->where(fn ($query) => $query->whereNull('financial_entries.reference_type')->orWhereNotIn('financial_entries.reference_type', self::SALE_REFERENCES))
             ->whereBetween('financial_entries.accrual_date', [$from->toDateString(), $to->toDateString()])
-            ->whereRaw("{$treatment} IN (?, ?)", [DreTreatment::OPERATING->value, DreTreatment::FINANCIAL->value])
-            ->groupByRaw("to_char(financial_entries.accrual_date, 'YYYY-MM'), financial_entries.nature, {$treatment}")
-            ->selectRaw("to_char(financial_entries.accrual_date, 'YYYY-MM') AS month, financial_entries.nature AS nature, {$treatment} AS treatment, SUM(financial_entries.net_amount) AS amount")
-            ->toBase()
-            ->get();
+            ->whereRaw("{$treatment} IN (?, ?)", [DreTreatment::OPERATING->value, DreTreatment::FINANCIAL->value]);
+        $group = "to_char(financial_entries.accrual_date, 'YYYY-MM'), financial_entries.nature, {$treatment}";
+        $select = "to_char(financial_entries.accrual_date, 'YYYY-MM') AS month, financial_entries.nature AS nature, {$treatment} AS treatment";
 
-        $months = [];
+        $allocated = $base()->join('financial_entry_allocations', 'financial_entry_allocations.financial_entry_id', '=', 'financial_entries.id')
+            ->groupByRaw("{$group}, financial_entry_allocations.cost_center_id")
+            ->selectRaw("{$select}, financial_entry_allocations.cost_center_id AS cost_center, SUM(financial_entry_allocations.amount) AS amount")
+            ->toBase()->get();
+        $unallocated = $base()->whereNotExists(fn ($q) => $q->from('financial_entry_allocations')->whereColumn('financial_entry_allocations.financial_entry_id', 'financial_entries.id'))
+            ->groupByRaw($group)
+            ->selectRaw("{$select}, NULL AS cost_center, SUM(financial_entries.net_amount) AS amount")
+            ->toBase()->get();
 
-        foreach ($rows as $row) {
-            $months[$row->month][self::lineFor($row->treatment, $row->nature)] = (string) $row->amount;
+        $byCenter = [];
+
+        foreach ($allocated->concat($unallocated) as $row) {
+            $center = $row->cost_center === null ? ManagerialCostCenters::UNALLOCATED : (string) $row->cost_center;
+            $line = self::lineFor($row->treatment, $row->nature);
+            $byCenter[$center][$row->month][$line] = Money::of($byCenter[$center][$row->month][$line] ?? '0')->plus((string) $row->amount)->toString();
         }
 
-        return $months;
+        return $byCenter;
     }
 
     private static function lineFor(string $treatment, string $nature): string

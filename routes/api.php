@@ -991,7 +991,14 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('financial-categories/tree', [\App\Http\Controllers\Api\Finance\FinancialCategoryController::class, 'tree']);
             Route::get('financial-categories', [\App\Http\Controllers\Api\Finance\FinancialCategoryController::class, 'index']);
         });
+        // Centros de custo (PLANO 2.4): leitura de qualquer membro, no escopo (produto/serviço e
+        // lançamento escolhem um centro); escrita de quem gerencia o plano de contas.
+        Route::get('cost-centers', [\App\Http\Controllers\Api\Finance\CostCenterController::class, 'index']);
+        Route::get('cost-centers/{id}', [\App\Http\Controllers\Api\Finance\CostCenterController::class, 'show'])->whereNumber('id');
         Route::middleware('permission:chart-of-accounts.manage')->group(function (): void {
+            Route::post('cost-centers', [\App\Http\Controllers\Api\Finance\CostCenterController::class, 'store']);
+            Route::match(['put', 'patch'], 'cost-centers/{id}', [\App\Http\Controllers\Api\Finance\CostCenterController::class, 'update'])->whereNumber('id');
+            Route::delete('cost-centers/{id}', [\App\Http\Controllers\Api\Finance\CostCenterController::class, 'destroy'])->whereNumber('id');
             Route::apiResource('financial-categories', \App\Http\Controllers\Api\Finance\FinancialCategoryController::class)
                 ->only(['store', 'update', 'destroy'])
                 ->parameters(['financial-categories' => 'id']);

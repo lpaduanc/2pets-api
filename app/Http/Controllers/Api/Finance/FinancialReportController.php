@@ -35,6 +35,15 @@ class FinancialReportController extends Controller
             'regime' => ['nullable', Rule::in(['cash', 'accrual', ManagerialIncomeStatementService::REGIME])],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
+            // PLANO 2.4 (só no regime gerencial): um centro (id ou `unallocated`) e/ou a quebra por centro.
+            'cost_center_id' => ['nullable', function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                if ($value === 'unallocated') {
+                    return;
+                }
+
+                (new \App\Rules\ScopedCostCenterExists($request->user(), onlyActive: false))->validate($attribute, $value, $fail);
+            }],
+            'breakdown' => ['nullable', Rule::in(['cost_center'])],
         ]);
 
         $regime = $request->string('regime', 'accrual')->toString();
@@ -50,7 +59,11 @@ class FinancialReportController extends Controller
                 'A DRE gerencial mostra custo e margem: é preciso a permissão de rentabilidade (reports.profitability).',
             );
 
-            return response()->json(['data' => $this->managerial->generate($request->user(), $from, $to)]);
+            return response()->json(['data' => $this->managerial->generate(
+                $request->user(), $from, $to,
+                $request->filled('cost_center_id') ? $request->string('cost_center_id')->toString() : null,
+                $request->input('breakdown') === 'cost_center',
+            )]);
         }
 
         return response()->json(['data' => $this->incomeStatement->generate($request->user(), $regime, $from, $to)]);

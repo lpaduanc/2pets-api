@@ -54,6 +54,12 @@ class FinancialEntry extends Model
     ];
 
     /**
+     * Quem cria com rateio explícito liga isto antes do `create()` para o observer não aplicar
+     * o rateio padrão da categoria (PLANO 2.4). Propriedade comum, não atributo do banco.
+     */
+    public bool $skipDefaultAllocation = false;
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -83,6 +89,11 @@ class FinancialEntry extends Model
     public function professional(): BelongsTo
     {
         return $this->belongsTo(User::class, 'professional_id');
+    }
+
+    public function allocations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(FinancialEntryAllocation::class)->orderBy('id');
     }
 
     public function category(): BelongsTo

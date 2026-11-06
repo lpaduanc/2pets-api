@@ -37,6 +37,13 @@ class FinancialEntryResource extends JsonResource
                 'id' => $this->paymentMethod->id,
                 'name' => $this->paymentMethod->name,
             ] : null),
+            // PLANO 2.4: rateio por centro de custo; vazio = "Não rateado".
+            'allocations' => $this->whenLoaded('allocations', fn () => $this->allocations->map(fn ($line): array => [
+                'cost_center_id' => $line->cost_center_id,
+                'cost_center_name' => $line->costCenter?->name,
+                'percent' => (string) $line->percent,
+                'amount' => (string) $line->amount,
+            ])->values()),
             'due_date' => $this->due_date->toDateString(),
             'accrual_date' => $this->accrual_date->toDateString(),
             'amount' => (float) $this->amount,

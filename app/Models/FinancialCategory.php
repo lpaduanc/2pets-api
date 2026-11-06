@@ -35,6 +35,8 @@ class FinancialCategory extends Model
         'active',
         // DRE gerencial (PLANO 1.7): como a categoria entra no terceiro regime.
         'dre_treatment',
+        // PLANO 2.4: rateio padrão `[{cost_center_id, percent}]` do lançamento sem rateio.
+        'default_allocation',
     ];
 
     /**
@@ -49,6 +51,7 @@ class FinancialCategory extends Model
             'sort_order' => 'integer',
             'active' => 'boolean',
             'dre_treatment' => DreTreatment::class,
+            'default_allocation' => 'array',
         ];
     }
 

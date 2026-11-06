@@ -1,0 +1,56 @@
+{
+  "_doc": "Casos de referencia do rateio por centro de custo (docs/gap-petflow/PLANO.md, secoes 2.4 e 3). Soma dos percentuais = 100,0000 EXATO, comparada em inteiros de 4 casas (1.000.000), nunca em float. amount_i = allocate(net_amount, pesos = percent_i): trunca no centavo e os centavos que sobram vao para o maior resto fracionario (empate: maior peso, depois a ordem). Soma dos amounts = net_amount, centavo a centavo. Copia byte a byte em 2pets-pro/tests/fixtures/golden/cost-center.json. Altere aqui e copie para la.",
+  "allocations": [
+    {
+      "id": "rateio-01",
+      "_conta": "Despesa de 1.000,00 em 33,3333 / 33,3333 / 33,3334 %. Brutos 333,333 . 333,333 . 333,334 -> truncados 333,33 x 3 = 999,99; o centavo que falta vai para o maior resto (o 3o, ,334) -> 333,34.",
+      "input": {
+        "net_amount": "1000.00",
+        "allocations": [
+          { "cost_center_id": 1, "percent": "33.3333" },
+          { "cost_center_id": 2, "percent": "33.3333" },
+          { "cost_center_id": 3, "percent": "33.3334" }
+        ]
+      },
+      "expected": { "valid": true, "amounts": ["333.33", "333.33", "333.34"] }
+    },
+    {
+      "id": "rateio-02",
+      "_conta": "Sobra de centavo com empate: 100,01 em 50 / 50. Brutos 50,005 . 50,005 -> 50,00 + 50,00 = 100,00; o centavo vai para o primeiro (restos e pesos iguais, vale a ordem) -> 50,01 . 50,00.",
+      "input": {
+        "net_amount": "100.01",
+        "allocations": [
+          { "cost_center_id": 1, "percent": "50.0000" },
+          { "cost_center_id": 2, "percent": "50.0000" }
+        ]
+      },
+      "expected": { "valid": true, "amounts": ["50.01", "50.00"] }
+    },
+    {
+      "id": "rateio-03",
+      "_conta": "Valor menor que o numero de centavos a distribuir com precisao: 0,05 em 33,3333 / 33,3333 / 33,3334 %. Em centavos: 1,666665 . 1,666665 . 1,66667 -> 1 . 1 . 1 = 3; sobram 2: o 3o (maior resto) e depois o 1o (empate com o 2o, vale a ordem) -> 0,02 . 0,01 . 0,02.",
+      "input": {
+        "net_amount": "0.05",
+        "allocations": [
+          { "cost_center_id": 1, "percent": "33.3333" },
+          { "cost_center_id": 2, "percent": "33.3333" },
+          { "cost_center_id": 3, "percent": "33.3334" }
+        ]
+      },
+      "expected": { "valid": true, "amounts": ["0.02", "0.01", "0.02"] }
+    },
+    {
+      "id": "rateio-04",
+      "_conta": "Soma diferente de 100,0000: 33,3333 x 3 = 99,9999 -> invalido (422). Um decimo de milesimo de diferenca ja recusa.",
+      "input": {
+        "net_amount": "1000.00",
+        "allocations": [
+          { "cost_center_id": 1, "percent": "33.3333" },
+          { "cost_center_id": 2, "percent": "33.3333" },
+          { "cost_center_id": 3, "percent": "33.3333" }
+        ]
+      },
+      "expected": { "valid": false, "amounts": null }
+    }
+  ]
+}

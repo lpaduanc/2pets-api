@@ -11,6 +11,7 @@ use App\Models\SoldPackageSession;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\Package\PackageSessionEconomics;
+use App\Services\Finance\CostCenter\CostCenterResolver;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -33,14 +34,22 @@ final class ManagerialPackageRevenue
     public function __construct(
         private readonly CommercialScopeResolver $scope,
         private readonly PackageSessionEconomics $economics,
+        private readonly CostCenterResolver $costCenters,
     ) {}
 
-    /** @return array<string, array<string, string>> por mês `YYYY-MM`, nas chaves de `ManagerialSalesTotals` */
-    public function byMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
+    /**
+     * Por centro de custo do SERVIÇO da sessão (PLANO 2.4) e mês, nas chaves de
+     * `ManagerialSalesTotals`.
+     *
+     * @return array<string, array<string, array<string, string>>>
+     */
+    public function byCenterAndMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $months = [];
+        $byCenter = [];
+        $packages = $this->packagesTouching($user, $from, $to);
+        $centers = $this->costCenters->forServices($packages->flatMap(fn (SoldPackage $p) => $p->sessions->map(fn (SoldPackageSession $s): int => $s->soldPackageItem->service_id))->all());
 
-        foreach ($this->packagesTouching($user, $from, $to) as $package) {
+        foreach ($packages as $package) {
             $shares = $this->economics->lineShares($package);
 
             foreach ($package->sessions as $session) {
@@ -51,11 +60,12 @@ final class ManagerialPackageRevenue
                 }
 
                 $share = $shares[$session->id] ?? ['card_fee' => Money::zero(), 'tax' => Money::zero()];
-                $this->add($months[$date->format('Y-m')], $this->valuesOf($session, $share));
+                $center = $centers[$session->soldPackageItem->service_id] ?? null;
+                $this->add($byCenter[$center === null ? ManagerialCostCenters::UNALLOCATED : (string) $center][$date->format('Y-m')], $this->valuesOf($session, $share));
             }
         }
 
-        return array_map(fn (array $values): array => array_map(fn (Money $value): string => $value->toString(), $values), $months);
+        return array_map(fn (array $months): array => array_map(fn (array $values): array => array_map(fn (Money $value): string => $value->toString(), $values), $months), $byCenter);
     }
 
     /**

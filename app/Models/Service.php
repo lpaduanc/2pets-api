@@ -23,6 +23,8 @@ class Service extends Model implements Sellable
     use SoftDeletes;
 
     protected $fillable = [
+        // PLANO 2.4: centro de custo (produto/serviço sem centro herdam o do grupo).
+        'cost_center_id',
         'professional_id',
         'organization_id',
         'name',

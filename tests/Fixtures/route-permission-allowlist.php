@@ -132,6 +132,9 @@ return [
     'GET api/professional/client-origins',
     'GET api/professional/client-segments',
     'GET api/professional/client-segments/{client_segment}',
+    // Centros de custo (PLANO 2.4): leitura no escopo da organização; escrita com permissão.
+    'GET api/professional/cost-centers',
+    'GET api/professional/cost-centers/{id}',
     'GET api/professional/clients',
     'GET api/professional/clients/{client}',
     'GET api/professional/clients/{id}/message-history',

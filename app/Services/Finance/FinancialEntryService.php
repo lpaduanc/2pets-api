@@ -11,6 +11,8 @@ use App\Models\FinancialCategory;
 use App\Models\FinancialEntry;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Finance\CostCenter\CostCenterAllocator;
+use App\Services\Finance\CostCenter\FinancialEntryAllocationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
@@ -26,7 +28,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class FinancialEntryService
 {
-    private const RELATIONS = ['category', 'account', 'supplier', 'paymentMethod'];
+    private const RELATIONS = ['category', 'account', 'supplier', 'paymentMethod', 'allocations.costCenter'];
 
     public function __construct(
         private readonly CommercialScopeResolver $scope,
@@ -34,6 +36,8 @@ final class FinancialEntryService
         private readonly FinancialEntryCashMirror $cashMirror,
         private readonly FinancialEntrySeriesEditor $seriesEditor,
         private readonly FinancialEntrySettlementCalculator $settlementCalculator,
+        private readonly FinancialEntryAllocationService $allocations,
+        private readonly CostCenterAllocator $allocator,
     ) {}
 
     /**
@@ -51,6 +55,13 @@ final class FinancialEntryService
 
         $resolved = $data;
         $resolved['account_id'] = $this->resolveAccountId($user, $data['account_id'] ?? null);
+        // Rateio explícito (PLANO 2.4) validado uma vez; cada parcela recebe os MESMOS percentuais
+        // sobre o próprio valor. Sem `allocations`, vale o padrão da categoria (observer).
+        $allocations = $data['allocations'] ?? null;
+
+        if (is_array($allocations) && $allocations !== []) {
+            $this->allocator->assertValid($allocations);
+        }
         $ownership = $this->scope->ownershipFor($user);
 
         $plan = $this->planner->plan(
@@ -64,7 +75,7 @@ final class FinancialEntryService
         // Coleção do Eloquent (não a de suporte que o `map` do plano devolve): o controller chama
         // `->load()` nela para devolver as parcelas com as relações — sem isto, 500.
         return DB::transaction(fn (): EloquentCollection => new EloquentCollection($plan
-            ->map(fn (PlannedFinancialInstallment $installment): FinancialEntry => $this->store($ownership, $category, $resolved, $installment))
+            ->map(fn (PlannedFinancialInstallment $installment): FinancialEntry => $this->storeWithAllocations($ownership, $category, $resolved, $installment, $allocations))
             ->all()));
     }
 
@@ -86,6 +97,11 @@ final class FinancialEntryService
 
         if (isset($data['amount'])) {
             $entry->update(['amount' => round((float) $data['amount'], 2), 'net_amount' => $this->netAmountOf($entry, (float) $data['amount'])]);
+        }
+
+        // PLANO 2.4: `allocations` presente substitui o rateio (`[]`/null = "Não rateado").
+        if (array_key_exists('allocations', $data)) {
+            $this->allocations->replace($entry->fresh(), $data['allocations'] ?? []);
         }
 
         return $entry->fresh(self::RELATIONS);
@@ -141,11 +157,30 @@ final class FinancialEntryService
 
     /**
      * @param  array{organization_id: int|null, professional_id: int}  $ownership
+     * @param  array<string, mixed>  $data
+     * @param  list<array<string, mixed>>|null  $allocations
+     */
+    private function storeWithAllocations(array $ownership, FinancialCategory $category, array $data, PlannedFinancialInstallment $installment, ?array $allocations): FinancialEntry
+    {
+        if ($allocations === null) {
+            return $this->store($ownership, $category, $data, $installment);
+        }
+
+        $entry = $this->store($ownership, $category, $data, $installment, skipDefault: true);
+        $this->allocations->replace($entry, $allocations);
+
+        return $entry;
+    }
+
+    /**
+     * @param  array{organization_id: int|null, professional_id: int}  $ownership
      * @param  array<string, mixed>  $data  já com `account_id` resolvido no escopo
      */
-    private function store(array $ownership, FinancialCategory $category, array $data, PlannedFinancialInstallment $installment): FinancialEntry
+    private function store(array $ownership, FinancialCategory $category, array $data, PlannedFinancialInstallment $installment, bool $skipDefault = false): FinancialEntry
     {
-        return FinancialEntry::create([
+        $entry = new FinancialEntry;
+        $entry->skipDefaultAllocation = $skipDefault;
+        $entry->fill([
             'financial_category_id' => $category->id,
             'account_id' => $data['account_id'],
             'supplier_id' => $data['supplier_id'] ?? null,
@@ -163,7 +198,9 @@ final class FinancialEntryService
             'reference_type' => 'manual',
             'notes' => $data['notes'] ?? null,
             'created_by' => $ownership['professional_id'],
-        ] + $ownership);
+        ] + $ownership)->save();
+
+        return $entry;
     }
 
     private function netAmountOf(FinancialEntry $entry, float $amount): float

@@ -28,6 +28,8 @@ class StoreProductGroupRequest extends FormRequest
             'parent_id' => ['nullable', 'integer', 'exists:product_groups,id'],
             'default_markup_percent' => ['nullable', 'numeric', 'min:-100', 'max:100000'],
             'active' => ['nullable', 'boolean'],
+            // PLANO 2.4: produto e serviço do grupo sem centro próprio herdam este.
+            'cost_center_id' => ['sometimes', 'nullable', 'integer', new \App\Rules\ScopedCostCenterExists($this->user())],
         ];
     }
 }

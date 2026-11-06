@@ -196,6 +196,8 @@ class AppServiceProvider extends ServiceProvider
         Appointment::observe(AppointmentSupplyConsumptionObserver::class);
         // PLANO 2.6 — `completed_at` e a comissão `on_execution` (nasce e é estornada aqui).
         Appointment::observe(AppointmentCompletionObserver::class);
+        // PLANO 2.4 — rateio por centro de custo (padrão da categoria e valores refeitos).
+        \App\Models\FinancialEntry::observe(\App\Observers\FinancialEntryAllocationObserver::class);
     }
 
     /**

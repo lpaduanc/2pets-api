@@ -11,6 +11,7 @@ use App\Models\ServicePackage;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\Profitability\SaleProfitabilityService;
+use App\Services\Finance\CostCenter\CostCenterResolver;
 use Carbon\CarbonImmutable;
 
 /**
@@ -31,20 +32,27 @@ final class ManagerialSalesTotals
     public function __construct(
         private readonly CommercialScopeResolver $scope,
         private readonly SaleProfitabilityService $profitability,
+        private readonly CostCenterResolver $costCenters,
     ) {}
 
-    /** @return array<string, array<string, string>> por mês `YYYY-MM` */
-    public function byMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
+    /**
+     * Por centro de custo efetivo do produto/serviço (PLANO 2.4; `unallocated` sem centro) e mês.
+     *
+     * @return array<string, array<string, array<string, string>>>
+     */
+    public function byCenterAndMonth(User $user, CarbonImmutable $from, CarbonImmutable $to): array
     {
         $this->computeMissingSnapshots($user, $from, $to);
+        [$centerSql, $centerBindings] = $this->costCenters->saleItemExpression();
 
-        return SaleItem::query()
+        $rows = SaleItem::query()
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->join('sale_item_profitability', 'sale_item_profitability.sale_item_id', '=', 'sale_items.id')
             ->whereIn('sale_items.sale_id', $this->paidSales($user, $from, $to)->select('sales.id'))
             // Pacote é receita diferida (PLANO 2.7): entra sessão a sessão em `ManagerialPackageRevenue`.
             ->where('sale_items.sellable_type', '!=', ServicePackage::class)
-            ->groupByRaw(self::MONTH)
+            ->groupByRaw(self::MONTH.', cost_center')
+            ->selectRaw("({$centerSql}) AS cost_center", $centerBindings)
             ->selectRaw(self::MONTH.' AS month,
                 COALESCE(SUM(sale_items.quantity * sale_items.unit_price), 0) AS gross_revenue,
                 COALESCE(SUM(sale_items.discount), 0) AS line_discounts,
@@ -57,9 +65,16 @@ final class ManagerialSalesTotals
                 COALESCE(SUM(sale_item_profitability.card_fee_share), 0) AS card_fees,
                 COALESCE(SUM(sale_item_profitability.commission_amount), 0) AS commissions', [Product::class, Product::class])
             ->toBase()
-            ->get()
-            ->mapWithKeys(fn (object $row): array => [$row->month => array_map('strval', array_diff_key((array) $row, ['month' => true]))])
-            ->all();
+            ->get();
+
+        $byCenter = [];
+
+        foreach ($rows as $row) {
+            $byCenter[$row->cost_center === null ? ManagerialCostCenters::UNALLOCATED : (string) $row->cost_center][$row->month]
+                = array_map('strval', array_diff_key((array) $row, ['month' => true, 'cost_center' => true]));
+        }
+
+        return $byCenter;
     }
 
     private function paidSales(User $user, CarbonImmutable $from, CarbonImmutable $to): \Illuminate\Database\Eloquent\Builder
