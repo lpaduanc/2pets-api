@@ -285,6 +285,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // Desconto nos encargos de atraso do crediário (PLANO 2.2): abre mão de receita.
             // Gestão; concedível por exceção ao membro.
             'finance.credit_fee_discount',
+            // Prorrogar a validade de pacote vendido (PLANO 2.7): mexe no direito do cliente e
+            // na receita diferida. Gestão; concedível por exceção ao membro. Fica no log.
+            'packages.extend_validity',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -416,6 +419,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'finance.anticipation',
             // PLANO 2.2: desconto de encargo do crediário é de gestão.
             'finance.credit_fee_discount',
+            // PLANO 2.7: prorrogar validade de pacote é de gestão.
+            'packages.extend_validity',
         ]);
 
         // 3. Clinic Owner
@@ -498,6 +503,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'finance.anticipation',
             // PLANO 2.2: desconto de encargo do crediário é de gestão.
             'finance.credit_fee_discount',
+            // PLANO 2.7: prorrogar validade de pacote é de gestão.
+            'packages.extend_validity',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -607,6 +614,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'finance.anticipation',
             // PLANO 2.2: desconto de encargo do crediário é de gestão.
             'finance.credit_fee_discount',
+            // PLANO 2.7: prorrogar validade de pacote é de gestão.
+            'packages.extend_validity',
         ]);
 
         // 6. Petshop Staff

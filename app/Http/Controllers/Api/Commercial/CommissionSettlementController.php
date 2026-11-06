@@ -48,8 +48,10 @@ class CommissionSettlementController extends Controller
 
         return response()->json([
             'data' => $items->map(fn (array $priced) => [
-                'sale_item_id' => $priced['sale_item']->id,
-                'description' => $priced['sale_item']->description,
+                'sale_item_id' => $priced['sale_item']?->id,
+                // PLANO 2.7: linha de sessão de pacote consumida (então `sale_item_id` é null).
+                'sold_package_session_id' => $priced['session']?->id,
+                'description' => $priced['description'],
                 'base_amount' => $priced['base_amount'],
                 'commission_amount' => $priced['commission_amount'],
                 // PLANO 2.6: por qual gatilho e em que data a comissão nasceu.

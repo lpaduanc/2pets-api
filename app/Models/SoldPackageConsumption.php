@@ -49,6 +49,12 @@ class SoldPackageConsumption extends Model
         return $this->belongsTo(SaleItem::class);
     }
 
+    /** Sessões reconhecidas por esta baixa (PLANO 2.7). */
+    public function sessions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SoldPackageSession::class);
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

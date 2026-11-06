@@ -146,6 +146,23 @@ final class ClientAccountService
     }
 
     /**
+     * Saldo de pacote vencido que vira crédito do cliente (PLANO 2.7, política `client_credit`).
+     * Idempotente por pacote. `$actor` nulo quando quem resolve é o comando agendado.
+     *
+     * @param  array{organization_id: int|null, professional_id: int}  $ownership
+     */
+    public function creditForExpiredPackage(User $client, array $ownership, float $amount, int $soldPackageId, ?User $actor): ClientAccountEntry
+    {
+        $existing = ClientAccountEntry::query()
+            ->where('reference_type', 'sold_package')
+            ->where('reference_id', $soldPackageId)
+            ->where('type', ClientAccountEntryType::PACKAGE_CREDIT->value)
+            ->first();
+
+        return $existing ?? $this->record($client, $ownership, null, ClientAccountEntryType::PACKAGE_CREDIT, ClientAccountEntryDirection::CREDIT, $amount, $actor, 'sold_package', $soldPackageId, 'Saldo de pacote vencido');
+    }
+
+    /**
      * Venda a prazo cancelada: credita de volta exatamente o que os `SALE_DEBIT` da venda
      * debitaram, e o saldo do cliente volta ao que era antes dela. Quitação de fiado é manual e
      * não aponta para a venda (`PAYMENT_CREDIT` com referência `manual`), então o que o cliente
@@ -260,7 +277,7 @@ final class ClientAccountService
         ClientAccountEntryType $type,
         ClientAccountEntryDirection $direction,
         float $amount,
-        User $actor,
+        ?User $actor,
         string $referenceType,
         ?int $referenceId,
         ?string $notes = null,
@@ -289,7 +306,7 @@ final class ClientAccountService
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
                 'occurred_at' => now(),
-                'user_id' => $actor->id,
+                'user_id' => $actor?->id,
                 'notes' => $notes,
             ]);
         });

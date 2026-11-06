@@ -63,6 +63,10 @@ class UserResource extends JsonResource
                 fn () => method_exists($this->resource, 'getRoleNames') ? $this->getRoleNames() : []
             ),
 
+            // Exerce a veterinária (papéis `User::VET_ROLES`). O front esconde o que é só de
+            // veterinário (ex.: "paciente novo" no agendamento, `appointments/new-patient`).
+            'is_veterinarian' => $this->resource->isVeterinarian(),
+
             // Relationships (only when loaded)
             'professional' => new ProfessionalResource($this->whenLoaded('professional')),
             'company' => $this->whenLoaded('company'),

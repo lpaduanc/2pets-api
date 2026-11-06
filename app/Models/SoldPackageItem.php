@@ -39,6 +39,11 @@ class SoldPackageItem extends Model
         return $this->hasMany(SoldPackageConsumption::class);
     }
 
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(SoldPackageSession::class)->orderBy('sequence');
+    }
+
     public function quantityRemaining(): int
     {
         return $this->quantity_total - $this->quantity_used;

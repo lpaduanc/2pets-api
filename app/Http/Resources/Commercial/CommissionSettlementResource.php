@@ -12,7 +12,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class CommissionSettlementResource extends JsonResource
 {
-    public const RESOURCE_RELATIONS = ['staff.user:id,name', 'items.saleItem', 'items.commissionRule', 'deductions.clawback.saleItem:id,sale_id,description'];
+    public const RESOURCE_RELATIONS = ['staff.user:id,name', 'items.saleItem', 'items.commissionRule', 'deductions.clawback.saleItem:id,sale_id,description',
+        'items.soldPackageSession.soldPackageItem.service:id,name', 'items.soldPackageSession.soldPackage.servicePackage:id,name',
+        'deductions.clawback.soldPackageSession.soldPackageItem.service:id,name', 'deductions.clawback.soldPackageSession.soldPackage.servicePackage:id,name'];
 
     /**
      * @return array<string, mixed>
@@ -38,7 +40,8 @@ class CommissionSettlementResource extends JsonResource
                 'reason' => $deduction->clawback?->reason,
                 'sale_item_id' => $deduction->clawback?->sale_item_id,
                 'sale_id' => $deduction->clawback?->saleItem?->sale_id,
-                'description' => $deduction->clawback?->saleItem?->description,
+                'sold_package_session_id' => $deduction->clawback?->sold_package_session_id,
+                'description' => $deduction->clawback?->saleItem?->description ?? $deduction->clawback?->soldPackageSession?->description(),
                 'reversed_settlement_item_id' => $deduction->clawback?->commission_settlement_item_id,
             ])->values()),
 
@@ -53,7 +56,8 @@ class CommissionSettlementResource extends JsonResource
             'items' => $this->whenLoaded('items', fn () => $this->items->map(fn ($item) => [
                 'id' => $item->id,
                 'sale_item_id' => $item->sale_item_id,
-                'description' => $item->saleItem?->description,
+                'sold_package_session_id' => $item->sold_package_session_id,
+                'description' => $item->saleItem?->description ?? $item->soldPackageSession?->description(),
                 'commission_rule_id' => $item->commission_rule_id,
                 'base_amount' => (float) $item->base_amount,
                 'commission_amount' => (float) $item->commission_amount,

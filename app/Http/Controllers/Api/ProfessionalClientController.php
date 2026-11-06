@@ -6,21 +6,27 @@ use App\Enums\MedicalRecordStatus;
 use App\Exceptions\Professional\ClientNotManuallyLinkedException;
 use App\Http\Controllers\Concerns\PaginatesResults;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Professional\StoreClientPetRequest;
 use App\Http\Requests\Professional\StoreProfessionalClientRequest;
+use App\Http\Resources\PetResource;
 use App\Http\Resources\UserResource;
+use App\Models\Breed;
 use App\Models\MedicalRecord;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\ProfessionalClient;
 use App\Models\User;
+use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Professional\ClientInviteService;
 use App\Services\Professional\ClientPortalStatusService;
 use App\Services\Professional\ClientProvisioningService;
+use App\Services\Professional\NewPatientVetAccessGrantor;
 use App\Services\Professional\ProfessionalClientsQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ProfessionalClientController extends Controller
 {
@@ -37,6 +43,7 @@ class ProfessionalClientController extends Controller
         private readonly ProfessionalClientsQuery $clientsQuery,
         private readonly ClientInviteService $clientInviteService,
         private readonly ClientPortalStatusService $clientPortalStatusService,
+        private readonly NewPatientVetAccessGrantor $accessGrantor,
     ) {}
 
     /**
@@ -179,8 +186,12 @@ class ProfessionalClientController extends Controller
 
         // Scope to pets the professional actually has a grant for (or any pet of
         // this tutor when the relationship is via appointment/invoice history).
+        // Só os grants sobre pets DESTE cliente: antes valia qualquer grant do profissional, e
+        // um único grant num pet de outro tutor escondia todos os pets dos clientes atendidos
+        // por agendamento/fatura (inclusive o pet recém-cadastrado por `storePet`).
         $grantedPetIds = PetVetAccess::query()
             ->where('veterinarian_id', $professionalId)
+            ->whereIn('pet_id', $client->pets()->select('id'))
             ->active()
             ->pluck('pet_id')
             ->all();
@@ -206,6 +217,38 @@ class ProfessionalClientController extends Controller
         });
 
         return response()->json($pets);
+    }
+
+    /**
+     * `POST clients/{id}/pets` — cadastra um pet para um cliente que já está na carteira do
+     * profissional ou da equipe dele (a mesma definição de cliente de `pets()`). O pet é do tutor (`user_id` = cliente). O acesso segue o fluxo de
+     * paciente novo (`NewPatientVetAccessGrantor`): vínculo de cliente + grant `write`
+     * automático para tutor ainda não reivindicado; tutor com conta ativa recebe o pedido para
+     * aprovar no app. Não exige veterinário: recepção e pet shop também cadastram.
+     */
+    public function storePet(StoreClientPetRequest $request, string $id): JsonResponse
+    {
+        // Carteira da EQUIPE (como o balcão, `ClientAccountController`): a recepcionista cadastra
+        // pet do cliente do veterinário. O `grant()` abaixo vincula quem cadastrou como cliente,
+        // então o pet aparece no `GET clients/{id}/pets` dela também.
+        $client = $this->clientsQuery->queryForAny(app(CommercialScopeResolver::class)->teamUserIds($request->user()))->whereKey($id)->firstOrFail();
+        $data = $request->safe()->except('sex');
+
+        if (! empty($data['breed_id'])) {
+            $data['breed'] = Breed::find($data['breed_id'])?->name ?? ($data['breed'] ?? null);
+        }
+
+        $pet = DB::transaction(function () use ($client, $data, $request): Pet {
+            $pet = $client->pets()->create($data);
+            $this->accessGrantor->grant($request->user(), $pet);
+
+            return $pet;
+        });
+
+        return (new PetResource($pet->fresh()))
+            ->additional(['message' => 'Pet cadastrado com sucesso.'])
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**

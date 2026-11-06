@@ -9,6 +9,8 @@ use App\Models\Service;
 use App\Models\ServicePackage;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Commercial\Package\PackageSessionPricer;
+use App\Support\Money\Money;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +27,34 @@ use Illuminate\Validation\ValidationException;
  */
 class ServicePackageController extends Controller
 {
-    public function __construct(private readonly CommercialScopeResolver $scope) {}
+    public function __construct(
+        private readonly CommercialScopeResolver $scope,
+        private readonly PackageSessionPricer $pricer,
+    ) {}
+
+    /**
+     * Prévia ao montar o pacote (PLANO 2.7), sem gravar: soma avulsa dos serviços (preço de
+     * hoje), desconto em R$ e %, e o valor de cada sessão pela regra do rateio.
+     */
+    public function preview(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'price' => ['required', 'numeric', 'min:0', 'max:9999999.99'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.service_id' => ['required', 'integer', 'distinct', 'exists:services,id'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:1000'],
+        ]);
+        $this->assertServicesAreVisible($request, $data['items']);
+        $prices = Service::query()->whereIn('id', array_column($data['items'], 'service_id'))->pluck('price', 'id');
+
+        $result = $this->pricer->price(Money::of($data['price'])->toString(), array_map(fn (array $item): array => [
+            'service_id' => (int) $item['service_id'],
+            'unit_price' => (string) ($prices[$item['service_id']] ?? '0'),
+            'quantity' => (int) $item['quantity'],
+        ], $data['items']));
+
+        return response()->json(['data' => $result]);
+    }
 
     public function index(Request $request): AnonymousResourceCollection
     {

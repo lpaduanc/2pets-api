@@ -8,6 +8,7 @@ use App\Enums\ServiceCategory;
 use App\Rules\ScopedAppointmentTypeExists;
 use App\Rules\ValidCpf;
 use App\Services\Commercial\CommercialScopeResolver;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -27,9 +28,12 @@ class StoreNewPatientAppointmentRequest extends FormRequest
      * só faz sentido para quem exerce a profissão — mesma checagem que `PetVetAccessController::
      * grant()` já usa para o veterinário alvo de uma concessão manual.
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return (bool) $this->user()?->isVeterinarian();
+        // Mensagem em pt-BR no 403 (o padrão do Laravel saía "This action is unauthorized.").
+        return $this->user()?->isVeterinarian()
+            ? Response::allow()
+            : Response::deny('Só veterinários podem cadastrar paciente novo pelo agendamento.');
     }
 
     /**

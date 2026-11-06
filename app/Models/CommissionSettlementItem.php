@@ -17,6 +17,8 @@ class CommissionSettlementItem extends Model
     protected $fillable = [
         'commission_settlement_id',
         'sale_item_id',
+        // Comissão da sessão de pacote consumida (PLANO 2.7): exatamente um dos dois.
+        'sold_package_session_id',
         'commission_rule_id',
         'base_amount',
         'commission_amount',
@@ -39,6 +41,11 @@ class CommissionSettlementItem extends Model
     public function saleItem(): BelongsTo
     {
         return $this->belongsTo(SaleItem::class);
+    }
+
+    public function soldPackageSession(): BelongsTo
+    {
+        return $this->belongsTo(SoldPackageSession::class);
     }
 
     public function commissionRule(): BelongsTo

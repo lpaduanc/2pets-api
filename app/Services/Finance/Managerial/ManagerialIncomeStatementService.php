@@ -4,6 +4,7 @@ namespace App\Services\Finance\Managerial;
 
 use App\Enums\InsightPreset;
 use App\Models\User;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 
 /**
@@ -20,13 +21,15 @@ final class ManagerialIncomeStatementService
         private readonly ManagerialSalesTotals $sales,
         private readonly ManagerialLedgerTotals $ledger,
         private readonly ManagerialIncomeStatementCalculator $calculator,
+        private readonly ManagerialPackageRevenue $packages,
     ) {}
 
     /** @return array<string, mixed> */
     public function generate(User $user, CarbonImmutable $from, CarbonImmutable $to): array
     {
         $months = self::monthKeys($from, $to);
-        $result = $this->calculator->calculate($months, $this->sales->byMonth($user, $from, $to), $this->ledger->byMonth($user, $from, $to));
+        $sales = self::merge($this->sales->byMonth($user, $from, $to), $this->packages->byMonth($user, $from, $to));
+        $result = $this->calculator->calculate($months, $sales, $this->ledger->byMonth($user, $from, $to));
 
         return [
             'regime' => self::REGIME,
@@ -35,7 +38,27 @@ final class ManagerialIncomeStatementService
             'lines' => $this->lines($result, $from, $to),
             'margin_percent' => $result['margin_percent'],
             'break_even' => $result['break_even'],
+            // PLANO 2.7: receita diferida de pacotes (passivo, fora do resultado) no período.
+            'package_deferral' => $this->packages->deferral($user, $from, $to),
         ];
+    }
+
+    /**
+     * Soma, mês a mês e chave a chave, as vendas e a receita de pacote por competência.
+     *
+     * @param  array<string, array<string, string>>  $sales
+     * @param  array<string, array<string, string>>  $packages
+     * @return array<string, array<string, string>>
+     */
+    private static function merge(array $sales, array $packages): array
+    {
+        foreach ($packages as $month => $values) {
+            foreach ($values as $key => $value) {
+                $sales[$month][$key] = Money::of($sales[$month][$key] ?? '0')->plus($value)->toString();
+            }
+        }
+
+        return $sales;
     }
 
     /**

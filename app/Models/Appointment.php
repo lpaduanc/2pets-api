@@ -47,6 +47,8 @@ class Appointment extends Model
         // Item 21 do backlog gap-simplesvet — "fila do dia". Rótulo de fila é derivado do
         // par (status, checked_in_at), sem um `queue_status` paralelo.
         'checked_in_at',
+        // PLANO 2.7 — sessão de pacote agendada (próximo/último agendamento do pacote).
+        'sold_package_id',
     ];
 
     protected $casts = [

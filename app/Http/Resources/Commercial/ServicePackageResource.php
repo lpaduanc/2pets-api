@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Commercial;
 
 use App\Models\ServicePackage;
+use App\Services\Commercial\Package\PackageSessionPricer;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -11,7 +12,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class ServicePackageResource extends JsonResource
 {
-    public const RESOURCE_RELATIONS = ['items.service:id,name'];
+    public const RESOURCE_RELATIONS = ['items.service:id,name,price'];
 
     /**
      * @return array<string, mixed>
@@ -39,6 +40,12 @@ class ServicePackageResource extends JsonResource
                 'service_name' => $item->service?->name,
                 'quantity' => $item->quantity,
             ])),
+            // PLANO 2.7: desconto do pacote sobre a soma avulsa de HOJE e o valor de cada sessão.
+            'pricing' => $this->whenLoaded('items', fn () => app(PackageSessionPricer::class)->price((string) $this->price, $this->items->map(fn ($item): array => [
+                'service_id' => $item->service_id,
+                'unit_price' => (string) ($item->service?->price ?? '0'),
+                'quantity' => $item->quantity,
+            ])->values()->all())),
 
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

@@ -72,3 +72,13 @@ Schedule::command('wallet:generate-recurring')->dailyAt('06:00')
     ->withoutOverlapping()
     ->onOneServer()
     ->appendOutputTo(storage_path('logs/wallet-recurring.log'));
+
+/**
+ * Pacotes vendidos vencidos com saldo (PLANO 2.7): crédito na conta do cliente (padrão) ou
+ * receita de expiração, pela política da organização. 03:10 UTC = 00:10 em São Paulo: o pacote
+ * que venceu ontem é resolvido logo na virada. Idempotente (`expiration_resolved_at`).
+ */
+Schedule::command('sold-packages:resolve-expired')->dailyAt('03:10')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/sold-packages-expired.log'));

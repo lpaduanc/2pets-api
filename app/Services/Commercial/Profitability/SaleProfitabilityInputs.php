@@ -5,6 +5,7 @@ namespace App\Services\Commercial\Profitability;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReturnItem;
+use App\Models\ServicePackage;
 use App\Services\Commercial\CommissionCalculator;
 use App\Services\Commercial\CommissionEligibility;
 use App\Services\Commercial\CommissionRuleResolver;
@@ -62,7 +63,8 @@ final class SaleProfitabilityInputs
             return Money::of($item->commissionSettlementItem->commission_amount);
         }
 
-        if ($item->staff_id === null) {
+        // Linha do pacote: a comissão vai sessão a sessão, na baixa (PLANO 2.7).
+        if ($item->staff_id === null || $item->sellable_type === ServicePackage::class) {
             return Money::zero();
         }
 

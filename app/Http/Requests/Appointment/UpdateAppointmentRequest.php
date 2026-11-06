@@ -39,6 +39,8 @@ class UpdateAppointmentRequest extends FormRequest
             ],
             'services.*.quantity' => ['nullable', 'numeric', 'min:0.01'],
             'services.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            // PLANO 2.7: o cliente do pacote é conferido no controller (o do agendamento).
+            'sold_package_id' => ['nullable', 'integer', Rule::exists('sold_packages', 'id')->where(fn ($q) => $q->where('status', '!=', 'cancelled'))],
         ];
     }
 

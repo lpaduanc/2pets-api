@@ -30,6 +30,9 @@ final class SalePermissionGate
     /** Estornar UM recebimento da venda (PLANO 2.3). */
     public const CANCEL_RECEIPT = 'sales.cancel_receipt';
 
+    /** Prorrogar a validade de pacote vendido (PLANO 2.7). */
+    public const EXTEND_PACKAGE_VALIDITY = 'packages.extend_validity';
+
     private const GUARD = 'web';
 
     public function allows(User $user, Sale $sale, string $permission): bool

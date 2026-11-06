@@ -21,6 +21,7 @@ class CommissionClawback extends Model
         'staff_id',
         'commission_settlement_item_id',
         'sale_item_id',
+        'sold_package_session_id',
         'amount',
         'reason',
         'created_by',
@@ -32,6 +33,11 @@ class CommissionClawback extends Model
     protected function casts(): array
     {
         return ['amount' => 'decimal:2'];
+    }
+
+    public function soldPackageSession(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(SoldPackageSession::class);
     }
 
     public function deductions(): HasMany

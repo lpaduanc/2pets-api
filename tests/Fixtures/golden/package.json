@@ -1,0 +1,67 @@
+{
+  "_doc": "Casos de referencia do valor de sessao de pacote (docs/gap-petflow/PLANO.md, secoes 2.7 e 3). total_servico_j = allocate(preco_pacote, pesos = preco_avulso_j x qtd_j); valor_sessao_j,k = allocateEqually(total_servico_j, qtd_j); desconto = soma avulsa - preco_pacote; desconto % = desconto / soma avulsa x 100, 2 casas HALF_UP (null sem soma avulsa). Rateios pelo maior resto (empate: maior peso, depois a ordem): soma das sessoes = preco do pacote, centavo a centavo. Copia byte a byte em 2pets-pro/tests/fixtures/golden/package.json. Altere aqui e copie para la.",
+  "packageSessions": [
+    {
+      "id": "pacote-01",
+      "_conta": "4 banhos (60,00) + 1 hidratacao (40,00) = 280,00 avulso, vendido por 230,00. 230 x 240/280 = 197,142.. -> 197,14; 230 x 40/280 = 32,857.. -> 32,85 + 1 centavo (maior resto) = 32,86. 197,14 / 4 = 49,285 -> 49,29 . 49,29 . 49,28 . 49,28. Desconto 50,00; 50/280 = 17,857..% -> 17,86%.",
+      "input": {
+        "package_price": "230.00",
+        "items": [
+          { "service_id": 1, "unit_price": "60.00", "quantity": 4 },
+          { "service_id": 2, "unit_price": "40.00", "quantity": 1 }
+        ]
+      },
+      "expected": {
+        "list_total": "280.00",
+        "discount_amount": "50.00",
+        "discount_percent": "17.86",
+        "items": [
+          { "service_id": 1, "list_total": "240.00", "package_total": "197.14", "sessions": ["49.29", "49.29", "49.28", "49.28"] },
+          { "service_id": 2, "list_total": "40.00", "package_total": "32.86", "sessions": ["32.86"] }
+        ]
+      }
+    },
+    {
+      "id": "pacote-02",
+      "_conta": "Sobra de centavo ENTRE servicos: 2 banhos (50,00) + 1 tosa (70,00) + 1 unha (15,00) = 185,00, vendido por 150,00. Truncados: 81,08 (resto ,081) . 56,75 (resto ,756) . 12,16 (resto ,162) = 149,99; o centavo vai para a tosa (maior resto) -> 56,76. Banhos 81,08 / 2 = 40,54 . 40,54. Desconto 35,00; 35/185 = 18,918..% -> 18,92%.",
+      "input": {
+        "package_price": "150.00",
+        "items": [
+          { "service_id": 1, "unit_price": "50.00", "quantity": 2 },
+          { "service_id": 2, "unit_price": "70.00", "quantity": 1 },
+          { "service_id": 3, "unit_price": "15.00", "quantity": 1 }
+        ]
+      },
+      "expected": {
+        "list_total": "185.00",
+        "discount_amount": "35.00",
+        "discount_percent": "18.92",
+        "items": [
+          { "service_id": 1, "list_total": "100.00", "package_total": "81.08", "sessions": ["40.54", "40.54"] },
+          { "service_id": 2, "list_total": "70.00", "package_total": "56.76", "sessions": ["56.76"] },
+          { "service_id": 3, "list_total": "15.00", "package_total": "12.16", "sessions": ["12.16"] }
+        ]
+      }
+    },
+    {
+      "id": "pacote-03",
+      "_conta": "Pacote sem desconto: a mesma composicao do pacote-01 vendida pela soma avulsa, 280,00. Cada sessao vale o preco avulso; desconto 0,00 (0,00%).",
+      "input": {
+        "package_price": "280.00",
+        "items": [
+          { "service_id": 1, "unit_price": "60.00", "quantity": 4 },
+          { "service_id": 2, "unit_price": "40.00", "quantity": 1 }
+        ]
+      },
+      "expected": {
+        "list_total": "280.00",
+        "discount_amount": "0.00",
+        "discount_percent": "0.00",
+        "items": [
+          { "service_id": 1, "list_total": "240.00", "package_total": "240.00", "sessions": ["60.00", "60.00", "60.00", "60.00"] },
+          { "service_id": 2, "list_total": "40.00", "package_total": "40.00", "sessions": ["40.00"] }
+        ]
+      }
+    }
+  ]
+}

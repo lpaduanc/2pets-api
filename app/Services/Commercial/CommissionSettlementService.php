@@ -6,12 +6,17 @@ use App\Enums\CommissionSettlementStatus;
 use App\Enums\CommissionTrigger;
 use App\Enums\SaleKind;
 use App\Enums\SaleStatus;
+use App\Enums\SoldPackageSessionStatus;
+use App\Enums\SoldPackageStatus;
 use App\Events\Sales\CommissionRecalculated;
 use App\Models\CommissionRule;
 use App\Models\CommissionSettlement;
 use App\Models\OrganizationMember;
 use App\Models\SaleItem;
+use App\Models\ServicePackage;
+use App\Models\SoldPackageSession;
 use App\Models\User;
+use App\Services\Commercial\Package\PackageSessionEconomics;
 use App\Services\Commercial\Reversal\CommissionDeductionApplier;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
@@ -36,18 +41,21 @@ final class CommissionSettlementService
         private readonly CommissionCalculator $calculator,
         private readonly CommissionDeductionApplier $deductions,
         private readonly CommissionEligibility $eligibility,
+        private readonly PackageSessionEconomics $sessions,
     ) {}
 
     /**
      * O que fecharia se `close()` fosse chamado agora — mesma query, sem gravar nada.
      *
-     * @return Collection<int, array{sale_item: SaleItem, rule: ?CommissionRule, trigger: CommissionTrigger, born_at: CarbonImmutable, base_amount: float, commission_amount: float}>
+     * Linhas de item de venda e de sessão de pacote consumida (PLANO 2.7).
+     *
+     * @return Collection<int, array<string, mixed>>
      */
     public function openSummary(User $user, int $staffId, CarbonImmutable $receivedUntil): Collection
     {
         $this->assertStaffVisible($user, $staffId);
 
-        return $this->eligible($this->candidateItemsQuery($staffId)->get(), $receivedUntil);
+        return $this->eligibleLines($staffId, $receivedUntil, lock: false);
     }
 
     /**
@@ -65,7 +73,7 @@ final class CommissionSettlementService
         $this->assertStaffVisible($user, $staffId);
 
         return DB::transaction(function () use ($user, $attributes, $staffId, $receivedUntil): CommissionSettlement {
-            $priced = $this->eligible($this->candidateItemsQuery($staffId)->lockForUpdate()->get(), $receivedUntil);
+            $priced = $this->eligibleLines($staffId, $receivedUntil, lock: true);
 
             abort_if($priced->isEmpty(), 422, 'Nenhum item elegível para fechar neste período.');
 
@@ -81,7 +89,8 @@ final class CommissionSettlementService
 
             $total = $priced->sum(function (array $line) use ($settlement): float {
                 $settlement->items()->create([
-                    'sale_item_id' => $line['sale_item']->id,
+                    'sale_item_id' => $line['sale_item']?->id,
+                    'sold_package_session_id' => $line['session']?->id,
                     'commission_rule_id' => $line['rule']?->id,
                     'base_amount' => $line['base_amount'],
                     'commission_amount' => $line['commission_amount'],
@@ -96,9 +105,9 @@ final class CommissionSettlementService
             $settlement->update(['total_amount' => $gross->minus($this->deductions->applyTo($settlement, $gross))->toString()]);
 
             // A comissão fechada passa a ser a da rentabilidade (PLANO 1.5).
-            $priced->map(fn (array $line): int => $line['sale_item']->sale_id)->unique()->each(fn (int $saleId) => CommissionRecalculated::dispatch($saleId));
+            $priced->pluck('sale_id')->unique()->each(fn (int $saleId) => CommissionRecalculated::dispatch($saleId));
 
-            return $settlement->fresh('items.saleItem');
+            return $settlement->fresh(['items.saleItem', 'items.soldPackageSession']);
         });
     }
 
@@ -122,6 +131,53 @@ final class CommissionSettlementService
         return $settlement;
     }
 
+    /** @return Collection<int, array<string, mixed>> */
+    private function eligibleLines(int $staffId, CarbonImmutable $cutoff, bool $lock): Collection
+    {
+        $items = $this->candidateItemsQuery($staffId)->when($lock, fn (Builder $q) => $q->lockForUpdate())->get();
+        $sessions = $this->candidateSessionsQuery($staffId)->when($lock, fn (Builder $q) => $q->lockForUpdate())->get();
+
+        return $this->eligible($items, $cutoff)->concat($this->eligibleSessions($sessions, $cutoff))->values();
+    }
+
+    /**
+     * Sessão de pacote consumida pelo profissional (PLANO 2.7), com a regra resolvida como item
+     * do serviço e a base no valor da sessão — ver `PackageSessionEconomics`.
+     *
+     * @param  Collection<int, SoldPackageSession>  $sessions
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function eligibleSessions(Collection $sessions, CarbonImmutable $cutoff): Collection
+    {
+        $shares = [];
+
+        return $sessions->map(function (SoldPackageSession $session) use (&$shares): array {
+            $package = $session->soldPackage;
+            $shares[$package->id] ??= $this->sessions->lineShares($package);
+            $rule = $this->sessions->rule($session);
+            $trigger = $this->sessions->effectiveTrigger($session, $rule);
+
+            return ['sale_item' => null, 'session' => $session, 'sale_id' => $package->sale_id, 'description' => $session->description(),
+                'rule' => $rule, 'trigger' => $trigger, 'born_at' => $this->sessions->bornAt($session, $trigger)]
+                + $this->sessions->commission($session, $rule, $shares[$package->id][$session->id]['card_fee'] ?? Money::zero());
+        })->filter(fn (array $line): bool => $line['born_at'] !== null && $line['born_at']->lte($cutoff->endOfDay()))->values();
+    }
+
+    /** @return Builder<SoldPackageSession> */
+    private function candidateSessionsQuery(int $staffId): Builder
+    {
+        return SoldPackageSession::query()
+            ->with(['soldPackageItem.service', 'consumption.appointment', 'soldPackage.servicePackage', 'soldPackage.saleItem',
+                'soldPackage.sessions', 'soldPackage.sale.items', 'soldPackage.sale.receipts', 'soldPackage.sale.organization'])
+            ->orderBy('id')
+            ->where('staff_id', $staffId)
+            ->where('status', SoldPackageSessionStatus::CONSUMED->value)
+            ->whereDoesntHave('commissionSettlementItem')
+            ->whereHas('soldPackage', fn (Builder $package) => $package->where('status', '!=', SoldPackageStatus::CANCELLED->value)
+                ->whereHas('sale', fn (Builder $sale) => $sale->where('status', SaleStatus::PAID->value)->where('kind', SaleKind::SALE->value)
+                    ->whereHas('receipts', fn (Builder $receipts) => $receipts->whereNull('reversed_at'))));
+    }
+
     /**
      * Precifica cada candidato com a regra resolvida UMA vez e fica só com o que nasceu até a
      * data de corte, pelo gatilho da regra. `received_until` chega como DATA e as datas dos
@@ -137,7 +193,8 @@ final class CommissionSettlementService
             $rule = $this->resolver->resolve($item);
             $trigger = $this->eligibility->effectiveTrigger($item, $rule);
 
-            return ['sale_item' => $item, 'rule' => $rule, 'trigger' => $trigger, 'born_at' => $this->eligibility->bornAt($item, $trigger)]
+            return ['sale_item' => $item, 'session' => null, 'sale_id' => $item->sale_id, 'description' => $item->description,
+                'rule' => $rule, 'trigger' => $trigger, 'born_at' => $this->eligibility->bornAt($item, $trigger)]
                 + $this->calculator->calculate($item, $rule);
         })->filter(fn (array $line): bool => $line['born_at'] !== null && $line['born_at']->lte($cutoff->endOfDay()))->values();
     }
@@ -155,6 +212,9 @@ final class CommissionSettlementService
             ->with(['sellable', 'appointment', 'sale.items', 'sale.receipts'])
             ->orderBy('id')
             ->where('staff_id', $staffId)
+            // A linha do pacote não comissiona: a comissão vai sessão a sessão, pelo valor de
+            // cada uma, para quem executou (PLANO 2.7) — senão o mesmo dinheiro pagaria duas vezes.
+            ->where('sellable_type', '!=', ServicePackage::class)
             ->whereDoesntHave('commissionSettlementItem')
             ->whereHas('sale', function (Builder $query): void {
                 $query->where('status', SaleStatus::PAID->value)

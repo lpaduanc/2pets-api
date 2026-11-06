@@ -35,6 +35,8 @@ class AppointmentResource extends JsonResource
             'reason' => $this->reason,
             'notes' => $this->notes,
             'price' => $this->price ? (float) $this->price : null,
+            // PLANO 2.7: sessão de pacote agendada.
+            'sold_package_id' => $this->sold_package_id,
             'cancellation_reason' => $this->cancellation_reason,
             'cancelled_at' => $this->cancelled_at?->toISOString(),
             'confirmed_at' => $this->confirmed_at?->toISOString(),

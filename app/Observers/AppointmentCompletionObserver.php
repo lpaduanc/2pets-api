@@ -6,6 +6,7 @@ use App\Enums\AppointmentStatus;
 use App\Events\Sales\CommissionRecalculated;
 use App\Models\Appointment;
 use App\Models\SaleItem;
+use App\Services\Commercial\Package\AppointmentPackageConsumption;
 use App\Services\Commercial\Reversal\CommissionReversal;
 
 /**
@@ -19,12 +20,17 @@ use App\Services\Commercial\Reversal\CommissionReversal;
  *    não fechada sai sozinha do "em aberto". A máquina de estados trata `completed` como
  *    terminal hoje, mas uma correção administrativa ou porta nova não pode deixar comissão
  *    paga sobre serviço que não aconteceu.
+ *  - Pacote (PLANO 2.7): concluído com `sold_package_id` baixa 1 sessão
+ *    (`AppointmentPackageConsumption`); saiu de `completed` ou foi excluído, a baixa é desfeita.
  *  - Qualquer mudança de status recalcula a rentabilidade das vendas ligadas: o `on_execution`
  *    de agendamento cancelado deixa de ser custo projetado (1.5).
  */
 final class AppointmentCompletionObserver
 {
-    public function __construct(private readonly CommissionReversal $commissions) {}
+    public function __construct(
+        private readonly CommissionReversal $commissions,
+        private readonly AppointmentPackageConsumption $packageConsumption,
+    ) {}
 
     public function saving(Appointment $appointment): void
     {
@@ -43,6 +49,12 @@ final class AppointmentCompletionObserver
 
         if ($appointment->getOriginal('status') === AppointmentStatus::COMPLETED->value) {
             $this->reverse($appointment, 'Agendamento deixou de estar concluído');
+            $this->packageConsumption->undo($appointment, 'Agendamento deixou de estar concluído');
+        }
+
+        // PLANO 2.7: agendamento marcado para um pacote baixa a sessão ao ser concluído.
+        if ($appointment->status === AppointmentStatus::COMPLETED->value) {
+            $this->packageConsumption->consume($appointment);
         }
 
         $this->recomputeLinkedSales($appointment);
@@ -52,6 +64,7 @@ final class AppointmentCompletionObserver
     {
         if ($appointment->status === AppointmentStatus::COMPLETED->value) {
             $this->reverse($appointment, 'Agendamento concluído foi excluído');
+            $this->packageConsumption->undo($appointment, 'Agendamento concluído foi excluído');
         }
 
         $this->recomputeLinkedSales($appointment);

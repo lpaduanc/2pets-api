@@ -313,6 +313,8 @@ return [
     'POST api/professional/clients',
     'POST api/professional/clients/{id}/invite',
     'POST api/professional/clients/{id}/messages',
+    // Cadastro de pet para cliente da carteira: mesma checagem de `GET clients/{id}/pets`.
+    'POST api/professional/clients/{id}/pets',
     'POST api/professional/clients/{id}/tags',
     'POST api/professional/hospitalizations',
     'POST api/professional/hospitalizations/{id}/care-logs',

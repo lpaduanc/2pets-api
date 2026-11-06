@@ -5,6 +5,7 @@ namespace App\Services\Commercial;
 use App\Enums\CommissionCalculationBase;
 use App\Models\CommissionRule;
 use App\Models\SaleItem;
+use App\Models\SoldPackageSession;
 use App\Services\Commercial\Profitability\SaleAllocationService;
 use App\Support\Money\Decimal;
 use App\Support\Money\Money;
@@ -36,6 +37,33 @@ final class CommissionCalculator
             // profissional. A base continua a real (negativa) para a tela explicar o zero.
             'commission_amount' => $this->commissionAmountFor($item, $rule, $baseAmount)->max(Money::zero())->toFloat(),
         ];
+    }
+
+    /**
+     * Comissão da sessão de pacote consumida (PLANO 2.7): a base é o VALOR DA SESSÃO no pacote,
+     * nunca o preço avulso do serviço. `gross` e `net_of_discount` são o próprio valor (o desconto
+     * do pacote já está nele); `net_of_card_fee` desconta a parte da sessão na taxa da linha do
+     * pacote; `margin` desconta o custo do serviço na baixa. Sem regra, o percentual congelado na
+     * linha do pacote (o que valia sobre o pacote inteiro).
+     *
+     * @return array{base_amount: float, commission_amount: float}
+     */
+    public function calculateForSession(SoldPackageSession $session, ?CommissionRule $rule, Money $cardFeeShare, ?string $fallbackPercent): array
+    {
+        $amount = Money::of($session->amount);
+        $baseAmount = match ($rule?->calculation_base ?? CommissionCalculationBase::GROSS) {
+            CommissionCalculationBase::GROSS, CommissionCalculationBase::NET_OF_DISCOUNT => $amount,
+            CommissionCalculationBase::NET_OF_CARD_FEE => $amount->minus($cardFeeShare),
+            CommissionCalculationBase::MARGIN => $amount->minus(Money::of($session->unit_cost ?? '0')),
+        };
+
+        $commission = match (true) {
+            $rule?->percent !== null => $baseAmount->percentage(Decimal::of($rule->percent)),
+            $rule?->fixed_amount !== null => Money::of($rule->fixed_amount),
+            default => $baseAmount->percentage(Decimal::of($fallbackPercent ?? '0')),
+        };
+
+        return ['base_amount' => $baseAmount->toFloat(), 'commission_amount' => $commission->max(Money::zero())->toFloat()];
     }
 
     private function baseAmountFor(SaleItem $item, CommissionCalculationBase $base): Money

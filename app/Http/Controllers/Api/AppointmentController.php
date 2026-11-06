@@ -12,10 +12,12 @@ use App\Http\Resources\AppointmentResource;
 use App\Models\Appointment;
 use App\Models\Invoice;
 use App\Models\Service;
+use App\Models\SoldPackage;
 use App\Services\Appointment\AppointmentServicesWriter;
 use App\Services\Appointment\AppointmentStatusTransitionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class AppointmentController extends Controller
 {
@@ -127,6 +129,11 @@ class AppointmentController extends Controller
 
         if ($services !== null) {
             $this->assertServicesEditable($appointment);
+        }
+
+        // PLANO 2.7: só pacote do mesmo cliente do agendamento.
+        if (($data['sold_package_id'] ?? null) !== null && SoldPackage::whereKey($data['sold_package_id'])->value('client_id') !== $appointment->client_id) {
+            throw ValidationException::withMessages(['sold_package_id' => 'Este pacote não é do cliente deste agendamento.']);
         }
 
         if (array_key_exists('status', $data)) {

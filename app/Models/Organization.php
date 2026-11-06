@@ -70,6 +70,9 @@ class Organization extends Model implements HasDepositSettings
         'card_surcharge_return_policy',
         // Precificação (PLANO 1.4): alíquota efetiva informada e taxa de referência do cartão.
         'effective_sales_tax_rate',
+        // PLANO 2.7: saldo de pacote vencido (crédito ao cliente | receita) e limiar de "À vencer".
+        'expired_package_policy',
+        'package_expiring_soon_days',
         'card_fee_reference_mode',
         // Crediário (PLANO 2.2): política de encargos de atraso.
         'credit_late_fee_percent',
@@ -99,6 +102,8 @@ class Organization extends Model implements HasDepositSettings
             'card_surcharge_on_invoice' => 'boolean',
             'card_surcharge_return_policy' => CardSurchargeReturnPolicy::class,
             'effective_sales_tax_rate' => 'decimal:4',
+            'expired_package_policy' => \App\Enums\ExpiredPackagePolicy::class,
+            'package_expiring_soon_days' => 'integer',
             'card_fee_reference_mode' => CardFeeReferenceMode::class,
             'credit_late_fee_percent' => 'decimal:2',
             'credit_monthly_interest_percent' => 'decimal:4',

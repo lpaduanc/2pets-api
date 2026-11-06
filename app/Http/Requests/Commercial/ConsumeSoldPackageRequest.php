@@ -27,6 +27,9 @@ class ConsumeSoldPackageRequest extends FormRequest
             'appointment_id' => ['nullable', 'integer', 'exists:appointments,id'],
             'medical_record_id' => ['nullable', 'integer', 'exists:medical_records,id'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            // PLANO 2.7: quem executou a sessão (comissão pelo valor da sessão). Sem ele, o
+            // vendedor da linha do pacote. Membro da organização conferido no controller.
+            'staff_id' => ['nullable', 'integer', 'exists:organization_members,id'],
         ];
     }
 }

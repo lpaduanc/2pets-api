@@ -788,6 +788,11 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::apiResource('service-packages', ServicePackageController::class)->only(['index', 'show']);
         });
         Route::middleware('permission:service-packages.manage')->group(function (): void {
+            // PLANO 2.7: prévia do desconto e do valor de cada sessão ao montar o pacote (não grava).
+            Route::post('service-packages/preview', [ServicePackageController::class, 'preview']);
+            // PLANO 2.7: política do saldo de pacote vencido e limiar de "À vencer".
+            Route::get('package-settings', [\App\Http\Controllers\Api\Commercial\PackageSettingsController::class, 'show']);
+            Route::put('package-settings', [\App\Http\Controllers\Api\Commercial\PackageSettingsController::class, 'update']);
             Route::apiResource('service-packages', ServicePackageController::class)->only(['store', 'update', 'destroy']);
         });
 
@@ -796,6 +801,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         // `consume`: resgatar um pacote já vendido não é "gerenciar o catálogo de pacotes".
         Route::middleware('permission:service-packages.view')->group(function (): void {
             Route::post('sold-packages/{id}/consume', [SoldPackageController::class, 'consume']);
+            // PLANO 2.7: cada um confere a sua permissão no cargo da organização do pacote
+            // (`SalePermissionGate`): `packages.extend_validity` e `reports.profitability`.
+            Route::post('sold-packages/{id}/extend-validity', [SoldPackageController::class, 'extendValidity'])->whereNumber('id');
+            Route::get('sold-packages/{id}/profitability', [SoldPackageController::class, 'profitability'])->whereNumber('id');
             Route::get('sold-packages/{id}', [SoldPackageController::class, 'show']);
             Route::get('sold-packages', [SoldPackageController::class, 'index']);
             Route::get('pets/{id}/available-packages', [SoldPackageController::class, 'availableForPet']);
@@ -1082,6 +1091,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         // Clients
         Route::apiResource('clients', ProfessionalClientController::class);
         Route::get('clients/{id}/pets', [ProfessionalClientController::class, 'pets']);
+        // Cadastro de pet para cliente existente (recepção, pet shop e vet) — mesma checagem de
+        // carteira do GET acima, no controller.
+        Route::post('clients/{id}/pets', [ProfessionalClientController::class, 'storePet'])->whereNumber('id');
 
         // Portal do cliente — convite fora do fluxo de agendamento (docs/gap-simplesvet/
         // specs/19-portal-do-cliente-spec.md, Achado 1).

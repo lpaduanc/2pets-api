@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Enums\ExpiredPackagePolicy;
+use App\Enums\SoldPackageLifecycleStatus;
 use App\Enums\SoldPackageStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 /**
  * Instância vendida de um pacote de serviços — o crédito de sessões de UM pet. Contrato
@@ -31,6 +34,13 @@ class SoldPackage extends Model
         'status',
         'cancelled_at',
         'notes',
+        // PLANO 2.7
+        'package_price',
+        'list_price_total',
+        'expiration_resolution',
+        'expiration_resolved_at',
+        'expiration_amount',
+        'client_account_entry_id',
     ];
 
     /**
@@ -43,6 +53,11 @@ class SoldPackage extends Model
             'sold_at' => 'datetime',
             'expires_at' => 'date',
             'cancelled_at' => 'datetime',
+            'package_price' => 'decimal:2',
+            'list_price_total' => 'decimal:2',
+            'expiration_resolution' => ExpiredPackagePolicy::class,
+            'expiration_resolved_at' => 'datetime',
+            'expiration_amount' => 'decimal:2',
         ];
     }
 
@@ -79,6 +94,45 @@ class SoldPackage extends Model
     public function items(): HasMany
     {
         return $this->hasMany(SoldPackageItem::class);
+    }
+
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(SoldPackageSession::class)->orderBy('sold_package_item_id')->orderBy('sequence');
+    }
+
+    public function consumptions(): HasManyThrough
+    {
+        return $this->hasManyThrough(SoldPackageConsumption::class, SoldPackageItem::class);
+    }
+
+    public function validityExtensions(): HasMany
+    {
+        return $this->hasMany(SoldPackageValidityExtension::class)->orderBy('id');
+    }
+
+    /** Agendamentos marcados para sessões deste pacote (PLANO 2.7). */
+    public function appointments(): HasMany
+    {
+        return $this->hasMany(Appointment::class);
+    }
+
+    /**
+     * Status da tela (PLANO 2.7), derivado — ver a precedência em `SoldPackageLifecycleStatus`.
+     * Exige `items` carregado.
+     */
+    public function lifecycleStatus(int $expiringSoonDays = 30): SoldPackageLifecycleStatus
+    {
+        $effective = $this->effectiveStatus();
+
+        return match (true) {
+            $effective === SoldPackageStatus::CANCELLED => SoldPackageLifecycleStatus::CANCELLED,
+            $effective === SoldPackageStatus::CONSUMED => SoldPackageLifecycleStatus::COMPLETED,
+            $effective === SoldPackageStatus::EXPIRED => SoldPackageLifecycleStatus::EXPIRED,
+            $this->expires_at !== null && $this->expires_at->lte(today()->addDays($expiringSoonDays)) => SoldPackageLifecycleStatus::EXPIRING_SOON,
+            $this->items->sum('quantity_used') === 0 => SoldPackageLifecycleStatus::NEW,
+            default => SoldPackageLifecycleStatus::IN_USE,
+        };
     }
 
     /** Soma de saldo restante entre todos os serviços do pacote. */

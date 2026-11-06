@@ -92,6 +92,10 @@ class StoreAppointmentRequest extends FormRequest
             ],
             'services.*.quantity' => ['nullable', 'numeric', 'min:0.01'],
             'services.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            // PLANO 2.7: sessão de pacote agendada ("agendar sessão" do pacote) — pacote do
+            // mesmo cliente, não cancelado.
+            'sold_package_id' => ['nullable', 'integer', Rule::exists('sold_packages', 'id')
+                ->where('client_id', $this->input('client_id'))->where(fn ($q) => $q->where('status', '!=', 'cancelled'))],
         ];
     }
 

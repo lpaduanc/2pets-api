@@ -2,14 +2,20 @@
 
 namespace App\Services\Commercial;
 
+use App\Enums\SoldPackageSessionStatus;
 use App\Enums\SoldPackageStatus;
+use App\Models\OrganizationMember;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\ServicePackage;
 use App\Models\SoldPackage;
 use App\Models\SoldPackageConsumption;
 use App\Models\SoldPackageItem;
+use App\Models\SoldPackageSession;
 use App\Models\User;
+use App\Services\Commercial\Package\PackageSessionPricer;
+use App\Services\Commercial\Profitability\SaleAllocationService;
+use App\Support\Money\Money;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -24,6 +30,11 @@ use Illuminate\Validation\ValidationException;
  */
 final class SoldPackageService
 {
+    public function __construct(
+        private readonly PackageSessionPricer $pricer,
+        private readonly SaleAllocationService $allocation,
+    ) {}
+
     /**
      * Cria um `sold_package` (+ saldo por serviço) para cada item da venda cujo `sellable` é
      * um `ServicePackage`. Chamado uma vez por venda paga, no mesmo ponto onde o estoque baixa.
@@ -45,10 +56,14 @@ final class SoldPackageService
             ->where('sale_id', $sale->id)
             ->where('status', '!=', SoldPackageStatus::CANCELLED->value)
             ->get()
-            ->each(fn (SoldPackage $package) => $package->update([
-                'status' => SoldPackageStatus::CANCELLED,
-                'cancelled_at' => now(),
-            ]));
+            ->each(function (SoldPackage $package): void {
+                $package->update(['status' => SoldPackageStatus::CANCELLED, 'cancelled_at' => now()]);
+                // Sessão ainda não usada deixa de ser receita diferida (PLANO 2.7). A já usada fica
+                // `consumed` no histórico; venda cancelada sai da DRE gerencial inteira (devolveu
+                // tudo ao cliente), e a comissão dela é estornada com a venda (`CommissionReversal`).
+                $package->sessions()->where('status', SoldPackageSessionStatus::PENDING->value)
+                    ->update(['status' => SoldPackageSessionStatus::CANCELLED->value, 'resolved_at' => now()]);
+            });
     }
 
     /**
@@ -69,16 +84,18 @@ final class SoldPackageService
             $package->effectiveStatus()->label(),
         ));
 
+        $this->assertStaffBelongsToPackage($package, $attributes['staff_id'] ?? null);
+
         if ($quantity > $item->quantityRemaining()) {
             throw ValidationException::withMessages([
                 'quantity' => sprintf('Saldo insuficiente: restam %d sessão(ões).', $item->quantityRemaining()),
             ]);
         }
 
-        return DB::transaction(function () use ($item, $quantity, $attributes, $user): SoldPackageConsumption {
+        return DB::transaction(function () use ($package, $item, $quantity, $attributes, $user): SoldPackageConsumption {
             $item->registerConsumption($quantity);
 
-            return $item->consumptions()->create([
+            $consumption = $item->consumptions()->create([
                 'appointment_id' => $attributes['appointment_id'] ?? null,
                 'medical_record_id' => $attributes['medical_record_id'] ?? null,
                 'quantity' => $quantity,
@@ -86,7 +103,45 @@ final class SoldPackageService
                 'user_id' => $user->id,
                 'notes' => $attributes['notes'] ?? null,
             ]);
+
+            $this->recognizeSessions($package, $item, $consumption, $quantity, $attributes['staff_id'] ?? null);
+
+            return $consumption;
         });
+    }
+
+    private function assertStaffBelongsToPackage(SoldPackage $package, mixed $staffId): void
+    {
+        if ($staffId === null) {
+            return;
+        }
+
+        $belongs = $package->organization_id !== null && OrganizationMember::query()
+            ->whereKey((int) $staffId)->where('organization_id', $package->organization_id)->where('is_active', true)->exists();
+
+        if (! $belongs) {
+            throw ValidationException::withMessages(['staff_id' => 'Funcionário não pertence à equipe desta clínica.']);
+        }
+    }
+
+    /**
+     * Reconhece as próximas `$quantity` sessões, na ordem (a 1ª baixa leva a sessão de maior
+     * valor do rateio, como no golden). Grava quem executou — o informado, senão o vendedor da
+     * linha do pacote, que antes ganhava sobre o pacote inteiro — e o custo do serviço HOJE.
+     */
+    private function recognizeSessions(SoldPackage $package, SoldPackageItem $item, SoldPackageConsumption $consumption, int $quantity, ?int $staffId): void
+    {
+        $unitCost = $item->loadMissing('service')->service?->unitCost();
+        $package->loadMissing('saleItem');
+
+        $item->sessions()->where('status', SoldPackageSessionStatus::PENDING->value)->lockForUpdate()->limit($quantity)->get()
+            ->each(fn (SoldPackageSession $session) => $session->update([
+                'status' => SoldPackageSessionStatus::CONSUMED,
+                'sold_package_consumption_id' => $consumption->id,
+                'consumed_at' => $consumption->consumed_at,
+                'staff_id' => $staffId ?? $package->saleItem?->staff_id,
+                'unit_cost' => $unitCost,
+            ]));
     }
 
     /**
@@ -103,7 +158,7 @@ final class SoldPackageService
         // ao `with()`.
         return $sale->items()
             ->where('sellable_type', ServicePackage::class)
-            ->with('sellable.items')
+            ->with('sellable.items.service')
             ->get();
     }
 
@@ -119,7 +174,16 @@ final class SoldPackageService
         $catalog = $item->sellable;
         $soldAt = $sale->sold_at ?? now();
 
-        DB::transaction(function () use ($sale, $item, $catalog, $soldAt): void {
+        // Preço do pacote = o que a linha deixou de fato na venda (total menos a parte do desconto
+        // do cabeçalho); preço avulso = o dos serviços HOJE, congelado nas sessões (PLANO 2.7).
+        $packagePrice = ($this->allocation->netItemTotals($sale->loadMissing('items'))[$item->id] ?? Money::of($item->total))->toString();
+        $priced = $this->pricer->price($packagePrice, $catalog->items->map(fn ($catalogItem): array => [
+            'service_id' => $catalogItem->service_id,
+            'unit_price' => (string) ($catalogItem->service?->price ?? '0'),
+            'quantity' => $catalogItem->quantity,
+        ])->values()->all());
+
+        DB::transaction(function () use ($sale, $item, $catalog, $soldAt, $priced): void {
             $package = SoldPackage::create([
                 'organization_id' => $sale->organization_id,
                 'professional_id' => $sale->professional_id,
@@ -131,14 +195,20 @@ final class SoldPackageService
                 'sold_at' => $soldAt,
                 'expires_at' => $catalog->expiresAtFrom($soldAt),
                 'status' => SoldPackageStatus::ACTIVE,
+                'package_price' => $priced['package_price'],
+                'list_price_total' => $priced['list_total'],
             ]);
 
-            foreach ($catalog->items as $catalogItem) {
-                SoldPackageItem::create([
+            foreach ($catalog->items->values() as $index => $catalogItem) {
+                $soldItem = SoldPackageItem::create([
                     'sold_package_id' => $package->id,
                     'service_id' => $catalogItem->service_id,
                     'quantity_total' => $catalogItem->quantity,
                 ]);
+
+                foreach ($priced['items'][$index]['sessions'] as $sequence => $amount) {
+                    $soldItem->sessions()->create(['sold_package_id' => $package->id, 'sequence' => $sequence + 1, 'amount' => $amount]);
+                }
             }
         });
     }

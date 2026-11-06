@@ -7,6 +7,7 @@ use App\Enums\SaleStatus;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\ServicePackage;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\Profitability\SaleProfitabilityService;
@@ -41,6 +42,8 @@ final class ManagerialSalesTotals
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->join('sale_item_profitability', 'sale_item_profitability.sale_item_id', '=', 'sale_items.id')
             ->whereIn('sale_items.sale_id', $this->paidSales($user, $from, $to)->select('sales.id'))
+            // Pacote é receita diferida (PLANO 2.7): entra sessão a sessão em `ManagerialPackageRevenue`.
+            ->where('sale_items.sellable_type', '!=', ServicePackage::class)
             ->groupByRaw(self::MONTH)
             ->selectRaw(self::MONTH.' AS month,
                 COALESCE(SUM(sale_items.quantity * sale_items.unit_price), 0) AS gross_revenue,
