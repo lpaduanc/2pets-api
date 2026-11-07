@@ -30,8 +30,8 @@ class FinancialOverviewController extends Controller
             'to' => ['nullable', 'date', 'after_or_equal:from'],
         ]);
 
-        $from = $request->filled('from') ? CarbonImmutable::parse($request->input('from')) : CarbonImmutable::now()->startOfMonth();
-        $to = $request->filled('to') ? CarbonImmutable::parse($request->input('to')) : CarbonImmutable::now()->endOfMonth();
+        $from = $request->filled('from') ? CarbonImmutable::parse($request->input('from')) : \App\Support\BusinessClock::today()->startOfMonth();
+        $to = $request->filled('to') ? CarbonImmutable::parse($request->input('to')) : \App\Support\BusinessClock::today()->endOfMonth();
 
         return response()->json(['data' => $this->overview->summary($request->user(), $from, $to)]);
     }

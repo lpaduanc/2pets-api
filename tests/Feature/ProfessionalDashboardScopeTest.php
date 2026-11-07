@@ -51,10 +51,12 @@ class ProfessionalDashboardScopeTest extends TestCase
         $client = User::factory()->tutor()->create();
 
         // Booked by the employee, under the employee's own user id — never the owner's.
+        // "Hoje" é a data de negócio (São Paulo): `now()->addHour()` em UTC cai no dia seguinte
+        // quando o teste roda depois das 21h de Brasília.
         Appointment::create([
             'professional_id' => $vet->id,
             'client_id' => $client->id,
-            'appointment_date' => now()->addHour(),
+            'appointment_date' => \App\Support\BusinessClock::today()->setTime(12, 0),
             'type' => 'consultation',
             'status' => 'scheduled',
         ]);

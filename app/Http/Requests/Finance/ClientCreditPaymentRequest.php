@@ -25,7 +25,7 @@ class ClientCreditPaymentRequest extends FormRequest
             'date' => ['nullable', 'date_format:Y-m-d'],
             'amount' => [$isPayment ? 'required' : 'nullable', 'numeric', 'decimal:0,2', 'gt:0', 'max:9999999.99'],
             'payment_method_id' => [$isPayment ? 'required' : 'nullable', 'integer'],
-            'paid_on' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'paid_on' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:'.\App\Support\BusinessClock::todayString()],
             'fee_discount' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
         ];
     }

@@ -52,8 +52,9 @@ class ManagerialIncomeStatementTest extends TestCase
         $lines = collect($data['lines'])->keyBy('key');
 
         $this->assertSame('managerial', $data['regime']);
+        // A 10ª linha é `variable_expenses` (despesas variáveis), vazia neste cenário.
         $this->assertSame(
-            ['260.00', '13.00', '0.00', '14.82', '232.18', '146.50', '85.68', '7.39', '17.10', '61.19', '0.00', '30.00', '31.19', '-5.00', '26.19'],
+            ['260.00', '13.00', '0.00', '14.82', '232.18', '146.50', '85.68', '7.39', '17.10', '0.00', '61.19', '0.00', '30.00', '31.19', '-5.00', '26.19'],
             $lines->pluck('total')->all(),
         );
         $this->assertSame(['products' => '140.00', 'services' => '6.50'], $lines['cost_of_sales']['breakdown']);

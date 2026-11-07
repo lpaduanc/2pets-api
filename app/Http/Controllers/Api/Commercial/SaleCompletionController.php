@@ -29,7 +29,7 @@ class SaleCompletionController extends Controller
         // Crediário (PLANO 2.2): parcelas e 1º vencimento; ausentes = fiado de um débito só.
         $data = $request->validate([
             'credit_installments' => ['nullable', 'integer', 'min:1', 'max:24'],
-            'first_due_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today', 'required_with:credit_installments'],
+            'first_due_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:'.\App\Support\BusinessClock::todayString(), 'required_with:credit_installments'],
         ]);
 
         return (new SaleResource($this->completion->complete($sale, $request->user(), $data['credit_installments'] ?? null, $data['first_due_date'] ?? null)))

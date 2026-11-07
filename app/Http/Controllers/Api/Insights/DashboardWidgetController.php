@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Insights\StoreDashboardWidgetRequest;
 use App\Models\DashboardWidget;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Insights\Widgets\DashboardWidgetRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,8 +17,15 @@ use Illuminate\Http\Request;
  */
 class DashboardWidgetController extends Controller
 {
-    public function __construct(private readonly CommercialScopeResolver $scope) {}
+    public function __construct(
+        private readonly CommercialScopeResolver $scope,
+        private readonly DashboardWidgetRegistry $registry,
+    ) {}
 
+    /**
+     * PLANO 3.6: cada widget diz se é de provider (`kind = provider`) e se o usuário ainda pode
+     * vê-lo (`available`) — cargo mudou, o widget salvo fica, mas o front não pede o dado.
+     */
     public function index(Request $request): JsonResponse
     {
         $widgets = DashboardWidget::query()
@@ -25,12 +33,27 @@ class DashboardWidgetController extends Controller
             ->orderBy('position')
             ->get();
 
-        return response()->json(['data' => $widgets]);
+        return response()->json(['data' => $widgets->map(function (DashboardWidget $widget) use ($request): array {
+            $provider = $this->registry->find($widget->indicator_key);
+
+            return $widget->toArray() + [
+                'kind' => $provider === null ? 'insight' : 'provider',
+                'available' => $provider === null || $this->registry->allows($request->user(), $provider),
+            ];
+        })->values()]);
     }
 
     public function store(StoreDashboardWidgetRequest $request): JsonResponse
     {
-        $widget = DashboardWidget::create($request->validated() + [
+        $provider = $this->registry->find($request->string('indicator_key')->toString());
+        $data = $request->validated();
+
+        if ($provider !== null) {
+            abort_unless($this->registry->allows($request->user(), $provider), 403, 'Você não tem permissão para este widget.');
+            $data['config'] = $this->registry->resolveParams($provider, $data['config'] ?? []);
+        }
+
+        $widget = DashboardWidget::create($data + [
             'user_id' => $request->user()->id,
             'organization_id' => $this->scope->primaryOrganizationId($request->user()),
         ]);

@@ -63,6 +63,7 @@ final class ManagerialPackageRevenue
             ManagerialSalesDimension::COST_CENTER => isset($centers[$session->soldPackageItem->service_id]) ? (string) $centers[$session->soldPackageItem->service_id] : null,
             ManagerialSalesDimension::ITEM_TYPE => ManagerialSalesDimension::SERVICES,
             ManagerialSalesDimension::STAFF => $session->staff_id === null ? null : (string) $session->staff_id,
+            ManagerialSalesDimension::TYPE_AND_GROUP => ManagerialSalesDimension::SERVICES.':'.($session->soldPackageItem->service?->product_group_id ?? ''),
         };
 
         foreach ($packages as $package) {

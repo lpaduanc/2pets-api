@@ -75,7 +75,7 @@ final class ProfessionalOperationalAlertsService
      */
     private function fetchOverdueAndUpcomingInvoices(array $professionalIds): array
     {
-        $today = now()->toDateString();
+        $today = \App\Support\BusinessClock::todayString();
 
         $row = Invoice::whereIn('professional_id', $professionalIds)
             ->where('status', 'pending')

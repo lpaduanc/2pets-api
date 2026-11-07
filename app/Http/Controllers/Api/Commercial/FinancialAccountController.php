@@ -93,7 +93,7 @@ class FinancialAccountController extends Controller
         return response()->json(['data' => [
             'account_id' => $account->id,
             'balance' => $this->balances->balance($account, $at),
-            'at' => $at?->toDateString() ?? now()->toDateString(),
+            'at' => $at?->toDateString() ?? \App\Support\BusinessClock::todayString(),
         ]]);
     }
 

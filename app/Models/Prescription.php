@@ -152,7 +152,7 @@ class Prescription extends Model
     {
         return $query->where(function (Builder $scoped): void {
             $scoped->whereNull('valid_until')
-                ->orWhere('valid_until', '>=', today());
+                ->orWhere('valid_until', '>=', \App\Support\BusinessClock::today());
         });
     }
 
@@ -165,6 +165,6 @@ class Prescription extends Model
     public function scopeExpired(Builder $query): Builder
     {
         return $query->whereNotNull('valid_until')
-            ->where('valid_until', '<', today());
+            ->where('valid_until', '<', \App\Support\BusinessClock::today());
     }
 }

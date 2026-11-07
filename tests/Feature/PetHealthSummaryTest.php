@@ -18,6 +18,8 @@ use Tests\TestCase;
 class PetHealthSummaryTest extends TestCase
 {
     use RefreshDatabase;
+    // Datas montadas com now()/today() (UTC) contra a data de negócio (São Paulo): relógio fixo ao meio-dia.
+    use \Tests\Concerns\FreezesBusinessDay;
 
     /** pets + constrained eager load of vaccinations + of dewormings. Nothing else. */
     private const EXPECTED_QUERY_COUNT = 3;

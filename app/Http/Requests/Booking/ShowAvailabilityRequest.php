@@ -29,7 +29,7 @@ class ShowAvailabilityRequest extends FormRequest
             'professional_id' => ['nullable', 'integer', 'exists:users,id'],
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'location_id' => ['nullable', 'integer', 'exists:locations,id'],
-            'date' => ['required', 'date', 'after_or_equal:today'],
+            'date' => ['required', 'date', 'after_or_equal:'.\App\Support\BusinessClock::todayString()],
             'service_id' => ['nullable', 'integer', 'exists:services,id'],
         ];
     }

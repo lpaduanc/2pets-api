@@ -200,9 +200,9 @@ final class FinancialOverviewService
             ->when($status === 'paid', fn (Builder $q) => $q->where('status', InvoiceStatus::PAID->value))
             ->when($status === 'cancelled', fn (Builder $q) => $q->where('status', InvoiceStatus::CANCELLED->value))
             ->when($status === 'pending', fn (Builder $q) => $q->where('status', InvoiceStatus::PENDING->value)
-                ->where(fn (Builder $due) => $due->whereNull('due_date')->orWhereDate('due_date', '>=', now()->toDateString())))
+                ->where(fn (Builder $due) => $due->whereNull('due_date')->orWhereDate('due_date', '>=', \App\Support\BusinessClock::todayString())))
             ->when($status === 'overdue', fn (Builder $q) => $q->where('status', InvoiceStatus::PENDING->value)
-                ->whereDate('due_date', '<', now()->toDateString()))
+                ->whereDate('due_date', '<', \App\Support\BusinessClock::todayString()))
             ->when($filters['from'] ?? null, fn (Builder $q, CarbonImmutable $from) => $q->whereDate('issue_date', '>=', $from->toDateString()))
             ->when($filters['to'] ?? null, fn (Builder $q, CarbonImmutable $to) => $q->whereDate('issue_date', '<=', $to->toDateString()))
             ->when($filters['search'] ?? null, fn (Builder $q, string $term) => $q->where(fn (Builder $inner) => $inner

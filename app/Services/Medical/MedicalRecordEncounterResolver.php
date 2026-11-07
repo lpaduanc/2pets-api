@@ -78,7 +78,7 @@ final class MedicalRecordEncounterResolver
                 'pet_id' => $appointment->pet_id,
                 'professional_id' => $professional->id,
                 'appointment_id' => $appointment->id,
-                'record_date' => now()->toDateString(),
+                'record_date' => \App\Support\BusinessClock::todayString(),
                 'status' => MedicalRecordStatus::DRAFT->value,
             ]);
     }

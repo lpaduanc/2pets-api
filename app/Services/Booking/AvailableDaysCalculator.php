@@ -162,7 +162,7 @@ final class AvailableDaysCalculator
     private function datesInMonth(Carbon $month): Collection
     {
         $start = $month->copy()->startOfMonth();
-        $today = Carbon::today();
+        $today = Carbon::parse(\App\Support\BusinessClock::todayString());
         $firstRelevant = $start->lessThan($today) ? $today->copy() : $start->copy();
         $end = $month->copy()->endOfMonth();
 

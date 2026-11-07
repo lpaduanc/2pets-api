@@ -288,7 +288,7 @@ class PetController extends Controller
                 'name' => $m['name'],
                 'dosage' => $m['dosage'] ?? '',
                 'frequency' => $m['frequency'] ?? '',
-                'start_date' => now()->toDateString(),
+                'start_date' => \App\Support\BusinessClock::todayString(),
                 'active' => true,
             ]);
         }

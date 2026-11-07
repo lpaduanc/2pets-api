@@ -172,7 +172,7 @@ final class QuoteService
                 'quote_status' => QuoteStatus::SENT,
                 'sent_at' => now(),
                 'viewed_at' => null,
-                'valid_until' => $quote->valid_until ?? today()->addDays(self::DEFAULT_VALIDITY_DAYS),
+                'valid_until' => $quote->valid_until ?? \App\Support\BusinessClock::today()->addDays(self::DEFAULT_VALIDITY_DAYS),
             ])->save();
 
             $token = $this->tokens->issue($quote);

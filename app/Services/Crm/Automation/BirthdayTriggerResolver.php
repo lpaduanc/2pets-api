@@ -28,7 +28,7 @@ final class BirthdayTriggerResolver implements MessageAutomationTriggerResolver
 
     public function resolve(MessageAutomation $automation): Collection
     {
-        $targetDate = today()->copy()->subDays($automation->offset_days);
+        $targetDate = \App\Support\BusinessClock::today()->subDays($automation->offset_days);
         $isPet = $automation->trigger === MessageAutomationTrigger::BIRTHDAY_PET;
 
         $panel = $this->birthdayService->inPeriod($automation->professional, new BirthdayFilters(

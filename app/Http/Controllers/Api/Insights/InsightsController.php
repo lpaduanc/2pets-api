@@ -57,7 +57,7 @@ class InsightsController extends Controller
     public function export(InsightDrillDownRequest $request, InsightIndicator $indicator): StreamedResponse
     {
         $csv = $this->export->toCsv($request->user(), $request->toInsightQuery($this->authorization), $request->bucket());
-        $filename = "{$indicator->value}-".now()->format('Y-m-d').'.csv';
+        $filename = "{$indicator->value}-".\App\Support\BusinessClock::todayString().'.csv';
 
         return response()->streamDownload(
             function () use ($csv): void {

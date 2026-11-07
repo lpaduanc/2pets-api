@@ -80,7 +80,7 @@ final class ClientCreditService
     {
         $discount = Money::of($data['fee_discount'] ?? '0');
         abort_if($discount->isPositive() && ! $this->permissions->allowsAcrossScope($user, self::FEE_DISCOUNT_PERMISSION), 403, 'Você não tem permissão para dar desconto nos encargos do crediário.');
-        $date = CarbonImmutable::parse($data['paid_on'] ?? now())->toDateString();
+        $date = CarbonImmutable::parse($data['paid_on'] ?? \App\Support\BusinessClock::todayString())->toDateString();
 
         return DB::transaction(function () use ($user, $clientId, $data, $discount, $date): ClientCreditPayment {
             $installments = $this->installments($user, $clientId, onlyOpen: true, lock: true);

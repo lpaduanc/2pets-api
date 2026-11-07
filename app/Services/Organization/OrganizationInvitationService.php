@@ -129,7 +129,7 @@ final class OrganizationInvitationService
             ['organization_id' => $invitation->organization_id, 'user_id' => $user->id],
             [
                 'role' => $invitation->role,
-                'hire_date' => now()->toDateString(),
+                'hire_date' => \App\Support\BusinessClock::todayString(),
                 'termination_date' => null,
                 'is_active' => true,
             ]

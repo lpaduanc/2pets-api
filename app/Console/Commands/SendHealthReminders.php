@@ -41,7 +41,7 @@ class SendHealthReminders extends Command
     {
         $upcomingVaccinations = Vaccination::whereNotNull('next_dose_date')
             ->where('next_dose_date', '>=', now())
-            ->where('next_dose_date', '<=', now()->addDays(30))
+            ->where('next_dose_date', '<=', \App\Support\BusinessClock::today()->addDays(30))
             ->whereDoesntHave('reminders', function ($query) {
                 $query->where('type', 'vaccination')
                     ->whereIn('status', ['pending', 'sent']);
@@ -63,7 +63,7 @@ class SendHealthReminders extends Command
     {
         // Vaccines expiring in 7 days
         $upcoming = Vaccination::whereNotNull('next_dose_date')
-            ->whereDate('next_dose_date', now()->addDays(7)->toDateString())
+            ->whereDate('next_dose_date', \App\Support\BusinessClock::today()->addDays(7)->toDateString())
             ->with(['pet.user'])
             ->get();
 
@@ -82,7 +82,7 @@ class SendHealthReminders extends Command
 
         // Vaccines overdue (today)
         $overdue = Vaccination::whereNotNull('next_dose_date')
-            ->whereDate('next_dose_date', now()->toDateString())
+            ->whereDate('next_dose_date', \App\Support\BusinessClock::todayString())
             ->with(['pet.user'])
             ->get();
 
@@ -101,7 +101,7 @@ class SendHealthReminders extends Command
     private function sendDewormingNotifications(): void
     {
         $upcoming = PetDeworming::whereNotNull('next_date')
-            ->whereDate('next_date', now()->addDays(7)->toDateString())
+            ->whereDate('next_date', \App\Support\BusinessClock::today()->addDays(7)->toDateString())
             ->with(['pet.user'])
             ->get();
 

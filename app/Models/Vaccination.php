@@ -86,7 +86,7 @@ class Vaccination extends Model
 
     public function scopeUpcoming($query)
     {
-        return $query->where('next_dose_date', '>=', today())
+        return $query->where('next_dose_date', '>=', \App\Support\BusinessClock::today())
             ->whereNotNull('next_dose_date');
     }
 

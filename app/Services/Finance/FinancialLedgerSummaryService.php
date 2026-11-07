@@ -43,7 +43,7 @@ final class FinancialLedgerSummaryService
             'open' => $this->totals($base()->openOrPartial()),
             'paid' => $this->totals($base()->where('status', FinancialEntryStatus::PAID->value)),
             'overdue' => $this->totals($this->overdueQuery($user, $nature)),
-            'due' => $this->totals($base()->openOrPartial()->whereDate('due_date', '>=', now()->toDateString())),
+            'due' => $this->totals($base()->openOrPartial()->whereDate('due_date', '>=', \App\Support\BusinessClock::todayString())),
         ];
     }
 
@@ -56,8 +56,8 @@ final class FinancialLedgerSummaryService
 
         return $this->baseQuery($user, $nature)
             ->with(['category', 'account', 'supplier', 'paymentMethod'])
-            ->when($status === 'overdue', fn (Builder $q) => $q->openOrPartial()->whereDate('due_date', '<', now()->toDateString()))
-            ->when($status === 'due', fn (Builder $q) => $q->openOrPartial()->whereDate('due_date', '>=', now()->toDateString()))
+            ->when($status === 'overdue', fn (Builder $q) => $q->openOrPartial()->whereDate('due_date', '<', \App\Support\BusinessClock::todayString()))
+            ->when($status === 'due', fn (Builder $q) => $q->openOrPartial()->whereDate('due_date', '>=', \App\Support\BusinessClock::todayString()))
             ->when($status !== null && ! in_array($status, ['overdue', 'due'], true), fn (Builder $q) => $q->where('status', $status))
             ->when($filters['from'] ?? null, fn (Builder $q, $from) => $q->whereDate('due_date', '>=', $from))
             ->when($filters['to'] ?? null, fn (Builder $q, $to) => $q->whereDate('due_date', '<=', $to))
@@ -79,7 +79,7 @@ final class FinancialLedgerSummaryService
     {
         return $this->baseQuery($user, $nature)
             ->openOrPartial()
-            ->whereDate('due_date', '<', now()->toDateString());
+            ->whereDate('due_date', '<', \App\Support\BusinessClock::todayString());
     }
 
     private function baseQuery(User $user, FinancialNature $nature): Builder

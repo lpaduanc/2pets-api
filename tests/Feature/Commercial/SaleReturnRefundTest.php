@@ -25,6 +25,8 @@ class SaleReturnRefundTest extends TestCase
 {
     use BuildsCounterFixtures;
     use RefreshDatabase;
+    // Datas montadas com now()/today() (UTC) contra a data de negócio (São Paulo): relógio fixo ao meio-dia.
+    use \Tests\Concerns\FreezesBusinessDay;
 
     private int $saleId;
 

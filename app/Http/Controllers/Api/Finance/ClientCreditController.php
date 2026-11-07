@@ -30,7 +30,7 @@ class ClientCreditController extends Controller
     public function installments(Request $request, int $clientId): JsonResponse
     {
         $this->authorizeFor($request->user(), $clientId);
-        $today = now()->startOfDay();
+        $today = \App\Support\BusinessClock::today();
 
         return response()->json(['data' => $this->credit->installments($request->user(), $clientId)->map(fn (ClientCreditInstallment $installment): array => [
             'id' => $installment->id,
@@ -52,7 +52,7 @@ class ClientCreditController extends Controller
     {
         $this->authorizeFor($request->user(), $clientId);
 
-        return response()->json(['data' => $this->credit->quote($request->user(), $clientId, $request->input('date') ?? now()->toDateString())]);
+        return response()->json(['data' => $this->credit->quote($request->user(), $clientId, $request->input('date') ?? \App\Support\BusinessClock::todayString())]);
     }
 
     public function pay(ClientCreditPaymentRequest $request, int $clientId): JsonResponse

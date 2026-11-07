@@ -7,7 +7,6 @@ use App\Http\Resources\Commercial\CommissionSettlementResource;
 use App\Models\CommissionSettlement;
 use App\Models\User;
 use App\Services\Commercial\CommissionSettlementService;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -49,7 +48,7 @@ class CommissionController extends Controller
     private function openEstimate(User $user, Collection $staffIds): float
     {
         $total = $staffIds->sum(
-            fn (int $staffId): float => $this->settlements->openSummary($user, $staffId, CarbonImmutable::now())->sum('commission_amount')
+            fn (int $staffId): float => $this->settlements->openSummary($user, $staffId, \App\Support\BusinessClock::today())->sum('commission_amount')
         );
 
         return round($total, 2);

@@ -88,6 +88,14 @@ return [
     'timezone' => 'UTC',
 
     /*
+    | Fuso da DATA DE NEGÓCIO ("que dia é hoje" para vencimento, validade, dias úteis, janelas
+    | de relatório). Timestamps continuam gravados e lidos em `timezone` (UTC); só a decisão
+    | de calendário passa por `App\Support\BusinessClock`. Organização ainda não tem fuso
+    | próprio — quando tiver, entra no BusinessClock.
+    */
+    'business_timezone' => env('APP_BUSINESS_TIMEZONE', 'America/Sao_Paulo'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------

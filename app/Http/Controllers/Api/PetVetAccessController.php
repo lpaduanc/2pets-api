@@ -315,7 +315,7 @@ class PetVetAccessController extends Controller
         $upcomingVaccines = Vaccination::query()
             ->whereIn('pet_id', $petIds)
             ->whereNotNull('next_dose_date')
-            ->where('next_dose_date', '>=', today())
+            ->where('next_dose_date', '>=', \App\Support\BusinessClock::today())
             ->orderBy('next_dose_date')
             ->get(['pet_id', 'vaccine_name', 'next_dose_date'])
             ->groupBy('pet_id');
@@ -323,7 +323,7 @@ class PetVetAccessController extends Controller
         $upcomingDewormings = PetDeworming::query()
             ->whereIn('pet_id', $petIds)
             ->whereNotNull('next_date')
-            ->where('next_date', '>=', today())
+            ->where('next_date', '>=', \App\Support\BusinessClock::today())
             ->orderBy('next_date')
             ->get(['pet_id', 'product_name', 'next_date'])
             ->groupBy('pet_id');

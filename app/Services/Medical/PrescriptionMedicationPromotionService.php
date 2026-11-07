@@ -22,7 +22,7 @@ final class PrescriptionMedicationPromotionService
             'name' => $item->displayName(),
             'dosage' => $this->dosageSummary($item),
             'frequency' => $item->frequencyLabel(),
-            'start_date' => $prescription->issued_at?->toDateString() ?? now()->toDateString(),
+            'start_date' => $prescription->issued_at?->toDateString() ?? \App\Support\BusinessClock::todayString(),
             'end_date' => null,
             'prescribed_by' => $prescription->professional_id,
             'notes' => $item->instructions_for_tutor,

@@ -1271,6 +1271,11 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::get('me/productivity', [\App\Http\Controllers\Api\Insights\ProductivityController::class, 'me'])
             ->middleware('permission:bi.view.own|bi.view.any');
 
+        // PLANO 3.6: catálogo e dados dos widgets com provider (cada um confere a própria permissão).
+        Route::get('dashboard-widgets/catalog', [\App\Http\Controllers\Api\Insights\DashboardWidgetDataController::class, 'catalog'])
+            ->middleware('permission:bi.view.own|bi.view.any');
+        Route::get('dashboard-widgets/data/{key}', [\App\Http\Controllers\Api\Insights\DashboardWidgetDataController::class, 'show'])
+            ->middleware('permission:bi.view.own|bi.view.any');
         Route::apiResource('dashboard-widgets', \App\Http\Controllers\Api\Insights\DashboardWidgetController::class)
             ->only(['index', 'store', 'destroy'])
             ->parameters(['dashboard-widgets' => 'id'])

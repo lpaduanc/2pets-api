@@ -95,6 +95,11 @@ final class ManagerialSalesTotals
             ManagerialSalesDimension::COST_CENTER => $this->costCenters->saleItemExpression(),
             ManagerialSalesDimension::ITEM_TYPE => ['CASE WHEN sale_items.sellable_type = ? THEN ? ELSE ? END', [Product::class, ManagerialSalesDimension::PRODUCTS, ManagerialSalesDimension::SERVICES]],
             ManagerialSalesDimension::STAFF => ['sale_items.staff_id', []],
+            ManagerialSalesDimension::TYPE_AND_GROUP => [
+                "CASE WHEN sale_items.sellable_type = ? THEN 'products:' || COALESCE((SELECT p.product_group_id::text FROM products p WHERE p.id = sale_items.sellable_id), '') "
+                ."ELSE 'services:' || COALESCE((SELECT s.product_group_id::text FROM services s WHERE s.id = sale_items.sellable_id), '') END",
+                [Product::class],
+            ],
         };
     }
 

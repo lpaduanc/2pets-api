@@ -83,7 +83,7 @@ final class ImmunizationAdherenceService
     {
         $type = $filters->type;
         $dueDate = $type === 'deworming' ? $record->next_date : $record->next_dose_date;
-        $level = $dueDate === null ? 'applied' : HealthEventLevel::fromDaysUntil((int) today()->diffInDays($dueDate, false))->value;
+        $level = $dueDate === null ? 'applied' : HealthEventLevel::fromDaysUntil((int) \App\Support\BusinessClock::today()->diffInDays($dueDate, false))->value;
 
         return [
             'pet_id' => $record->pet_id,

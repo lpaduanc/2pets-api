@@ -49,7 +49,7 @@ class RequestVetAccessRequest extends FormRequest
             'pet_data.name' => ['required_with:pet_data', 'string', 'max:255'],
             'pet_data.species' => ['required_with:pet_data', Rule::enum(PetSpecies::class)],
             'pet_data.breed' => ['nullable', 'string', 'max:255'],
-            'pet_data.birth_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'pet_data.birth_date' => ['nullable', 'date', 'before_or_equal:'.\App\Support\BusinessClock::todayString()],
             'pet_data.gender' => ['required_with:pet_data', Rule::in(self::PET_GENDERS)],
 
             // Indicação de necessidade do vet. Quem concede o nível é o tutor, no aceite —

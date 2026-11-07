@@ -115,7 +115,7 @@ class BookingController extends Controller
     public function reschedule(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'appointment_date' => 'required|date|after_or_equal:today',
+            'appointment_date' => 'required|date|after_or_equal:'.\App\Support\BusinessClock::todayString(),
         ]);
 
         try {
@@ -142,7 +142,7 @@ class BookingController extends Controller
             'professional_id' => 'required|exists:users,id',
             'service_id' => 'nullable|exists:services,id',
             'pet_id' => 'nullable|exists:pets,id',
-            'preferred_date' => 'required|date|after_or_equal:today',
+            'preferred_date' => 'required|date|after_or_equal:'.\App\Support\BusinessClock::todayString(),
             'preferred_time' => 'nullable|date_format:H:i',
             'notes' => 'nullable|string|max:500',
         ]);

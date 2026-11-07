@@ -46,6 +46,11 @@ class StoreFinancialCategoryRequest extends FormRequest
     public function withValidator(\Illuminate\Validation\Validator $validator): void
     {
         $validator->after(function (\Illuminate\Validation\Validator $validator): void {
+            // Despesa variável só faz sentido em categoria de despesa (reduz a margem).
+            if ($this->input('dre_treatment') === DreTreatment::VARIABLE_EXPENSE->value && $this->natureForTreatment() !== FinancialNature::EXPENSE->value) {
+                $validator->errors()->add('dre_treatment', 'Despesa variável só vale para categoria de despesa.');
+            }
+
             $lines = $this->input('default_allocation');
 
             if (! is_array($lines) || $lines === [] || $validator->errors()->isNotEmpty()) {
@@ -60,5 +65,12 @@ class StoreFinancialCategoryRequest extends FormRequest
                 }
             }
         });
+    }
+
+    private function natureForTreatment(): ?string
+    {
+        $nature = $this->input('nature') ?? \App\Models\FinancialCategory::query()->whereKey($this->route('id'))->value('nature');
+
+        return $nature instanceof FinancialNature ? $nature->value : $nature;
     }
 }

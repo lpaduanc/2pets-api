@@ -212,7 +212,7 @@ final class OrganizationBackfillService
             'organization_id' => $organization->id,
             'user_id' => $user->id,
             'role' => OrganizationMember::ROLE_OWNER,
-            'hire_date' => $user->created_at?->toDateString() ?? now()->toDateString(),
+            'hire_date' => $user->created_at?->toDateString() ?? \App\Support\BusinessClock::todayString(),
             'is_active' => true,
         ]);
     }

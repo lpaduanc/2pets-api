@@ -41,7 +41,7 @@ class PriceListController extends Controller
             $request->filled('product_group_id') ? $request->integer('product_group_id') : null,
         );
 
-        $filename = 'lista-de-precos-'.now()->format('Y-m-d').'.csv';
+        $filename = 'lista-de-precos-'.\App\Support\BusinessClock::todayString().'.csv';
 
         return response()->streamDownload(
             function () use ($csv): void {

@@ -27,7 +27,7 @@ final class ProfessionalCatalogCountsService
     private const EXPIRY_WARNING_DAYS = 30;
 
     /**
-     * @return array{totalRecords: ?int, activeServices: int, lowStockItems: int, expiringSoonItems: int}
+     * @return array{totalRecords: ?int, activeServices: int, totalProducts: int, lowStockItems: int, expiringSoonItems: int}
      */
     public function collect(ProfessionalDashboardScope $scope): array
     {
@@ -39,6 +39,8 @@ final class ProfessionalCatalogCountsService
             // diferente de `0` ("aplica e está zerado").
             'totalRecords' => $scope->isClinical ? $this->countMedicalRecords($scope->professionalIds) : null,
             'activeServices' => $this->countActiveServices($scope->professionalIds),
+            // Produtos ativos do mesmo escopo (equipe) do `lowStockItems`.
+            'totalProducts' => $this->countActiveProducts($scope->professionalIds),
             'lowStockItems' => $inventoryCounters['low_stock'],
             'expiringSoonItems' => $inventoryCounters['expiring_soon'],
         ];
@@ -60,6 +62,14 @@ final class ProfessionalCatalogCountsService
         return Service::whereIn('professional_id', $professionalIds)
             ->where('active', true)
             ->count();
+    }
+
+    /**
+     * @param  list<int>  $professionalIds
+     */
+    private function countActiveProducts(array $professionalIds): int
+    {
+        return Product::whereIn('professional_id', $professionalIds)->where('is_active', true)->count();
     }
 
     /**

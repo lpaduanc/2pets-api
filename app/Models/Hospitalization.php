@@ -165,7 +165,7 @@ class Hospitalization extends Model
      */
     private function stayWindowDates(): Collection
     {
-        $lastDay = $this->discharge_date ?? Carbon::today();
+        $lastDay = $this->discharge_date ?? \Illuminate\Support\Carbon::parse(\App\Support\BusinessClock::todayString());
 
         return collect(CarbonPeriod::create($this->admission_date, $lastDay))
             ->map(fn (Carbon $date): string => $date->toDateString());

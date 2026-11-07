@@ -136,7 +136,7 @@ final class AppointmentInvoiceService
     {
         $totals = $this->totalsCalculator->recalculate($items, 0.0, 0.0);
         $appointment->loadMissing('pet', 'professional');
-        $issueDate = Carbon::today();
+        $issueDate = Carbon::parse(\App\Support\BusinessClock::todayString());
 
         try {
             return Invoice::create([

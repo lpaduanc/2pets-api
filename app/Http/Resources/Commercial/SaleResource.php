@@ -86,11 +86,34 @@ class SaleResource extends JsonResource
         ];
     }
 
-    /** @return array{id: int, installments_count: int, client_id: int, status: string}|null */
+    /**
+     * `installments` (número, vencimento, valor, situação na data de negócio): o recibo do PDV e
+     * quem não vê o extrato do cliente mostram as parcelas sem outra chamada. Só quando a relação
+     * veio carregada (`Sale::RESOURCE_RELATIONS` traz `creditPlan.installments`) — sem N+1.
+     *
+     * @return array<string, mixed>|null
+     */
     private function creditPlanSummary(): ?array
     {
         $plan = $this->creditPlan;
 
-        return $plan === null ? null : ['id' => $plan->id, 'installments_count' => (int) $plan->installments_count, 'client_id' => $plan->client_id, 'status' => $plan->status];
+        if ($plan === null) {
+            return null;
+        }
+
+        $today = \App\Support\BusinessClock::today();
+
+        return [
+            'id' => $plan->id,
+            'installments_count' => (int) $plan->installments_count,
+            'client_id' => $plan->client_id,
+            'status' => $plan->status,
+            'installments' => $plan->relationLoaded('installments') ? $plan->installments->map(fn ($installment): array => [
+                'number' => $installment->number,
+                'due_date' => $installment->due_date->toDateString(),
+                'amount' => (string) $installment->amount,
+                'status' => $installment->displayStatus($today),
+            ])->values()->all() : null,
+        ];
     }
 }

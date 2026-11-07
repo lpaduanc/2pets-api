@@ -70,7 +70,11 @@ class ClientCreditTest extends TestCase
     public function test_sale_resource_tells_the_front_the_sale_is_on_credit(): void
     {
         $planId = ClientCreditPlan::sole()->id;
-        $expected = ['id' => $planId, 'installments_count' => 2, 'client_id' => $this->tutor->id, 'status' => 'active'];
+        // `installments` para o recibo do PDV mostrar as parcelas sem outra chamada.
+        $expected = ['id' => $planId, 'installments_count' => 2, 'client_id' => $this->tutor->id, 'status' => 'active', 'installments' => [
+            ['number' => 1, 'due_date' => '2026-10-31', 'amount' => '150.00', 'status' => 'upcoming'],
+            ['number' => 2, 'due_date' => '2026-11-30', 'amount' => '150.00', 'status' => 'upcoming'],
+        ]];
 
         $this->actingAs($this->receptionist, 'sanctum')->getJson("/api/professional/sales/{$this->saleId}")->assertOk()
             ->assertJsonPath('data.has_credit_plan', true)
@@ -78,7 +82,12 @@ class ClientCreditTest extends TestCase
 
         // Na listagem também, sem consulta por venda (o plano vem no eager load).
         $other = $this->actingAs($this->receptionist, 'sanctum')->postJson('/api/professional/sales', ['kind' => 'sale'])->json('data.id');
+        \Illuminate\Support\Facades\DB::enableQueryLog();
         $list = collect($this->getJson('/api/professional/sales')->assertOk()->json('data'))->keyBy('id');
+        $installmentQueries = collect(\Illuminate\Support\Facades\DB::getQueryLog())->filter(fn (array $q): bool => str_contains($q['query'], 'client_credit_installments'))->count();
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+        $this->assertLessThanOrEqual(1, $installmentQueries, 'Parcelas do crediário carregadas por venda (N+1).');
+        $this->assertSame($expected['installments'], $list[$this->saleId]['credit_plan']['installments']);
         $this->assertSame([true, false, null], [$list[$this->saleId]['has_credit_plan'], $list[$other]['has_credit_plan'], $list[$other]['credit_plan']]);
 
         $this->actingAs($this->owner, 'sanctum')->postJson("/api/professional/sales/{$this->saleId}/cancel", ['reason' => 'Desistiu'])->assertOk()

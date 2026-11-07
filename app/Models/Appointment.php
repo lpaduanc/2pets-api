@@ -199,7 +199,7 @@ class Appointment extends Model
      */
     public function scopeToday($query)
     {
-        $today = today();
+        $today = \App\Support\BusinessClock::today();
 
         return $query->where('appointment_date', '>=', $today)
             ->where('appointment_date', '<', $today->copy()->addDay());
@@ -207,7 +207,7 @@ class Appointment extends Model
 
     public function scopeUpcoming($query)
     {
-        return $query->where('appointment_date', '>=', today())
+        return $query->where('appointment_date', '>=', \App\Support\BusinessClock::today())
             ->whereIn('status', ['scheduled', 'confirmed', 'pending']);
     }
 

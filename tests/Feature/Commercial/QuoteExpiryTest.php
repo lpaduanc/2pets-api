@@ -16,6 +16,8 @@ class QuoteExpiryTest extends TestCase
 {
     use BuildsQuoteFixtures;
     use RefreshDatabase;
+    // Datas montadas com now()/today() (UTC) contra a data de negócio (São Paulo): relógio fixo ao meio-dia.
+    use \Tests\Concerns\FreezesBusinessDay;
 
     protected function setUp(): void
     {

@@ -39,7 +39,7 @@ final class SoldPackageExpirationService
             ->whereNull('expiration_resolved_at')
             ->where('status', '!=', SoldPackageStatus::CANCELLED->value)
             ->whereNotNull('expires_at')
-            ->whereDate('expires_at', '<', ($today ?? CarbonImmutable::today())->toDateString())
+            ->whereDate('expires_at', '<', ($today ?? \App\Support\BusinessClock::today())->toDateString())
             ->whereHas('sessions', fn (Builder $q) => $q->where('status', SoldPackageSessionStatus::PENDING->value))
             ->whereHas('sale', fn (Builder $q) => $q->where('status', SaleStatus::PAID->value));
     }

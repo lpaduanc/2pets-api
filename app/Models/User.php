@@ -269,6 +269,38 @@ class User extends Authenticatable implements HasMedia
         return $this->hasAnyRole(self::VET_ROLES);
     }
 
+    /**
+     * Quem pode cadastrar "paciente novo" pelo agendamento (`POST appointments/new-patient`),
+     * pela taxonomia de `docs/taxonomia-professional-type.md`:
+     *  - veterinário (papéis `VET_ROLES`);
+     *  - pet shop e banho e tosa: profissional cujo tipo (`users.user_type` /
+     *    `professionals.professional_type`) é `petshop` ou `grooming`; membro ativo de
+     *    organização do tipo `petshop` ou
+     *    `grooming` (qualquer cargo, inclusive recepção); ou quem tem o cargo `groomer` em
+     *    qualquer organização (o tosador da clínica).
+     * Fica de fora: recepção, assistente e técnico de clínica/laboratório, adestramento e
+     * creche/hotel (`training`/`pet_hotel`) — não pedidos; entram aqui se o produto decidir.
+     * Os papéis Spatie `petshop_owner`/`petshop_staff` NÃO servem de critério: a reconciliação
+     * dá `petshop_staff` à recepção de clínica e `petshop_owner` ao dono de hotel/adestramento.
+     */
+    public const NEW_PATIENT_BUSINESS_TYPES = ['petshop', 'grooming'];
+
+    public function canRegisterNewPatient(): bool
+    {
+        if ($this->isVeterinarian() || in_array($this->user_type, self::NEW_PATIENT_BUSINESS_TYPES, true)) {
+            return true;
+        }
+
+        if (Professional::query()->where('user_id', $this->id)->whereIn('professional_type', self::NEW_PATIENT_BUSINESS_TYPES)->exists()) {
+            return true;
+        }
+
+        return $this->activeOrganizationMemberships()
+            ->where(fn ($q) => $q->where('role', \App\Enums\OrganizationRole::GROOMER->value)
+                ->orWhereHas('organization', fn ($org) => $org->whereIn('organization_type', self::NEW_PATIENT_BUSINESS_TYPES)))
+            ->exists();
+    }
+
     // ------------------------------------------------------------------
     // Desativação voluntária de conta (não confundir com `is_suspended`, punitiva, nem
     // com `deleted_at`, que só existe após anonimização LGPD)

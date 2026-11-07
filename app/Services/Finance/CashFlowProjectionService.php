@@ -30,7 +30,7 @@ final class CashFlowProjectionService
      */
     public function project(User $user, int $months = 12): array
     {
-        $today = CarbonImmutable::today();
+        $today = \App\Support\BusinessClock::today();
         $openingBalance = $this->currentBalance($user);
         $openEntries = $this->openEntries($user, $today, $months);
 

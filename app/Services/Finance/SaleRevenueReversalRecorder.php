@@ -82,7 +82,7 @@ final class SaleRevenueReversalRecorder
 
     private function storeReversal(Sale $sale, FinancialEntry $template, Money $active, User $user, string $referenceType, string $label): void
     {
-        $today = now()->toDateString();
+        $today = \App\Support\BusinessClock::todayString();
         $negated = $active->negated()->toString();
 
         FinancialEntry::create([

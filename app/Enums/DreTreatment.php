@@ -14,12 +14,15 @@ namespace App\Enums;
  *  - `commission_payout`: a comissão já vem do item;
  *  - `tax`: o imposto sobre vendas já vem do snapshot (alíquota efetiva);
  *  - `ignore`: fora da gerencial (ex.: a receita de venda lançada pelo PDV).
- * `operating` entra como despesa (ou outra receita) operacional; `financial`, no resultado
- * financeiro.
+ * `operating` entra como despesa (ou outra receita) operacional — custo FIXO, base do ponto de
+ * equilíbrio; `variable_expense` (só despesa) é custo que acompanha o volume (sacola,
+ * combustível do leva e traz, produto de limpeza por banho): sai da margem de contribuição e não
+ * infla o ponto de equilíbrio; `financial`, no resultado financeiro.
  */
 enum DreTreatment: string
 {
     case OPERATING = 'operating';
+    case VARIABLE_EXPENSE = 'variable_expense';
     case INVENTORY_PURCHASE = 'inventory_purchase';
     case CARD_FEE = 'card_fee';
     case COMMISSION_PAYOUT = 'commission_payout';
@@ -52,6 +55,7 @@ enum DreTreatment: string
     {
         return match ($this) {
             self::OPERATING => 'Operacional',
+            self::VARIABLE_EXPENSE => 'Despesa variável (reduz a margem)',
             self::INVENTORY_PURCHASE => 'Compra de mercadoria (vira CMV)',
             self::CARD_FEE => 'Taxa de cartão (já calculada)',
             self::COMMISSION_PAYOUT => 'Pagamento de comissão (já calculada)',
@@ -61,10 +65,10 @@ enum DreTreatment: string
         };
     }
 
-    /** Entra na gerencial? (`operating` e `financial`). */
+    /** Entra na gerencial? (`operating`, `variable_expense` e `financial`). */
     public function countsInManagerial(): bool
     {
-        return $this === self::OPERATING || $this === self::FINANCIAL;
+        return in_array($this, [self::OPERATING, self::VARIABLE_EXPENSE, self::FINANCIAL], true);
     }
 
     /** Padrão de uma categoria do sistema pelo nome; qualquer outra nasce `operating`. */

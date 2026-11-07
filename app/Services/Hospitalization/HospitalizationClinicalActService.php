@@ -111,7 +111,7 @@ final class HospitalizationClinicalActService
             'professional_id' => $professional->id,
             'appointment_id' => $appointment->id,
             'act_category' => $category->value,
-            'record_date' => $data['record_date'] ?? now()->toDateString(),
+            'record_date' => $data['record_date'] ?? \App\Support\BusinessClock::todayString(),
             'status' => MedicalRecordStatus::DRAFT->value,
             // `chief_complaint` NÃO serve aqui: é um slug de um CHECK fechado
             // (`ValidChiefComplaint`/`medical_records_chief_complaint_check`, ex.:

@@ -59,7 +59,7 @@ class UpdatePetRequest extends FormRequest
             'species' => ['sometimes', 'required', 'in:dog,cat,bird,reptile,rodent,fish,other'],
             'breed' => ['nullable', 'string', 'max:255'],
             'breed_id' => ['nullable', 'integer', 'exists:breeds,id'],
-            'birth_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'birth_date' => ['nullable', 'date', 'before_or_equal:'.\App\Support\BusinessClock::todayString()],
             'gender' => ['sometimes', 'required', 'in:male,female,unknown'],
 
             'weight' => ['nullable', 'numeric', 'min:0', 'max:200'],

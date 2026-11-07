@@ -125,7 +125,7 @@ class FinancialEntry extends Model
     {
         return $this->status !== FinancialEntryStatus::PAID
             && $this->status !== FinancialEntryStatus::CANCELLED
-            && $this->due_date->isBefore(now()->startOfDay());
+            && $this->due_date->isBefore(\App\Support\BusinessClock::today());
     }
 
     /** @param  Builder<self>  $query */

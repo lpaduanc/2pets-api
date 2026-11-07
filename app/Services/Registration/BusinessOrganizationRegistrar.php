@@ -98,7 +98,7 @@ final class BusinessOrganizationRegistrar
                 'role' => OrganizationMember::ROLE_OWNER,
             ],
             [
-                'hire_date' => $representative->created_at?->toDateString() ?? now()->toDateString(),
+                'hire_date' => $representative->created_at?->toDateString() ?? \App\Support\BusinessClock::todayString(),
                 'is_active' => true,
             ]
         );
@@ -180,7 +180,7 @@ final class BusinessOrganizationRegistrar
                 'role' => OrganizationMember::ROLE_VETERINARIAN,
             ],
             [
-                'hire_date' => $representative->created_at?->toDateString() ?? now()->toDateString(),
+                'hire_date' => $representative->created_at?->toDateString() ?? \App\Support\BusinessClock::todayString(),
                 'is_active' => true,
             ]
         );

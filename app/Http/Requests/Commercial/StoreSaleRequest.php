@@ -45,7 +45,7 @@ class StoreSaleRequest extends FormRequest
             'pet_id' => ['nullable', 'integer', 'exists:pets,id'],
             'printed_notes' => ['nullable', 'string', 'max:2000'],
             'notes' => ['nullable', 'string', 'max:2000'],
-            'valid_until' => ['nullable', 'date', 'after_or_equal:today'],
+            'valid_until' => ['nullable', 'date', 'after_or_equal:'.\App\Support\BusinessClock::todayString()],
         ];
     }
 

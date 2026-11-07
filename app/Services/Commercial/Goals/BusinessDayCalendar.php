@@ -26,7 +26,7 @@ final class BusinessDayCalendar
     /** @return array{total: int, elapsed: int, remaining: int} */
     public function forMonth(?Organization $organization, string $month, ?CarbonImmutable $today = null): array
     {
-        $today = ($today ?? CarbonImmutable::today())->startOfDay();
+        $today = ($today ?? \App\Support\BusinessClock::today())->startOfDay();
         $first = CarbonImmutable::parse($month.'-01')->startOfDay();
         $workingDays = $this->workingDays($organization);
         $holidays = Holiday::query()->visibleTo($organization?->id)->where('active', true)->get(['date', 'recurring_annually']);

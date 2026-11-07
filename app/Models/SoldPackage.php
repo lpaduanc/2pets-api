@@ -129,7 +129,7 @@ class SoldPackage extends Model
             $effective === SoldPackageStatus::CANCELLED => SoldPackageLifecycleStatus::CANCELLED,
             $effective === SoldPackageStatus::CONSUMED => SoldPackageLifecycleStatus::COMPLETED,
             $effective === SoldPackageStatus::EXPIRED => SoldPackageLifecycleStatus::EXPIRED,
-            $this->expires_at !== null && $this->expires_at->lte(today()->addDays($expiringSoonDays)) => SoldPackageLifecycleStatus::EXPIRING_SOON,
+            $this->expires_at !== null && $this->expires_at->lte(\App\Support\BusinessClock::today()->addDays($expiringSoonDays)) => SoldPackageLifecycleStatus::EXPIRING_SOON,
             $this->items->sum('quantity_used') === 0 => SoldPackageLifecycleStatus::NEW,
             default => SoldPackageLifecycleStatus::IN_USE,
         };
@@ -143,7 +143,7 @@ class SoldPackage extends Model
 
     public function isPastValidity(): bool
     {
-        return $this->expires_at !== null && $this->expires_at->lt(today());
+        return $this->expires_at !== null && $this->expires_at->lt(\App\Support\BusinessClock::today());
     }
 
     /**
@@ -193,13 +193,13 @@ class SoldPackage extends Model
                 ->where("{$table}.status", '!=', SoldPackageStatus::CANCELLED->value)
                 ->where($hasBalance)
                 ->whereNotNull("{$table}.expires_at")
-                ->whereDate("{$table}.expires_at", '<', today()),
+                ->whereDate("{$table}.expires_at", '<', \App\Support\BusinessClock::today()),
             SoldPackageStatus::ACTIVE => $query
                 ->where("{$table}.status", '!=', SoldPackageStatus::CANCELLED->value)
                 ->where($hasBalance)
                 ->where(fn (Builder $q) => $q
                     ->whereNull("{$table}.expires_at")
-                    ->orWhereDate("{$table}.expires_at", '>=', today())),
+                    ->orWhereDate("{$table}.expires_at", '>=', \App\Support\BusinessClock::today())),
         };
     }
 

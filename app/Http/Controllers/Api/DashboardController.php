@@ -131,7 +131,7 @@ class DashboardController extends Controller
      */
     private function formatDueIn(\DateTimeInterface $dueDate): string
     {
-        $days = (int) now()->startOfDay()->diffInDays(\Carbon\Carbon::instance($dueDate)->startOfDay());
+        $days = (int) \App\Support\BusinessClock::today()->diffInDays(\Carbon\Carbon::instance($dueDate)->startOfDay());
 
         return match ($days) {
             0 => 'hoje',
@@ -149,7 +149,7 @@ class DashboardController extends Controller
         $upcomingVaccines = Vaccination::whereHas('pet', fn ($q) => $q->where('user_id', $userId))
             ->latestPerType()
             ->whereNotNull('next_dose_date')
-            ->whereBetween('next_dose_date', [now(), now()->addDays(7)])
+            ->whereBetween('next_dose_date', [\App\Support\BusinessClock::today(), \App\Support\BusinessClock::today()->addDays(7)->endOfDay()])
             ->with('pet:id,name')
             ->limit(5)
             ->get();
@@ -187,7 +187,7 @@ class DashboardController extends Controller
         // Upcoming dewormings
         $upcomingDewormings = PetDeworming::whereHas('pet', fn ($q) => $q->where('user_id', $userId))
             ->whereNotNull('next_date')
-            ->whereBetween('next_date', [now(), now()->addDays(7)])
+            ->whereBetween('next_date', [\App\Support\BusinessClock::today(), \App\Support\BusinessClock::today()->addDays(7)->endOfDay()])
             ->with('pet:id,name')
             ->limit(3)
             ->get();

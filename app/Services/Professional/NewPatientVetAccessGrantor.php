@@ -33,10 +33,19 @@ final class NewPatientVetAccessGrantor
         private readonly VetAccessRequestService $vetAccessRequestService,
     ) {}
 
-    public function grant(User $veterinarian, Pet $pet): void
+    /**
+     * Vínculo de cliente sempre; acesso CLÍNICO ao pet (`PetVetAccess`) só para veterinário.
+     * Pet shop / banho e tosa (paciente novo pela 2.7-fix e cadastro de pet pelo pro) ficam só
+     * com o vínculo: o tutor vira cliente dele (clientes, PDV, agenda) e o pet aparece em
+     * `GET clients/{id}/pets`, sem nenhum direito sobre prontuário.
+     */
+    public function grant(User $professional, Pet $pet): void
     {
-        $this->linkAsClient($veterinarian, $pet->user);
-        $this->grantPetAccess($veterinarian, $pet);
+        $this->linkAsClient($professional, $pet->user);
+
+        if ($professional->isVeterinarian()) {
+            $this->grantPetAccess($professional, $pet);
+        }
     }
 
     /**

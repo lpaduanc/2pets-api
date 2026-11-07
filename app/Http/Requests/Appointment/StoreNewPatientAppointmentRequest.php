@@ -21,6 +21,9 @@ use Illuminate\Validation\Rule;
  */
 class StoreNewPatientAppointmentRequest extends FormRequest
 {
+    /** @var list<string> */
+    public const NON_VET_TYPES = ['grooming', 'training', 'boarding', 'other', 'nutrition', 'behavioral'];
+
     /**
      * Achado de segurança (auditoria 2026-09-16): a rota só tinha `auth:sanctum` — qualquer
      * usuário autenticado (inclusive um tutor comum) conseguia se auto-conceder `PetVetAccess`
@@ -30,10 +33,10 @@ class StoreNewPatientAppointmentRequest extends FormRequest
      */
     public function authorize(): Response
     {
-        // Mensagem em pt-BR no 403 (o padrão do Laravel saía "This action is unauthorized.").
-        return $this->user()?->isVeterinarian()
+        // Veterinário, pet shop e banho e tosa (`User::canRegisterNewPatient`, a regra fica lá).
+        return $this->user()?->canRegisterNewPatient()
             ? Response::allow()
-            : Response::deny('Só veterinários podem cadastrar paciente novo pelo agendamento.');
+            : Response::deny('Seu perfil não pode cadastrar paciente novo pelo agendamento.');
     }
 
     /**
@@ -48,6 +51,8 @@ class StoreNewPatientAppointmentRequest extends FormRequest
             'tutor_cpf' => Cpf::stripMask($this->input('tutor_cpf')),
             'marketing_opt_in' => $this->boolean('marketing_opt_in'),
             'create_new_pet' => $this->boolean('create_new_pet'),
+            // Tipo de atendimento padrão: consulta para o veterinário, banho e tosa para os demais.
+            'type' => $this->input('type') ?? ($this->user()?->isVeterinarian() ? ServiceCategory::CONSULTATION->value : ServiceCategory::GROOMING->value),
         ]);
     }
 
@@ -63,11 +68,14 @@ class StoreNewPatientAppointmentRequest extends FormRequest
             'pet_name' => ['required', 'string', 'max:255'],
             'pet_species' => ['required', Rule::enum(PetSpecies::class)],
 
-            'appointment_date' => ['required', 'date', 'after_or_equal:today'],
+            'appointment_date' => ['required', 'date', 'after_or_equal:'.\App\Support\BusinessClock::todayString()],
             'appointment_time' => ['required', 'date_format:H:i'],
             'duration' => ['nullable', 'integer', 'min:15', 'max:480'],
             // Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md §3.
-            'type' => ['required', Rule::enum(ServiceCategory::class)],
+            // Quem não é veterinário só agenda atendimento não clínico (nenhum prontuário nasce):
+            // banho e tosa, adestramento, hospedagem, outro, e nutrição/comportamental (que só são
+            // ato clínico quando um veterinário executa, `ServiceCategory::isVeterinarianGated`).
+            'type' => ['required', Rule::enum(ServiceCategory::class), Rule::when(! $this->user()?->isVeterinarian(), [Rule::in(self::NON_VET_TYPES)])],
             // Item 14 (achado do frontend) — ver comentário equivalente em `StoreAppointmentRequest`.
             'appointment_type_id' => ['nullable', 'integer', new ScopedAppointmentTypeExists($this->user(), $scope)],
             'reason' => ['nullable', 'string', 'max:1000'],
@@ -90,7 +98,8 @@ class StoreNewPatientAppointmentRequest extends FormRequest
             'appointment_date.after_or_equal' => 'A data do agendamento deve ser hoje ou no futuro.',
             'appointment_time.required' => 'O horário é obrigatório.',
             'appointment_time.date_format' => 'O horário deve estar no formato HH:mm.',
-            'type.required' => 'O tipo de consulta é obrigatório.',
+            'type.required' => 'O tipo de atendimento é obrigatório.',
+            'type.in' => 'Seu perfil só agenda atendimento não clínico (banho e tosa, adestramento, hospedagem, nutrição, comportamento ou outro).',
             'existing_pet_id.exists' => 'Pet não encontrado.',
         ];
     }

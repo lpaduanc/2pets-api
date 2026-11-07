@@ -65,7 +65,7 @@ class StoreAppointmentRequest extends FormRequest
         return [
             'client_id' => ['required', 'exists:users,id'],
             'pet_id' => ['required', 'exists:pets,id'],
-            'appointment_date' => ['required', 'date', 'after_or_equal:today'],
+            'appointment_date' => ['required', 'date', 'after_or_equal:'.\App\Support\BusinessClock::todayString()],
             'appointment_time' => ['required', 'date_format:H:i'],
             'duration' => ['nullable', 'integer', 'min:15', 'max:480'],
             // Contrato docs/atendimento-veterinario/10-taxonomia-servico-tipo-atendimento.md

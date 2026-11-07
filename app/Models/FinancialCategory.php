@@ -23,6 +23,17 @@ class FinancialCategory extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * Espelha os defaults do banco: a categoria criada sem `kind` (o CRUD aceita) já responde no
+     * resource sem `refresh()` — antes dava 500 em `kind->value`.
+     */
+    protected $attributes = [
+        'kind' => 'entry',
+        'is_system' => false,
+        'sort_order' => 0,
+        'active' => true,
+    ];
+
     protected $fillable = [
         'organization_id',
         'professional_id',

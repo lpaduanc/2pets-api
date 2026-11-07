@@ -61,16 +61,17 @@ class ClientPetStoreTest extends TestCase
         $this->assertSame(0, Pet::where('name', 'Intruso')->count());
     }
 
-    public function test_new_patient_is_refused_in_portuguese_for_non_vets_and_the_user_payload_says_who_is_a_vet(): void
+    public function test_new_patient_is_refused_in_portuguese_for_a_clinic_receptionist_and_the_user_payload_says_who_is_a_vet(): void
     {
-        // O `receptionist` da fixture também é vet volante (papel global): aqui uma recepcionista pura.
+        // O `receptionist` da fixture também é vet volante (papel global) e a fixture é um pet shop
+        // (que pode): aqui uma recepcionista pura de CLÍNICA, que continua sem poder.
         $desk = User::factory()->create();
-        OrganizationMember::factory()->for($this->clinic, 'organization')->create(['user_id' => $desk->id, 'role' => OrganizationRole::RECEPTIONIST->value]);
+        OrganizationMember::factory()->for(Organization::factory()->create(), 'organization')->create(['user_id' => $desk->id, 'role' => OrganizationRole::RECEPTIONIST->value]);
 
-        $this->actingAs($desk, 'sanctum')->postJson('/api/professional/appointments/new-patient', [])
-            ->assertForbidden()->assertJsonPath('message', 'Só veterinários podem cadastrar paciente novo pelo agendamento.');
+        $this->actingAs($desk->fresh(), 'sanctum')->postJson('/api/professional/appointments/new-patient', [])
+            ->assertForbidden()->assertJsonPath('message', 'Seu perfil não pode cadastrar paciente novo pelo agendamento.');
 
-        $this->actingAs($desk->fresh(), 'sanctum')->getJson('/api/user')->assertOk()->assertJsonPath('data.is_veterinarian', false);
+        $this->actingAs($desk->fresh(), 'sanctum')->getJson('/api/user')->assertOk()->assertJsonPath('data.is_veterinarian', false)->assertJsonPath('data.can_register_new_patient', false);
         $this->actingAs($this->owner, 'sanctum')->getJson('/api/user')->assertOk()->assertJsonPath('data.is_veterinarian', true);
     }
 }

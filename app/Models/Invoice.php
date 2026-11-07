@@ -101,7 +101,7 @@ class Invoice extends Model
      */
     public function isOverdue(): bool
     {
-        return $this->isPending() && $this->due_date !== null && $this->due_date->lt(now()->startOfDay());
+        return $this->isPending() && $this->due_date !== null && $this->due_date->lt(\App\Support\BusinessClock::today());
     }
 
     /**

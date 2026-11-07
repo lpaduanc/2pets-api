@@ -82,7 +82,7 @@ final class LocationService
     {
         $totalAppointments = $location->appointments()->count();
         $todayAppointments = $location->appointments()
-            ->whereDate('date', today())
+            ->whereDate('date', \App\Support\BusinessClock::todayString())
             ->count();
 
         $revenue = $location->appointments()

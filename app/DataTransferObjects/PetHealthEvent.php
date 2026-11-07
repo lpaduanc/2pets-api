@@ -24,7 +24,7 @@ final readonly class PetHealthEvent
         public string $reference,
         public CarbonImmutable $dueDate,
     ) {
-        $this->daysUntil = (int) CarbonImmutable::today()->diffInDays($this->dueDate, false);
+        $this->daysUntil = (int) \App\Support\BusinessClock::today()->diffInDays($this->dueDate, false);
         $this->level = HealthEventLevel::fromDaysUntil($this->daysUntil);
     }
 

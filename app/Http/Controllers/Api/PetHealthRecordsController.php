@@ -252,7 +252,7 @@ class PetHealthRecordsController extends Controller
             ], 422);
         }
 
-        $endDate = $data['end_date'] ?? now()->toDateString();
+        $endDate = $data['end_date'] ?? \App\Support\BusinessClock::todayString();
 
         $medication->update([
             'active' => false,

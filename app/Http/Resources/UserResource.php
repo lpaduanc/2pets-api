@@ -66,6 +66,9 @@ class UserResource extends JsonResource
             // Exerce a veterinária (papéis `User::VET_ROLES`). O front esconde o que é só de
             // veterinário (ex.: "paciente novo" no agendamento, `appointments/new-patient`).
             'is_veterinarian' => $this->resource->isVeterinarian(),
+            // Pode cadastrar "paciente novo" pelo agendamento (veterinário, pet shop, banho e
+            // tosa — `User::canRegisterNewPatient`). É ESTE o campo que decide a aba no front.
+            'can_register_new_patient' => $this->resource->canRegisterNewPatient(),
 
             // Relationships (only when loaded)
             'professional' => new ProfessionalResource($this->whenLoaded('professional')),

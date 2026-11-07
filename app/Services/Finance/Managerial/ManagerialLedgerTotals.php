@@ -43,7 +43,7 @@ final class ManagerialLedgerTotals
             ->where('financial_entries.status', '!=', FinancialEntryStatus::CANCELLED->value)
             ->where(fn ($query) => $query->whereNull('financial_entries.reference_type')->orWhereNotIn('financial_entries.reference_type', self::SALE_REFERENCES))
             ->whereBetween('financial_entries.accrual_date', [$from->toDateString(), $to->toDateString()])
-            ->whereRaw("{$treatment} IN (?, ?)", [DreTreatment::OPERATING->value, DreTreatment::FINANCIAL->value]);
+            ->whereRaw("{$treatment} IN (?, ?, ?)", [DreTreatment::OPERATING->value, DreTreatment::VARIABLE_EXPENSE->value, DreTreatment::FINANCIAL->value]);
         $group = "to_char(financial_entries.accrual_date, 'YYYY-MM'), financial_entries.nature, {$treatment}";
         $select = "to_char(financial_entries.accrual_date, 'YYYY-MM') AS month, financial_entries.nature AS nature, {$treatment} AS treatment";
 
@@ -70,6 +70,11 @@ final class ManagerialLedgerTotals
     private static function lineFor(string $treatment, string $nature): string
     {
         $isRevenue = $nature === FinancialNature::REVENUE->value;
+
+        // PLANO 1.7 + pedido do usuário: despesa variável sai da MC, não das despesas fixas.
+        if ($treatment === DreTreatment::VARIABLE_EXPENSE->value) {
+            return $isRevenue ? 'operating_revenue' : 'variable_expenses';
+        }
 
         if ($treatment === DreTreatment::FINANCIAL->value) {
             return $isRevenue ? 'financial_revenue' : 'financial_expenses';

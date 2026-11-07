@@ -67,7 +67,7 @@ final class SaleCompletionService
             $this->clientAccounts->debitIfSaleWentUnpaid($sale, $user);
 
             if ($creditInstallments !== null) {
-                $this->creditPlans->createForSale($sale, $user, $creditInstallments, $firstDueDate ?? now()->addMonthNoOverflow()->toDateString());
+                $this->creditPlans->createForSale($sale, $user, $creditInstallments, $firstDueDate ?? \App\Support\BusinessClock::today()->addMonthNoOverflow()->toDateString());
             }
 
             return $sale->fresh(Sale::RESOURCE_RELATIONS);

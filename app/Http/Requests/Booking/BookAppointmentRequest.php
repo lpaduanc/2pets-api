@@ -29,7 +29,7 @@ class BookAppointmentRequest extends FormRequest
             'location_id' => ['nullable', 'integer', 'exists:locations,id'],
             'service_id' => ['required', 'integer', 'exists:services,id'],
             'pet_id' => ['nullable', 'integer', 'exists:pets,id'],
-            'appointment_date' => ['required', 'date', 'after_or_equal:today'],
+            'appointment_date' => ['required', 'date', 'after_or_equal:'.\App\Support\BusinessClock::todayString()],
             'notes' => ['nullable', 'string', 'max:1000'],
         ];
     }

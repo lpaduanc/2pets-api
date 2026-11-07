@@ -26,7 +26,7 @@ class SimulateAnticipationRequest extends FormRequest
         return [
             'receivable_ids' => ['required', 'array', 'min:1', 'max:500'],
             'receivable_ids.*' => ['integer', 'distinct'],
-            'anticipated_at' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'anticipated_at' => ['required', 'date_format:Y-m-d', 'after_or_equal:'.\App\Support\BusinessClock::todayString()],
             'mode' => ['required', Rule::enum(AnticipationMode::class)],
             'rate' => ['required', 'numeric', 'decimal:0,4', 'gt:0', 'max:'.self::MAX_RATE],
         ];

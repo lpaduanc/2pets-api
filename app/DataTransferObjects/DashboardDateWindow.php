@@ -26,11 +26,11 @@ final readonly class DashboardDateWindow
 
     public function __construct()
     {
-        $this->today = now()->startOfDay();
+        $this->today = \Illuminate\Support\Carbon::parse(\App\Support\BusinessClock::todayString());
         $this->tomorrow = $this->today->copy()->addDay();
         $this->yesterday = $this->today->copy()->subDay();
-        $this->thisMonth = now()->startOfMonth();
-        $this->lastMonth = now()->subMonthNoOverflow()->startOfMonth();
+        $this->thisMonth = $this->today->copy()->startOfMonth();
+        $this->lastMonth = $this->today->copy()->subMonthNoOverflow()->startOfMonth();
         $this->lastMonthEnd = $this->thisMonth->copy();
     }
 }

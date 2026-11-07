@@ -33,7 +33,7 @@ final class PetHealthSummaryService
 
     public function forTutor(User $tutor, int $windowDays): PetHealthSummaries
     {
-        $dueUntil = CarbonImmutable::today()->addDays($windowDays);
+        $dueUntil = \App\Support\BusinessClock::today()->addDays($windowDays);
 
         $summaries = $this->loadPetsWithDueRecords($tutor, $dueUntil)
             ->map(fn (Pet $pet) => new PetHealthSummary($pet, $this->eventsFor($pet)));

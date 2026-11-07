@@ -32,7 +32,7 @@ final class VaccineTriggerResolver implements MessageAutomationTriggerResolver
     public function resolve(MessageAutomation $automation): Collection
     {
         $petIds = $this->teamPetIds($automation);
-        $targetDate = today()->copy()->subDays($automation->offset_days);
+        $targetDate = \App\Support\BusinessClock::today()->subDays($automation->offset_days);
 
         return Vaccination::query()
             ->whereIn('pet_id', $petIds)

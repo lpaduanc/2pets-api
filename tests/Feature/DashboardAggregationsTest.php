@@ -30,6 +30,8 @@ use Tests\TestCase;
 class DashboardAggregationsTest extends TestCase
 {
     use RefreshDatabase;
+    // Datas montadas com now()/today() (UTC) contra a data de negócio (São Paulo): relógio fixo ao meio-dia.
+    use \Tests\Concerns\FreezesBusinessDay;
 
     public function test_admin_stats_aggregates_users_in_a_single_query_correctly(): void
     {

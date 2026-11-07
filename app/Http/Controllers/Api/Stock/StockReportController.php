@@ -81,8 +81,8 @@ class StockReportController extends Controller
     {
         $request->validate(['days' => ['nullable', 'integer', 'min:0', 'max:365']]);
         $days = $request->integer('days', 30);
-        $limit = now()->addDays($days)->endOfDay();
-        $today = now()->startOfDay();
+        $limit = \App\Support\BusinessClock::today()->addDays($days)->endOfDay();
+        $today = \App\Support\BusinessClock::today();
 
         $products = $this->scope->scopeQuery(Product::query(), $request->user())
             ->where('controls_stock', true)

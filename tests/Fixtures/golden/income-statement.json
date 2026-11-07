@@ -1,5 +1,5 @@
 {
-  "_doc": "Casos de referencia da DRE gerencial (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.7). Linhas por mes: receita liquida = bruto - (desconto da linha + do cabecalho rateado) - devolucoes - impostos; lucro bruto = receita liquida - CMV/CSP; MC = lucro bruto - taxas de cartao - comissoes; resultado operacional = MC + outras receitas operacionais - despesas operacionais; lucro liquido = resultado operacional + (receitas - despesas financeiras). Totais = soma dos meses. margin_percent = soma MC / soma receita de vendas antes do imposto (sales_revenue), 2 casas HALF_UP. Ponto de equilibrio = despesas operacionais x receita / MC, para CIMA no centavo; null com reason no_revenue ou non_positive_margin. input.sales e input.ledger sao as somas por mes que o back le do snapshot e do financeiro. Copia byte a byte em 2pets-pro/tests/fixtures/golden/income-statement.json.",
+  "_doc": "Casos de referencia da DRE gerencial (docs/gap-petflow/PLANO.md, secoes 0.3 e 1.7). Linhas por mes: receita liquida = bruto - (desconto da linha + do cabecalho rateado) - devolucoes - impostos; lucro bruto = receita liquida - CMV/CSP; MC = lucro bruto - taxas de cartao - comissoes; resultado operacional = MC + outras receitas operacionais - despesas operacionais; lucro liquido = resultado operacional + (receitas - despesas financeiras). Totais = soma dos meses. margin_percent = soma MC / soma receita de vendas antes do imposto (sales_revenue), 2 casas HALF_UP. Ponto de equilibrio = despesas operacionais x receita / MC, para CIMA no centavo; null com reason no_revenue ou non_positive_margin. input.sales e input.ledger sao as somas por mes que o back le do snapshot e do financeiro. Copia byte a byte em 2pets-pro/tests/fixtures/golden/income-statement.json. Linha `variable_expenses` (despesas variaveis, categoria `variable_expense`): reduz a MC e fica fora das despesas fixas do ponto de equilibrio; casos anteriores a ela nao a trazem no expected (vale zero).",
   "managerial": [
     {
       "id": "dre-gerencial-periodo",
@@ -530,6 +530,147 @@
           "basis": "operating_expenses",
           "fixed_expenses": "80.00",
           "reason": "no_revenue"
+        }
+      }
+    },
+    {
+      "id": "dre-gerencial-despesa-variavel",
+      "_conta": "Mesma venda do dre-gerencial-periodo, com 12,00 de sacolas numa categoria `variable_expense`: MC 61,19 - 12,00 = 49,19 (49,19 / 247,00 = 19,9149% -> 19,91%). Aluguel 30,00 continua fixo -> resultado operacional 19,19; juros 5,00 -> lucro liquido 14,19 (o MESMO de tratar as sacolas como fixas: 61,19 - 42,00 - 5,00). Ponto de equilibrio so com as fixas: 30,00 x 247,00 / 49,19 = 150,6403... -> 150,65 (para CIMA), menor que os 169,54 de tratar as sacolas como fixas (42,00 x 247,00 / 61,19 = 169,5375...).",
+      "input": {
+        "months": [
+          "2026-10"
+        ],
+        "sales": {
+          "2026-10": {
+            "gross_revenue": "260.00",
+            "line_discounts": "0.00",
+            "header_discounts": "13.00",
+            "returns": "0.00",
+            "taxes": "14.82",
+            "sales_revenue": "247.00",
+            "cost_products": "140.00",
+            "cost_services": "6.50",
+            "card_fees": "7.39",
+            "commissions": "17.10"
+          }
+        },
+        "ledger": {
+          "2026-10": {
+            "operating_expenses": "30.00",
+            "variable_expenses": "12.00",
+            "financial_expenses": "5.00"
+          }
+        }
+      },
+      "expected": {
+        "lines": {
+          "gross_revenue": {
+            "months": {
+              "2026-10": "260.00"
+            },
+            "total": "260.00"
+          },
+          "discounts": {
+            "months": {
+              "2026-10": "13.00"
+            },
+            "total": "13.00"
+          },
+          "returns": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "sales_taxes": {
+            "months": {
+              "2026-10": "14.82"
+            },
+            "total": "14.82"
+          },
+          "net_revenue": {
+            "months": {
+              "2026-10": "232.18"
+            },
+            "total": "232.18"
+          },
+          "cost_of_sales": {
+            "months": {
+              "2026-10": "146.50"
+            },
+            "total": "146.50"
+          },
+          "gross_profit": {
+            "months": {
+              "2026-10": "85.68"
+            },
+            "total": "85.68"
+          },
+          "card_fees": {
+            "months": {
+              "2026-10": "7.39"
+            },
+            "total": "7.39"
+          },
+          "commissions": {
+            "months": {
+              "2026-10": "17.10"
+            },
+            "total": "17.10"
+          },
+          "variable_expenses": {
+            "months": {
+              "2026-10": "12.00"
+            },
+            "total": "12.00"
+          },
+          "contribution_margin": {
+            "months": {
+              "2026-10": "49.19"
+            },
+            "total": "49.19"
+          },
+          "other_operating_revenue": {
+            "months": {
+              "2026-10": "0.00"
+            },
+            "total": "0.00"
+          },
+          "operating_expenses": {
+            "months": {
+              "2026-10": "30.00"
+            },
+            "total": "30.00"
+          },
+          "operating_result": {
+            "months": {
+              "2026-10": "19.19"
+            },
+            "total": "19.19"
+          },
+          "financial_result": {
+            "months": {
+              "2026-10": "-5.00"
+            },
+            "total": "-5.00"
+          },
+          "net_income": {
+            "months": {
+              "2026-10": "14.19"
+            },
+            "total": "14.19"
+          }
+        },
+        "cost_breakdown": {
+          "products": "140.00",
+          "services": "6.50"
+        },
+        "margin_percent": "19.91",
+        "break_even": {
+          "amount": "150.65",
+          "basis": "operating_expenses",
+          "fixed_expenses": "30.00",
+          "reason": null
         }
       }
     }

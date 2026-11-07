@@ -26,7 +26,7 @@ final class SoldPackageValidityService
         abort_if($package->expires_at === null, 422, 'Este pacote não tem validade (é ilimitado).');
         abort_if($package->expiration_resolved_at !== null, 422, 'O saldo deste pacote vencido já foi resolvido (crédito ao cliente ou receita); não dá mais para prorrogar.');
 
-        if (! $to->gt($package->expires_at) || $to->lt(CarbonImmutable::today())) {
+        if (! $to->gt($package->expires_at) || $to->lt(\App\Support\BusinessClock::today())) {
             throw ValidationException::withMessages(['expires_at' => 'Informe uma data posterior à validade atual e a partir de hoje.']);
         }
 

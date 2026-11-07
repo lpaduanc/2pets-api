@@ -25,7 +25,7 @@ final class PrescriptionDuplicationService
                 'professional_id' => $source->professional_id,
                 'appointment_id' => $source->appointment_id,
                 'medical_record_id' => $source->medical_record_id,
-                'prescription_date' => now()->toDateString(),
+                'prescription_date' => \App\Support\BusinessClock::todayString(),
                 'general_instructions' => $source->general_instructions,
                 'warnings' => $source->warnings,
                 'is_controlled' => $source->is_controlled,

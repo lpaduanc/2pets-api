@@ -28,7 +28,7 @@ final class DewormingDueTriggerResolver implements MessageAutomationTriggerResol
     public function resolve(MessageAutomation $automation): Collection
     {
         $petIds = $this->teamPetIds($automation);
-        $targetDate = today()->copy()->subDays($automation->offset_days);
+        $targetDate = \App\Support\BusinessClock::today()->subDays($automation->offset_days);
 
         return PetDeworming::query()
             ->whereIn('pet_id', $petIds)

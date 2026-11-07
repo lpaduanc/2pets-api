@@ -64,7 +64,7 @@ class StorePetRequest extends FormRequest
             'species' => ['required', 'in:dog,cat,bird,reptile,rodent,fish,other'],
             'breed' => ['nullable', 'string', 'max:255'],
             'breed_id' => ['nullable', 'integer', 'exists:breeds,id'],
-            'birth_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'birth_date' => ['nullable', 'date', 'before_or_equal:'.\App\Support\BusinessClock::todayString()],
             'gender' => ['required', 'in:male,female,unknown'],
 
             // Physical

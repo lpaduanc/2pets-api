@@ -29,7 +29,7 @@ class StoreQuoteRequest extends FormRequest
         return [
             'client_id' => ['nullable', 'integer', 'exists:users,id'],
             'pet_id' => ['nullable', 'integer', 'exists:pets,id'],
-            'valid_until' => ['nullable', 'date', 'after_or_equal:today'],
+            'valid_until' => ['nullable', 'date', 'after_or_equal:'.\App\Support\BusinessClock::todayString()],
             'printed_notes' => ['nullable', 'string', 'max:2000'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'medical_record_id' => ['nullable', 'integer', 'exists:medical_records,id', 'prohibits:hospitalization_id'],

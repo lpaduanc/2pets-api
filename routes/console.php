@@ -82,3 +82,14 @@ Schedule::command('sold-packages:resolve-expired')->dailyAt('03:10')
     ->withoutOverlapping()
     ->onOneServer()
     ->appendOutputTo(storage_path('logs/sold-packages-expired.log'));
+
+/**
+ * Foto diária do estoque valorizado (PLANO 3.6) às 23:55 de São Paulo — o widget "Custo
+ * estocado / Venda estocada" compara com a foto do último dia do mês anterior. Idempotente por
+ * dia (rodar de novo regrava a mesma foto).
+ */
+Schedule::command('stock:snapshot-valuation')->dailyAt('23:55')
+    ->timezone('America/Sao_Paulo')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/stock-valuation-snapshot.log'));

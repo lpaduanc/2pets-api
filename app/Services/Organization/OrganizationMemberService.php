@@ -50,7 +50,7 @@ final class OrganizationMemberService
 
         $member->update([
             'is_active' => false,
-            'termination_date' => now()->toDateString(),
+            'termination_date' => \App\Support\BusinessClock::todayString(),
         ]);
         $this->roleReconciler->reconcile($member->user);
 
@@ -79,7 +79,7 @@ final class OrganizationMemberService
 
         $member->update([
             'is_active' => $isActive,
-            'termination_date' => $isActive ? null : now()->toDateString(),
+            'termination_date' => $isActive ? null : \App\Support\BusinessClock::todayString(),
         ]);
         $this->roleReconciler->reconcile($member->user);
     }

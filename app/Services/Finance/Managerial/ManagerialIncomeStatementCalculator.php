@@ -34,6 +34,9 @@ final class ManagerialIncomeStatementCalculator
         'gross_profit' => ['Lucro bruto', 'result', 'computed', 'contribution_margin'],
         'card_fees' => ['Taxas de cartão', 'subtract', 'computed', 'card_fees'],
         'commissions' => ['Comissões', 'subtract', 'computed', 'commissions'],
+        // Lançamentos de categoria `variable_expense` (custo que acompanha o volume): reduzem a MC
+        // e ficam fora das despesas fixas do ponto de equilíbrio.
+        'variable_expenses' => ['Despesas variáveis', 'subtract', 'ledger', null],
         'contribution_margin' => ['Margem de contribuição', 'result', 'computed', 'contribution_margin'],
         'other_operating_revenue' => ['Outras receitas operacionais', 'add', 'ledger', null],
         'operating_expenses' => ['Despesas operacionais', 'subtract', 'ledger', null],
@@ -47,7 +50,7 @@ final class ManagerialIncomeStatementCalculator
     /**
      * @param  list<string>  $months
      * @param  array<string, array<string, string>>  $sales  por mês: gross_revenue, line_discounts, header_discounts, returns, taxes, sales_revenue, cost_products, cost_services, card_fees, commissions
-     * @param  array<string, array<string, string>>  $ledger  por mês: operating_revenue, operating_expenses, financial_revenue, financial_expenses
+     * @param  array<string, array<string, string>>  $ledger  por mês: operating_revenue, operating_expenses, variable_expenses, financial_revenue, financial_expenses
      * @return array{lines: array<string, array{months: array<string, string>, total: string}>, cost_breakdown: array{products: string, services: string}, margin_percent: string|null, break_even: array<string, mixed>}
      */
     public function calculate(array $months, array $sales, array $ledger): array
@@ -89,11 +92,12 @@ final class ManagerialIncomeStatementCalculator
             'commissions' => $value($sales, 'commissions'),
             'other_operating_revenue' => $value($ledger, 'operating_revenue'),
             'operating_expenses' => $value($ledger, 'operating_expenses'),
+            'variable_expenses' => $value($ledger, 'variable_expenses'),
             'financial_result' => $value($ledger, 'financial_revenue')->minus($value($ledger, 'financial_expenses')),
         ];
         $line['net_revenue'] = $line['gross_revenue']->minus($line['discounts'])->minus($line['returns'])->minus($line['sales_taxes']);
         $line['gross_profit'] = $line['net_revenue']->minus($line['cost_of_sales']);
-        $line['contribution_margin'] = $line['gross_profit']->minus($line['card_fees'])->minus($line['commissions']);
+        $line['contribution_margin'] = $line['gross_profit']->minus($line['card_fees'])->minus($line['commissions'])->minus($line['variable_expenses']);
         $line['operating_result'] = $line['contribution_margin']->plus($line['other_operating_revenue'])->minus($line['operating_expenses']);
         $line['net_income'] = $line['operating_result']->plus($line['financial_result']);
 

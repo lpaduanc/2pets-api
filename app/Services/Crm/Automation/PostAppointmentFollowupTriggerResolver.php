@@ -28,7 +28,7 @@ final class PostAppointmentFollowupTriggerResolver implements MessageAutomationT
     public function resolve(MessageAutomation $automation): Collection
     {
         $teamUserIds = $this->scopeResolver->teamUserIds($automation->professional);
-        $targetDate = today()->copy()->subDays($automation->offset_days);
+        $targetDate = \App\Support\BusinessClock::today()->subDays($automation->offset_days);
 
         return Appointment::query()
             ->whereIn('professional_id', $teamUserIds)

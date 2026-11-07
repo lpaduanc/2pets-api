@@ -34,6 +34,22 @@ final class ManagerialNetRevenue
         return array_map(fn (array $months): Money => Money::of($months[$month]['sales_revenue'] ?? '0'), $merged);
     }
 
+    /**
+     * Mesma receita líquida para um período qualquer (ex.: janela de 30 dias do widget de
+     * vendas por categoria, 3.6): soma dos meses que as fontes devolvem dentro de [from, to].
+     *
+     * @return array<string, Money>
+     */
+    public function forPeriod(User $user, CarbonImmutable $from, CarbonImmutable $to, ManagerialSalesDimension $dimension): array
+    {
+        $merged = ManagerialCostCenters::mergeCenters(
+            $this->sales->byDimensionAndMonth($user, $from, $to, $dimension),
+            $this->packages->byDimensionAndMonth($user, $from, $to, $dimension),
+        );
+
+        return array_map(fn (array $months): Money => Money::sum(array_map(fn (array $values): string => $values['sales_revenue'] ?? '0', $months)), $merged);
+    }
+
     public function totalForMonth(User $user, string $month): Money
     {
         return Money::sum($this->forMonth($user, $month, ManagerialSalesDimension::ITEM_TYPE));

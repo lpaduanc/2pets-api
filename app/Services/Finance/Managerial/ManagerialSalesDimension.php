@@ -12,6 +12,8 @@ enum ManagerialSalesDimension: string
     case COST_CENTER = 'cost_center';
     case ITEM_TYPE = 'item_type';
     case STAFF = 'staff';
+    /** `products:{grupo}` / `services:{grupo}` (grupo vazio = sem grupo) — vendas por categoria (3.6). */
+    case TYPE_AND_GROUP = 'type_and_group';
 
     public const PRODUCTS = 'products';
 

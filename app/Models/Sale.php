@@ -123,6 +123,8 @@ class Sale extends Model
         'fiscalDocuments',
         // Crediário (PLANO 2.2): o front esconde "Adicionar recebimento" em venda com plano.
         'creditPlan:id,sale_id,client_id,installments_count,status',
+        // O recibo "Venda concluída" mostra as parcelas sem uma segunda chamada.
+        'creditPlan.installments',
     ];
 
     public function organization(): BelongsTo
@@ -312,7 +314,7 @@ class Sale extends Model
     /** `valid_until` já passou? Sem validade definida, o orçamento não vence. */
     public function isPastValidity(): bool
     {
-        return $this->valid_until !== null && $this->valid_until->lt(today());
+        return $this->valid_until !== null && $this->valid_until->lt(\App\Support\BusinessClock::today());
     }
 
     /**
@@ -352,7 +354,7 @@ class Sale extends Model
                 ->where("{$table}.quote_status", QuoteStatus::EXPIRED->value)
                 ->orWhere(fn (Builder $vencido) => $vencido
                     ->whereIn("{$table}.quote_status", QuoteStatus::expirableValues())
-                    ->whereDate("{$table}.valid_until", '<', today())));
+                    ->whereDate("{$table}.valid_until", '<', \App\Support\BusinessClock::today())));
         }
 
         $query->where("{$table}.quote_status", $status->value);
@@ -360,7 +362,7 @@ class Sale extends Model
         if ($status->canExpire()) {
             $query->where(fn (Builder $q) => $q
                 ->whereNull("{$table}.valid_until")
-                ->orWhereDate("{$table}.valid_until", '>=', today()));
+                ->orWhereDate("{$table}.valid_until", '>=', \App\Support\BusinessClock::today()));
         }
 
         return $query;
