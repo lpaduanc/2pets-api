@@ -291,6 +291,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // Cadastrar metas de venda (PLANO 2.5). Ver o andamento exige `reports.dre.view`
             // (valores de venda). Gestão; concedível por exceção ao membro.
             'sales-goals.manage',
+            // Promoções do PDV (PLANO 3.2): mexe no preço de venda. Gestão; concedível por
+            // exceção ao membro.
+            'promotions.manage',
 
             // --- Importação de dados (item 26) ---
             'data.import',
@@ -426,6 +429,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'packages.extend_validity',
             // PLANO 2.5: metas de venda são de gestão.
             'sales-goals.manage',
+            // PLANO 3.2: promoções são de gestão.
+            'promotions.manage',
         ]);
 
         // 3. Clinic Owner
@@ -512,6 +517,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'packages.extend_validity',
             // PLANO 2.5: metas de venda são de gestão.
             'sales-goals.manage',
+            // PLANO 3.2: promoções são de gestão.
+            'promotions.manage',
         ]);
 
         // 4. Clinic Vet (employee)
@@ -625,6 +632,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'packages.extend_validity',
             // PLANO 2.5: metas de venda são de gestão.
             'sales-goals.manage',
+            // PLANO 3.2: promoções são de gestão.
+            'promotions.manage',
         ]);
 
         // 6. Petshop Staff

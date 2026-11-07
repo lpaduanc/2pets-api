@@ -32,6 +32,10 @@ class SaleItemResource extends JsonResource
             'decimal_places_allowed' => $this->whenLoaded('sellable', fn () => $this->sellable instanceof Product ? (int) $this->sellable->decimal_places_allowed : null),
             'unit_price' => $this->unit_price,
             'discount' => (float) $this->discount,
+            // PLANO 3.2: desconto de promoção, separado do manual.
+            'promotion_id' => $this->promotion_id,
+            'promotion_name' => $this->whenLoaded('promotion', fn () => $this->promotion?->name),
+            'promotion_discount' => (string) ($this->promotion_discount ?? '0.00'),
             'total' => (float) $this->total,
             'commission_percent' => $this->commission_percent === null ? null : (float) $this->commission_percent,
             'staff' => $this->whenLoaded('staff', fn () => $this->staff ? [

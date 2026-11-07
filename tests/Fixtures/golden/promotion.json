@@ -1,0 +1,75 @@
+{
+  "_doc": "Casos de referencia do motor de promocoes (docs/gap-petflow/PLANO.md, secoes 3.2 e 3). Ordem: maior priority primeiro; empate, maior desconto potencial; empate, menor id. Cada unidade em no maximo uma promocao nao cumulativa; a cumulativa (stackable) desconta sobre o que resta da unidade. Leve X pague Y: conjuntos = floor(elegiveis / X), gratis = conjuntos x (X - Y), as unidades gratis sao as mais baratas. Venda casada: conjuntos = min floor(qtd / req); desconto = % sobre a soma (ou fixo por conjunto), rateado pelo valor (maior resto). Categoria/marca: % por linha, HALF_UP. Copia byte a byte em 2pets-pro/tests/fixtures/golden/promotion.json. Altere aqui e copie para la.",
+  "promotions": [
+    {
+      "id": "promo-01",
+      "_conta": "Shampoo 40,00, leve 3 pague 2, quantidade 7: 2 conjuntos -> 2 gratis -> desconto 80,00; total 280,00 - 80,00 = 200,00.",
+      "input": {
+        "lines": [{ "id": 1, "sellable_type": "product", "sellable_id": 10, "group_id": null, "brand_id": null, "unit_price": "40.00", "quantity": "7" }],
+        "promotions": [{ "id": 1, "name": "Leve 3 pague 2", "type": "buy_x_pay_y", "priority": 0, "stackable": false, "config": { "buy": 3, "pay": 2, "targets": [{ "type": "product", "id": 10 }] } }]
+      },
+      "expected": { "lines": { "1": { "promotion_id": 1, "promotion_discount": "80.00" } }, "total_promotion_discount": "80.00" }
+    },
+    {
+      "id": "promo-02",
+      "_conta": "Venda casada racao 200,00 + antipulgas 100,00 com 10%: 1 conjunto -> 30,00, rateado pelo valor 20,00 / 10,00.",
+      "input": {
+        "lines": [
+          { "id": 1, "sellable_type": "product", "sellable_id": 20, "group_id": null, "brand_id": null, "unit_price": "200.00", "quantity": "1" },
+          { "id": 2, "sellable_type": "product", "sellable_id": 21, "group_id": null, "brand_id": null, "unit_price": "100.00", "quantity": "1" }
+        ],
+        "promotions": [{ "id": 2, "name": "Racao + antipulgas", "type": "bundle", "priority": 0, "stackable": false, "config": { "items": [{ "sellable_type": "product", "sellable_id": 20, "quantity": 1 }, { "sellable_type": "product", "sellable_id": 21, "quantity": 1 }], "discount_type": "percent", "discount_value": "10" } }]
+      },
+      "expected": { "lines": { "1": { "promotion_id": 2, "promotion_discount": "20.00" }, "2": { "promotion_id": 2, "promotion_discount": "10.00" } }, "total_promotion_discount": "30.00" }
+    },
+    {
+      "id": "promo-03",
+      "_conta": "Leve 3 pague 2 no grupo, precos mistos: shampoo A 40,00 x2, shampoo B 25,00 x1, condicionador C 30,00 x3 = 6 unidades -> 2 conjuntos, 2 gratis = as mais baratas: B 25,00 e uma C 30,00 -> desconto 55,00 (A 0,00).",
+      "input": {
+        "lines": [
+          { "id": 1, "sellable_type": "product", "sellable_id": 30, "group_id": 7, "brand_id": null, "unit_price": "40.00", "quantity": "2" },
+          { "id": 2, "sellable_type": "product", "sellable_id": 31, "group_id": 7, "brand_id": null, "unit_price": "25.00", "quantity": "1" },
+          { "id": 3, "sellable_type": "product", "sellable_id": 32, "group_id": 7, "brand_id": null, "unit_price": "30.00", "quantity": "3" }
+        ],
+        "promotions": [{ "id": 3, "name": "Higiene leve 3 pague 2", "type": "buy_x_pay_y", "priority": 0, "stackable": false, "config": { "buy": 3, "pay": 2, "targets": [{ "type": "group", "id": 7 }] } }]
+      },
+      "expected": { "lines": { "1": { "promotion_id": null, "promotion_discount": "0.00" }, "2": { "promotion_id": 3, "promotion_discount": "25.00" }, "3": { "promotion_id": 3, "promotion_discount": "30.00" } }, "total_promotion_discount": "55.00" }
+    },
+    {
+      "id": "promo-04",
+      "_conta": "Duas promocoes concorrendo, nenhuma cumulativa: shampoo 40,00 x3 da marca 5. Leve 3 pague 2 (priority 5) vem antes da marca 10% (priority 1) e usa as 3 unidades -> desconto 40,00; a de marca nao acha unidade livre.",
+      "input": {
+        "lines": [{ "id": 1, "sellable_type": "product", "sellable_id": 10, "group_id": null, "brand_id": 5, "unit_price": "40.00", "quantity": "3" }],
+        "promotions": [
+          { "id": 4, "name": "Marca 10%", "type": "brand_discount", "priority": 1, "stackable": false, "config": { "brand_id": 5, "percent": "10" } },
+          { "id": 5, "name": "Leve 3 pague 2", "type": "buy_x_pay_y", "priority": 5, "stackable": false, "config": { "buy": 3, "pay": 2, "targets": [{ "type": "product", "id": 10 }] } }
+        ]
+      },
+      "expected": { "lines": { "1": { "promotion_id": 5, "promotion_discount": "40.00" } }, "total_promotion_discount": "40.00" }
+    },
+    {
+      "id": "promo-05",
+      "_conta": "Cumulativa: racao 200,00 do grupo 8 e marca 6. Categoria 10% (priority 2, nao cumulativa) -> 20,00; marca 5% cumulativa (priority 1) sobre o que resta, 180,00 -> 9,00. Total 29,00; a promocao principal da linha e a de categoria (a que mais descontou).",
+      "input": {
+        "lines": [{ "id": 1, "sellable_type": "product", "sellable_id": 40, "group_id": 8, "brand_id": 6, "unit_price": "200.00", "quantity": "1" }],
+        "promotions": [
+          { "id": 6, "name": "Racoes 10%", "type": "category_discount", "priority": 2, "stackable": false, "config": { "group_id": 8, "percent": "10" } },
+          { "id": 7, "name": "Marca 5% cumulativa", "type": "brand_discount", "priority": 1, "stackable": true, "config": { "brand_id": 6, "percent": "5" } }
+        ]
+      },
+      "expected": { "lines": { "1": { "promotion_id": 6, "promotion_discount": "29.00" } }, "total_promotion_discount": "29.00" }
+    },
+    {
+      "id": "promo-06",
+      "_conta": "Desconto por marca 15% por linha: coleira 59,90 x2 = 119,80 -> 17,97; guia 35,50 -> 5,325 -> 5,33 (HALF_UP). Total 23,30.",
+      "input": {
+        "lines": [
+          { "id": 1, "sellable_type": "product", "sellable_id": 50, "group_id": null, "brand_id": 9, "unit_price": "59.90", "quantity": "2" },
+          { "id": 2, "sellable_type": "product", "sellable_id": 51, "group_id": null, "brand_id": 9, "unit_price": "35.50", "quantity": "1" }
+        ],
+        "promotions": [{ "id": 8, "name": "Marca 15%", "type": "brand_discount", "priority": 0, "stackable": false, "config": { "brand_id": 9, "percent": "15" } }]
+      },
+      "expected": { "lines": { "1": { "promotion_id": 8, "promotion_discount": "17.97" }, "2": { "promotion_id": 8, "promotion_discount": "5.33" } }, "total_promotion_discount": "23.30" }
+    }
+  ]
+}

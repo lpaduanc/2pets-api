@@ -142,6 +142,16 @@ return [
     'PUT api/professional/sales-goals/{id}',
     'PATCH api/professional/sales-goals/{id}',
     'DELETE api/professional/sales-goals/{id}',
+    // Promoções (PLANO 3.2): `promotions.manage` pelo cargo na organização, no controller;
+    // evaluate pela policy da venda.
+    'GET api/professional/promotions',
+    'GET api/professional/promotions/{id}',
+    'POST api/professional/promotions',
+    'POST api/professional/promotions/simulate',
+    'PUT api/professional/promotions/{id}',
+    'PATCH api/professional/promotions/{id}',
+    'DELETE api/professional/promotions/{id}',
+    'POST api/professional/pdv/cart/evaluate',
     'GET api/professional/clients',
     'GET api/professional/clients/{client}',
     'GET api/professional/clients/{id}/message-history',

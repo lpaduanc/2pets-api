@@ -115,6 +115,8 @@ class Sale extends Model
         'items.staff.user',
         'items.sellable',
         'items.courtesyMarkedBy:id,name',
+        // PLANO 3.2: nome da promoção da linha.
+        'items.promotion:id,name',
         'receipts.paymentMethod',
         'client',
         'pet',

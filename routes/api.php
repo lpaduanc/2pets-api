@@ -1057,6 +1057,15 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::patch('sales/{id}/items/{itemId}', [SaleController::class, 'updateItem'])->whereNumber(['id', 'itemId']);
         Route::delete('sales/{id}/items/{itemId}', [SaleController::class, 'destroyItem'])->whereNumber(['id', 'itemId']);
         Route::post('sales/{id}/discount', [SaleController::class, 'applyDiscount'])->whereNumber('id');
+        // Promoções (PLANO 3.2): `promotions.manage` pelo cargo na organização, no controller;
+        // `pdv/cart/evaluate` para quem pode editar a venda (policy da venda).
+        Route::post('promotions/simulate', [\App\Http\Controllers\Api\Commercial\PromotionController::class, 'simulate']);
+        Route::get('promotions', [\App\Http\Controllers\Api\Commercial\PromotionController::class, 'index']);
+        Route::post('promotions', [\App\Http\Controllers\Api\Commercial\PromotionController::class, 'store']);
+        Route::get('promotions/{id}', [\App\Http\Controllers\Api\Commercial\PromotionController::class, 'show'])->whereNumber('id');
+        Route::match(['put', 'patch'], 'promotions/{id}', [\App\Http\Controllers\Api\Commercial\PromotionController::class, 'update'])->whereNumber('id');
+        Route::delete('promotions/{id}', [\App\Http\Controllers\Api\Commercial\PromotionController::class, 'destroy'])->whereNumber('id');
+        Route::post('pdv/cart/evaluate', [\App\Http\Controllers\Api\Commercial\PromotionController::class, 'evaluate']);
         // Brinde/cortesia/retorno na linha e fechamento da venda de saldo zero (PLANO 1.4).
         // A permissão `sales.grant_courtesy` é julgada pelo cargo na organização da venda
         // (`CourtesyAuthorizer`), não pelo middleware — o papel Spatie é global.

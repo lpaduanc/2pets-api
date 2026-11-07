@@ -43,6 +43,9 @@ class SaleItem extends Model
         'unit_price',
         'unit_cost',
         'discount',
+        // PLANO 3.2: desconto de promoção, separado do manual (`discount`).
+        'promotion_id',
+        'promotion_discount',
         'total',
         'commission_percent',
         // Brinde/cortesia/retorno (PLANO 1.4): marcação da LINHA, por `markAsCourtesy()`.
@@ -63,6 +66,7 @@ class SaleItem extends Model
             'unit_price' => 'decimal:2',
             'unit_cost' => 'decimal:4',
             'discount' => 'decimal:2',
+            'promotion_discount' => 'decimal:2',
             'total' => 'decimal:2',
             'commission_percent' => 'decimal:4',
             'courtesy_kind' => SaleItemCourtesyKind::class,
@@ -141,6 +145,11 @@ class SaleItem extends Model
         $cost = Decimal::of($this->quantity)->multipliedBy(Decimal::of($this->unit_cost));
 
         return $net->toBigDecimal()->isLessThan($cost);
+    }
+
+    public function promotion(): BelongsTo
+    {
+        return $this->belongsTo(Promotion::class)->withTrashed();
     }
 
     public function sale(): BelongsTo
@@ -244,7 +253,8 @@ class SaleItem extends Model
     {
         $gross = Decimal::of($this->quantity)->multipliedBy(Decimal::of($this->unit_price));
 
-        return Money::of($gross->minus(Decimal::of($this->discount)))->max(0);
+        // PLANO 3.2: promoção e desconto manual saem do bruto.
+        return Money::of($gross->minus(Decimal::of($this->discount))->minus(Decimal::of($this->promotion_discount ?? '0')))->max(0);
     }
 
     /**

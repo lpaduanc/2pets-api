@@ -37,6 +37,7 @@ use App\Services\Commercial\Card\ReceiptPricing;
 use App\Services\Commercial\Card\ReceivableScheduleService;
 use App\Services\Commercial\Pricing\SalePricingChange;
 use App\Services\Commercial\Pricing\SalePricingGuard;
+use App\Services\Commercial\Promotions\PromotionApplier;
 use App\Services\Commercial\Reversal\SaleCancellationReversal;
 use App\Services\Commercial\ServiceCost\ServiceSupplyConsumer;
 use App\Services\Finance\SaleFinancialEntryRecorder;
@@ -211,7 +212,8 @@ final class SaleService
             $this->refreshTotals($sale);
             $this->pricingRules->assertChange($sale, $before, SalePricingChange::ITEM, $item->id);
 
-            return $item->load('staff.user');
+            // A promoção pode ter mudado esta linha ao refazer o carrinho (PLANO 3.2).
+            return $item->refresh()->load('staff.user');
         });
     }
 
@@ -257,7 +259,8 @@ final class SaleService
             $this->refreshTotals($sale);
             $this->pricingRules->assertChange($sale, $before, SalePricingChange::ITEM);
 
-            return $item->load('staff.user');
+            // A promoção pode ter mudado esta linha ao refazer o carrinho (PLANO 3.2).
+            return $item->refresh()->load('staff.user');
         });
     }
 
@@ -652,6 +655,11 @@ final class SaleService
 
     private function refreshTotals(Sale $sale): void
     {
+        // PLANO 3.2: promoções reavaliadas a cada mudança no carrinho, antes dos totais.
+        if ($sale->isEditable()) {
+            app(PromotionApplier::class)->apply($sale);
+        }
+
         $sale->recalculateTotals();
         $sale->save();
     }

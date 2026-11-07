@@ -66,7 +66,7 @@ final class ManagerialSalesTotals
             ->selectRaw("({$centerSql}) AS cost_center", $centerBindings)
             ->selectRaw(self::MONTH.' AS month,
                 COALESCE(SUM(sale_items.quantity * sale_items.unit_price), 0) AS gross_revenue,
-                COALESCE(SUM(sale_items.discount), 0) AS line_discounts,
+                COALESCE(SUM(sale_items.discount + sale_items.promotion_discount), 0) AS line_discounts,
                 COALESCE(SUM(sale_item_profitability.allocated_header_discount), 0) AS header_discounts,
                 COALESCE(SUM(sale_items.total - sale_item_profitability.gross_total), 0) AS returns,
                 COALESCE(SUM(sale_item_profitability.tax_amount), 0) AS taxes,

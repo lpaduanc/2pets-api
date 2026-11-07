@@ -79,7 +79,10 @@ final class SalePricingGuard
 
         foreach ($sale->items as $item) {
             $this->assertDiscountCeiling($item, $net[$item->id], SalePricingChange::FINALIZATION->field('discount', $item->id, null));
-            $this->belowCost->assertCoversCost($item, $net[$item->id], SalePricingChange::FINALIZATION->field('unit_price', $item->id, null));
+
+            if (! $this->belowCostOnlyByPromotion($item, $net[$item->id])) {
+                $this->belowCost->assertCoversCost($item, $net[$item->id], SalePricingChange::FINALIZATION->field('unit_price', $item->id, null));
+            }
         }
     }
 
@@ -107,6 +110,26 @@ final class SalePricingGuard
     }
 
     /**
+     * PLANO 3.2: promoção é aprovada no cadastro (a simulação mostra a MC). A linha que só fica
+     * abaixo do custo POR CAUSA da promoção — sem desconto manual nem do cabeçalho, e cobrindo o
+     * custo sem a promoção — passa; com qualquer desconto por cima, o bloqueio de custo vale.
+     */
+    private function belowCostOnlyByPromotion(SaleItem $item, Money $net): bool
+    {
+        $promotion = Money::of($item->promotion_discount ?? '0');
+
+        return $promotion->isPositive()
+            && $this->manualDiscountOf($item, $net)->isZero()
+            && ! $item->isBelowCost($net->plus($promotion));
+    }
+
+    /** Desconto que não é de promoção: o manual da linha + a parte dela no do cabeçalho. */
+    private function manualDiscountOf(SaleItem $item, Money $net): Money
+    {
+        return Money::of($item->discount ?? '0')->plus(Money::of($item->total)->minus($net));
+    }
+
+    /**
      * Desconto da linha não passa do bruto (quantidade × preço) — inclusive quando é a quantidade
      * que baixa. Antes `SaleItem::totalMoney` cortava em zero e a linha saía de graça sem ser cortesia.
      */
@@ -114,7 +137,8 @@ final class SalePricingGuard
     {
         $gross = Decimal::of($item->quantity)->multipliedBy(Decimal::of($item->unit_price));
 
-        if ($item->isCourtesy() || Decimal::of($item->discount)->isLessThanOrEqualTo($gross)) {
+        // PLANO 3.2: manual + promoção juntos não passam do bruto.
+        if ($item->isCourtesy() || Decimal::of($item->discount)->plus(Decimal::of($item->promotion_discount ?? '0'))->isLessThanOrEqualTo($gross)) {
             return;
         }
 
@@ -129,7 +153,9 @@ final class SalePricingGuard
         $max = $item->sellable instanceof Sellable ? $item->sellable->maxDiscountPercent() : null;
         $gross = Decimal::of($item->quantity)->multipliedBy(Decimal::of($item->unit_price));
 
-        if ($max === null || $item->isCourtesy() || ! $gross->isPositive()) {
+        // PLANO 3.2: o teto vale para promoção + manual juntos, mas a promoção sozinha não é
+        // barrada (foi aprovada no cadastro): sem desconto manual nem do cabeçalho, não há o que julgar.
+        if ($max === null || $item->isCourtesy() || ! $gross->isPositive() || $this->manualDiscountOf($item, $net)->isZero()) {
             return;
         }
 
