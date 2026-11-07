@@ -3,6 +3,7 @@
 namespace App\Services\Transport;
 
 use App\Enums\PetTransportStatus;
+use App\Models\OrganizationMember;
 use App\Models\PetTransport;
 use App\Models\User;
 use App\Support\BusinessClock;
@@ -28,6 +29,30 @@ final class PetTransportQueryService
             fn (Builder $q) => $q->where('organization_id', $organizationId),
             fn (Builder $q) => $q->whereNull('organization_id')->where('professional_id', $user->id),
         );
+    }
+
+    /**
+     * Possíveis motoristas: membros ATIVOS da organização (sem organização, só o próprio
+     * profissional). É a MESMA fonte que valida o `driver_id` da mudança de status — o que a
+     * lista mostra sempre passa na validação.
+     *
+     * @return Collection<int, array{user_id: int, name: string}>
+     */
+    public function drivers(?int $organizationId, int $professionalId): Collection
+    {
+        if ($organizationId === null) {
+            return User::whereKey($professionalId)->get(['id', 'name'])->map(fn (User $u): array => ['user_id' => $u->id, 'name' => $u->name]);
+        }
+
+        return User::query()
+            ->whereIn('id', OrganizationMember::where('organization_id', $organizationId)->where('is_active', true)->select('user_id'))
+            ->orderBy('name')->orderBy('id')->get(['id', 'name'])
+            ->map(fn (User $u): array => ['user_id' => $u->id, 'name' => $u->name])->values();
+    }
+
+    public function isDriver(?int $organizationId, int $professionalId, int $userId): bool
+    {
+        return $this->drivers($organizationId, $professionalId)->contains('user_id', $userId);
     }
 
     /** @return Collection<int, PetTransport> */

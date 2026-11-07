@@ -1306,6 +1306,8 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('transports/kpis', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'kpis']);
             Route::post('transports/quote', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'quote']);
         });
+        Route::get('transports/drivers', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'drivers'])
+            ->middleware('permission:agenda.manage');
         Route::post('transports/{id}/status', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'status'])
             ->whereNumber('id')->middleware('permission:agenda.manage');
 

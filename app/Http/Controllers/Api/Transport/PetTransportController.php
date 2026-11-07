@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Transport;
 
 use App\Enums\PetTransportStatus;
 use App\Http\Controllers\Controller;
-use App\Models\OrganizationMember;
 use App\Models\PetTransport;
 use App\Services\Transport\PetTransportQueryService;
 use App\Services\Transport\PetTransportService;
@@ -65,6 +64,14 @@ class PetTransportController extends Controller
         return response()->json(['data' => $this->present($this->transports->changeStatus($transport, PetTransportStatus::from($data['status']), $driverId))]);
     }
 
+    /** Possíveis motoristas (membros ativos da organização atual), por nome. */
+    public function drivers(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json(['data' => $this->query->drivers($user->activeOrganizationId(), $user->id)]);
+    }
+
     public function kpis(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -99,14 +106,10 @@ class PetTransportController extends Controller
         return array_map(fn ($value) => is_string($value) ? $value : null, array_intersect_key($address, array_flip(['zip_code', 'address', 'complement', 'city', 'state'])));
     }
 
-    /** Motorista = membro ativo da mesma organização do transporte. */
+    /** Motorista = um dos `drivers()` da organização do transporte (membro ativo). */
     private function driver(PetTransport $transport, int $userId): int
     {
-        $isMember = $transport->organization_id === null
-            ? $userId === $transport->professional_id
-            : OrganizationMember::where('organization_id', $transport->organization_id)->where('user_id', $userId)->exists();
-
-        if (! $isMember) {
+        if (! $this->query->isDriver($transport->organization_id, $transport->professional_id, $userId)) {
             throw ValidationException::withMessages(['driver_id' => 'Motorista não encontrado na equipe.']);
         }
 

@@ -205,6 +205,35 @@ class PetTransportTest extends TestCase
         $this->actingAs($this->tutor, 'sanctum')->getJson('/api/professional/transports')->assertForbidden();
     }
 
+    public function test_drivers_list_matches_what_the_status_change_accepts(): void
+    {
+        $id = $this->transportId('01310-100');
+        $inactive = User::factory()->professional()->create(['name' => 'Zé Inativo']);
+        OrganizationMember::factory()->for($this->clinic, 'organization')->create(['user_id' => $inactive->id, 'role' => 'receptionist', 'is_active' => false]);
+
+        // Recepção tem `agenda.manage`: vê os membros ATIVOS da clínica, por nome.
+        $drivers = $this->actingAs($this->receptionist, 'sanctum')->getJson('/api/professional/transports/drivers')->assertOk()->json('data');
+        $expected = collect([$this->owner, $this->receptionist, $this->groomer])->sortBy([['name', 'asc'], ['id', 'asc']])->map(fn (User $u): array => ['user_id' => $u->id, 'name' => $u->name])->values()->all();
+        $this->assertSame($expected, $drivers);
+
+        // Todo mundo da lista passa na validação do `driver_id`; o inativo não.
+        foreach ($drivers as $driver) {
+            $this->actingAs($this->receptionist, 'sanctum')->postJson("/api/professional/transports/{$id}/status", ['status' => 'cancelled', 'driver_id' => $driver['user_id']])
+                ->assertJsonMissingValidationErrors('driver_id');
+            PetTransport::whereKey($id)->update(['status' => 'pending']);
+        }
+        $this->changeStatus($id, ['status' => 'on_the_way', 'driver_id' => $inactive->id])->assertUnprocessable()->assertJsonValidationErrors('driver_id');
+
+        // Outra organização: só a própria equipe.
+        $other = Organization::factory()->create();
+        $stranger = User::factory()->professional()->create();
+        OrganizationMember::factory()->owner()->for($other, 'organization')->create(['user_id' => $stranger->id]);
+        $this->actingAs($stranger, 'sanctum')->getJson('/api/professional/transports/drivers')->assertOk()->assertExactJson(['data' => [['user_id' => $stranger->id, 'name' => $stranger->name]]]);
+
+        // Sem `agenda.manage` (tutor): 403.
+        $this->actingAs($this->tutor, 'sanctum')->getJson('/api/professional/transports/drivers')->assertForbidden();
+    }
+
     /** @param  array<string, mixed>  $rule */
     private function zone(string $name, array $rule): void
     {
