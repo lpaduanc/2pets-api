@@ -37,7 +37,8 @@ class AppointmentController extends Controller
     /** PLANO 3.1: campos que, mudados em "só este", tornam a ocorrência uma exceção da série. */
     private const EXCEPTION_FIELDS = ['appointment_date', 'appointment_time', 'duration', 'type', 'appointment_type_id', 'reason', 'notes', 'price', 'sold_package_id'];
 
-    private const RESPONSE_RELATIONS = ['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'series'];
+    // `transport` (PLANO 3.7): o indicador de leva e traz do front lê do agendamento.
+    private const RESPONSE_RELATIONS = ['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'series', 'transport'];
 
     public function __construct(
         private readonly AppointmentStatusTransitionService $statusTransitionService,
@@ -49,7 +50,7 @@ class AppointmentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Appointment::with(['client', 'pet', 'professional', 'appointmentType', 'invoice:id,appointment_id', 'series'])
+        $query = Appointment::with(['client', 'pet', 'professional', 'appointmentType', 'invoice:id,appointment_id', 'series', 'transport'])
             ->forProfessional($request->user()->id);
 
         // PLANO 3.1: só ocorrências de série ("Recorrentes").
@@ -145,7 +146,7 @@ class AppointmentController extends Controller
             $this->transports->attach($appointment, $transport, $organizationId);
         }
 
-        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'transport'])))
+        return (new AppointmentResource($appointment->load(self::RESPONSE_RELATIONS)))
             ->additional(['message' => 'Consulta agendada com sucesso!'])
             ->response()
             ->setStatusCode(201);
@@ -175,7 +176,7 @@ class AppointmentController extends Controller
 
     public function show(Request $request, $id)
     {
-        $appointment = Appointment::with(['client', 'pet', 'professional', 'medicalRecords', 'prescriptions', 'vaccinations', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'series'])
+        $appointment = Appointment::with(['client', 'pet', 'professional', 'medicalRecords', 'prescriptions', 'vaccinations', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'series', 'transport'])
             ->where('professional_id', $request->user()->id)
             ->findOrFail($id);
 
@@ -316,7 +317,7 @@ class AppointmentController extends Controller
 
     public function today(Request $request)
     {
-        $appointments = Appointment::with(['client', 'pet', 'appointmentType', 'invoice:id,appointment_id'])
+        $appointments = Appointment::with(['client', 'pet', 'appointmentType', 'invoice:id,appointment_id', 'transport'])
             ->forProfessional($request->user()->id)
             ->today()
             ->orderBy('appointment_time')
@@ -327,7 +328,7 @@ class AppointmentController extends Controller
 
     public function upcoming(Request $request)
     {
-        $appointments = Appointment::with(['client', 'pet', 'appointmentType', 'invoice:id,appointment_id'])
+        $appointments = Appointment::with(['client', 'pet', 'appointmentType', 'invoice:id,appointment_id', 'transport'])
             ->forProfessional($request->user()->id)
             ->upcoming()
             ->orderBy('appointment_date')

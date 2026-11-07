@@ -121,9 +121,22 @@ class PetTransportTest extends TestCase
         $invoice = app(AppointmentInvoiceService::class)->ensurePendingInvoice($appointment->fresh());
         $this->assertContains(['Leva e traz', 15.0], collect($invoice->items)->map(fn (array $item): array => [$item['description'], (float) $item['total']])->all());
 
+        // Lista e detalhe trazem o transporte (indicador do front), carregado de uma vez só.
+        $this->schedule(['type' => 'pickup', 'address' => ['zip_code' => '01310-200', 'address' => 'Rua B, 2', 'city' => 'São Paulo', 'state' => 'SP']])->assertCreated();
+        $plain = $this->owner()->postJson('/api/professional/appointments', ['client_id' => $this->tutor->id, 'pet_id' => $this->pet->id, 'appointment_date' => '2026-11-10', 'appointment_time' => '15:00', 'type' => 'grooming'])->assertCreated()->json('data.id');
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $list = collect($this->owner()->getJson('/api/professional/appointments')->assertOk()->json('data'))->keyBy('id');
+        $transportQueries = collect(\Illuminate\Support\Facades\DB::getQueryLog())->filter(fn (array $q): bool => str_contains($q['query'], 'from "pet_transports"'))->count();
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+        $this->assertSame(1, $transportQueries);
+        $this->assertSame(['round_trip', '15.00', $transport->delivery_zone_id], [$list[$appointment->id]['transport']['type'], $list[$appointment->id]['transport']['fee'], $list[$appointment->id]['transport']['delivery_zone_id']]);
+        $this->assertNull($list[$plain]['transport']);
+        $this->owner()->getJson("/api/professional/appointments/{$appointment->id}")->assertOk()->assertJsonPath('data.transport.status', 'pending');
+        $this->owner()->getJson("/api/professional/appointments/{$plain}")->assertOk()->assertJsonPath('data.transport', null);
+
         // Fora da área: 422 e nenhum agendamento a mais.
         $this->schedule(['type' => 'pickup', 'address' => ['address' => 'Rua Longe, 1', 'city' => 'Jundiaí', 'state' => 'SP']])->assertUnprocessable();
-        $this->assertSame(1, Appointment::count());
+        $this->assertSame(3, Appointment::count());
     }
 
     public function test_status_flow_records_times_and_feeds_the_day_list_and_kpis(): void
