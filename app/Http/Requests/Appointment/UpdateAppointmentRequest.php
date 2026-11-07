@@ -11,6 +11,8 @@ use Illuminate\Validation\Rule;
 
 class UpdateAppointmentRequest extends FormRequest
 {
+    use RecurrenceRules;
+
     public function authorize(): bool
     {
         return true; // Authorization is handled by auth:sanctum middleware
@@ -41,6 +43,10 @@ class UpdateAppointmentRequest extends FormRequest
             'services.*.unit_price' => ['nullable', 'numeric', 'min:0'],
             // PLANO 2.7: o cliente do pacote é conferido no controller (o do agendamento).
             'sold_package_id' => ['nullable', 'integer', Rule::exists('sold_packages', 'id')->where(fn ($q) => $q->where('status', '!=', 'cancelled'))],
+            // PLANO 3.1: em ocorrência de série, `this` (padrão, vira exceção) ou
+            // `this_and_following` (encerra a série aqui e começa uma nova com as mudanças).
+            'scope' => ['nullable', Rule::in(['this', 'this_and_following'])],
+            ...$this->recurrenceRules(),
         ];
     }
 
@@ -69,5 +75,10 @@ class UpdateAppointmentRequest extends FormRequest
             'duration.min' => 'A duracao minima e de 15 minutos.',
             'price.min' => 'O preco deve ser um valor positivo.',
         ];
+    }
+
+    public function withValidator(\Illuminate\Contracts\Validation\Validator $validator): void
+    {
+        $validator->after(fn (\Illuminate\Contracts\Validation\Validator $v) => $this->validateRecurrenceEnd($v));
     }
 }

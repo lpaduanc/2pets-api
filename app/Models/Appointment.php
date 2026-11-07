@@ -49,6 +49,10 @@ class Appointment extends Model
         'checked_in_at',
         // PLANO 2.7 — sessão de pacote agendada (próximo/último agendamento do pacote).
         'sold_package_id',
+        // PLANO 3.1 — ocorrência de série recorrente.
+        'series_id',
+        'occurrence_index',
+        'is_exception',
     ];
 
     protected $casts = [
@@ -65,6 +69,8 @@ class Appointment extends Model
         'completed_at' => 'datetime',
         'deposit_amount' => 'decimal:2',
         'checked_in_at' => 'datetime',
+        'occurrence_index' => 'integer',
+        'is_exception' => 'boolean',
     ];
 
     /**
@@ -173,6 +179,11 @@ class Appointment extends Model
      * docs/atendimento-veterinario/09-faturamento-do-atendimento.md §13.2) — substitui
      * `service_id` (FK única, deprecada) quando o agendamento tem mais de um item.
      */
+    public function series(): BelongsTo
+    {
+        return $this->belongsTo(AppointmentSeries::class, 'series_id');
+    }
+
     public function services(): HasMany
     {
         return $this->hasMany(AppointmentService::class);

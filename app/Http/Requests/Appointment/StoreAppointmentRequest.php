@@ -21,6 +21,8 @@ use Illuminate\Validation\Rule;
  */
 class StoreAppointmentRequest extends FormRequest
 {
+    use RecurrenceRules;
+
     public function authorize(): bool
     {
         return true; // Authorization is handled by auth:sanctum middleware
@@ -35,6 +37,7 @@ class StoreAppointmentRequest extends FormRequest
 
             $this->assertPetBelongsToClient($validator);
             $this->assertClientIsOwnClient($validator);
+            $this->validateRecurrenceEnd($validator);
         });
     }
 
@@ -96,6 +99,8 @@ class StoreAppointmentRequest extends FormRequest
             // mesmo cliente, não cancelado.
             'sold_package_id' => ['nullable', 'integer', Rule::exists('sold_packages', 'id')
                 ->where('client_id', $this->input('client_id'))->where(fn ($q) => $q->where('status', '!=', 'cancelled'))],
+            // PLANO 3.1: repetição (cria uma série) e resolução dos conflitos devolvidos no 409.
+            ...$this->recurrenceRules(),
         ];
     }
 

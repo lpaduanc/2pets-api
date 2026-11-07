@@ -93,3 +93,13 @@ Schedule::command('stock:snapshot-valuation')->dailyAt('23:55')
     ->withoutOverlapping()
     ->onOneServer()
     ->appendOutputTo(storage_path('logs/stock-valuation-snapshot.log'));
+
+/**
+ * Séries de agendamento (PLANO 3.1): estende a janela materializada até hoje + 90 dias.
+ * 02:00 de São Paulo; idempotente (não duplica ocorrência).
+ */
+Schedule::command('appointments:extend-series')->dailyAt('02:00')
+    ->timezone('America/Sao_Paulo')
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/appointment-series.log'));

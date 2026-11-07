@@ -15,6 +15,7 @@ use App\Models\Service;
 use App\Models\SoldPackage;
 use App\Services\Appointment\AppointmentServicesWriter;
 use App\Services\Appointment\AppointmentStatusTransitionService;
+use App\Services\Appointment\Recurrence\AppointmentSeriesService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -30,15 +31,26 @@ class AppointmentController extends Controller
      */
     private const DEFAULT_PER_PAGE = 200;
 
+    /** PLANO 3.1: campos que, mudados em "só este", tornam a ocorrência uma exceção da série. */
+    private const EXCEPTION_FIELDS = ['appointment_date', 'appointment_time', 'duration', 'type', 'appointment_type_id', 'reason', 'notes', 'price', 'sold_package_id'];
+
+    private const RESPONSE_RELATIONS = ['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'series'];
+
     public function __construct(
         private readonly AppointmentStatusTransitionService $statusTransitionService,
         private readonly AppointmentServicesWriter $servicesWriter,
+        private readonly AppointmentSeriesService $series,
     ) {}
 
     public function index(Request $request)
     {
-        $query = Appointment::with(['client', 'pet', 'professional', 'appointmentType', 'invoice:id,appointment_id'])
+        $query = Appointment::with(['client', 'pet', 'professional', 'appointmentType', 'invoice:id,appointment_id', 'series'])
             ->forProfessional($request->user()->id);
+
+        // PLANO 3.1: só ocorrências de série ("Recorrentes").
+        if ($request->boolean('recurring')) {
+            $query->whereNotNull('series_id');
+        }
 
         // Filters
         if ($request->has('date')) {
@@ -67,6 +79,23 @@ class AppointmentController extends Controller
     public function store(StoreAppointmentRequest $request)
     {
         $data = $request->validated();
+        $recurrence = $data['recurrence'] ?? null;
+        $resolutions = $data['resolutions'] ?? [];
+        unset($data['recurrence'], $data['resolutions']);
+
+        // PLANO 3.1: com `recurrence`, cria a série (409 com os conflitos, se houver).
+        if ($recurrence !== null) {
+            $first = $this->series->create($request->user(), $data + ['organization_id' => $request->user()->activeOrganizationId()], $recurrence, $resolutions);
+
+            return (new AppointmentResource($first->load(self::RESPONSE_RELATIONS)))
+                ->additional([
+                    'message' => 'Agendamentos recorrentes criados com sucesso!',
+                    'occurrences_created' => Appointment::where('series_id', $first->series_id)->count(),
+                ])
+                ->response()
+                ->setStatusCode(201);
+        }
+
         $services = $data['services'] ?? null;
         unset($data['services']);
 
@@ -113,7 +142,7 @@ class AppointmentController extends Controller
 
     public function show(Request $request, $id)
     {
-        $appointment = Appointment::with(['client', 'pet', 'professional', 'medicalRecords', 'prescriptions', 'vaccinations', 'services.service', 'appointmentType', 'invoice:id,appointment_id'])
+        $appointment = Appointment::with(['client', 'pet', 'professional', 'medicalRecords', 'prescriptions', 'vaccinations', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'series'])
             ->where('professional_id', $request->user()->id)
             ->findOrFail($id);
 
@@ -124,11 +153,26 @@ class AppointmentController extends Controller
     {
         $appointment = Appointment::where('professional_id', $request->user()->id)->findOrFail($id);
         $data = $request->validated();
+        $scope = $data['scope'] ?? 'this';
+        $recurrence = $data['recurrence'] ?? null;
+        $resolutions = $data['resolutions'] ?? [];
+        unset($data['scope'], $data['recurrence'], $data['resolutions']);
+
+        // PLANO 3.1: "este e os seguintes" em ocorrência de série.
+        if ($appointment->series_id !== null && $scope === 'this_and_following') {
+            return $this->updateFollowing($appointment, $data, $recurrence, $resolutions);
+        }
+
         $services = $data['services'] ?? null;
         unset($data['services']);
 
         if ($services !== null) {
             $this->assertServicesEditable($appointment);
+        }
+
+        // "Só este": mudar data, hora ou o conteúdo da ocorrência a torna exceção da série.
+        if ($appointment->series_id !== null && ($services !== null || $this->changesOccurrence($appointment, $data))) {
+            $data['is_exception'] = true;
         }
 
         // PLANO 2.7: só pacote do mesmo cliente do agendamento.
@@ -146,8 +190,55 @@ class AppointmentController extends Controller
             $appointment->update(['price' => $this->servicesWriter->sync($appointment, $services)]);
         }
 
-        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id'])))
+        return (new AppointmentResource($appointment->load(self::RESPONSE_RELATIONS)))
             ->additional(['message' => 'Consulta atualizada com sucesso!']);
+    }
+
+    /**
+     * "Este e os seguintes": cancelar encerra a série na ocorrência anterior e cancela daqui em
+     * diante; qualquer outra mudança divide a série (esta vira a 1ª de uma série nova).
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>|null  $recurrence
+     * @param  list<array<string, mixed>>  $resolutions
+     */
+    private function updateFollowing(Appointment $appointment, array $data, ?array $recurrence, array $resolutions): AppointmentResource
+    {
+        if (($data['status'] ?? null) === AppointmentStatus::CANCELLED->value) {
+            $count = $this->series->truncateFrom($appointment, cancel: true);
+
+            return (new AppointmentResource($appointment->fresh()->load(self::RESPONSE_RELATIONS)))
+                ->additional(['message' => 'Ocorrências canceladas a partir desta.', 'occurrences_affected' => $count]);
+        }
+
+        unset($data['status']);
+        $updated = $this->series->splitFrom($appointment, $data, $recurrence, $resolutions);
+
+        return (new AppointmentResource($updated->load(self::RESPONSE_RELATIONS)))
+            ->additional(['message' => 'Esta e as próximas ocorrências foram atualizadas.']);
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function changesOccurrence(Appointment $appointment, array $data): bool
+    {
+        foreach (self::EXCEPTION_FIELDS as $field) {
+            if (! array_key_exists($field, $data)) {
+                continue;
+            }
+
+            $current = match ($field) {
+                'appointment_date' => $appointment->appointment_date?->toDateString(),
+                'appointment_time' => $appointment->appointment_time?->format('H:i'),
+                default => $appointment->getAttribute($field),
+            };
+            $incoming = $field === 'appointment_date' ? substr((string) $data[$field], 0, 10) : $data[$field];
+
+            if ((string) $current !== (string) $incoming) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -165,9 +256,26 @@ class AppointmentController extends Controller
         }
     }
 
+    /**
+     * PLANO 3.1: em ocorrência de série, `?scope=this` (padrão) remove só esta (fica como exceção
+     * apagada, o job não a recria) e `?scope=this_and_following` encerra a série na anterior e
+     * remove as próximas que ainda não aconteceram.
+     */
     public function destroy(Request $request, $id)
     {
         $appointment = Appointment::where('professional_id', $request->user()->id)->findOrFail($id);
+        $scope = $request->validate(['scope' => ['nullable', 'in:this,this_and_following']])['scope'] ?? 'this';
+
+        if ($appointment->series_id !== null && $scope === 'this_and_following') {
+            $count = $this->series->truncateFrom($appointment, cancel: false);
+
+            return response()->json(['message' => 'Ocorrências removidas a partir desta.', 'occurrences_affected' => $count]);
+        }
+
+        if ($appointment->series_id !== null) {
+            $appointment->update(['is_exception' => true]);
+        }
+
         $appointment->delete();
 
         return response()->json(['message' => 'Consulta removida com sucesso!']);

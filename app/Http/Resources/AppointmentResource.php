@@ -37,6 +37,11 @@ class AppointmentResource extends JsonResource
             'price' => $this->price ? (float) $this->price : null,
             // PLANO 2.7: sessão de pacote agendada.
             'sold_package_id' => $this->sold_package_id,
+            // PLANO 3.1: ocorrência de série — o front abre o diálogo de escopo quando há série.
+            'series_id' => $this->series_id,
+            'occurrence_index' => $this->occurrence_index,
+            'is_exception' => (bool) $this->is_exception,
+            'series' => $this->when($this->series_id !== null && $this->relationLoaded('series'), fn () => $this->series?->summary()),
             'cancellation_reason' => $this->cancellation_reason,
             'cancelled_at' => $this->cancelled_at?->toISOString(),
             'confirmed_at' => $this->confirmed_at?->toISOString(),
