@@ -38,7 +38,7 @@ final class DataImportService
 
         $this->dependencyOrderGuard->ensureCanImport($entity, $user->id);
 
-        $parsed = $this->fileParser->parse($file->getRealPath());
+        $parsed = $this->fileParser->parse($file->getRealPath(), $file->getClientOriginalExtension());
         $import = $this->createImportRecord($file, $entity, $user, count($parsed['rows']));
 
         $this->storeRawRows($import, $parsed['rows']);
@@ -110,7 +110,7 @@ final class DataImportService
         return DataImport::create([
             ...$this->scopeResolver->ownershipFor($user),
             'user_id' => $user->id,
-            'source' => 'csv',
+            'source' => strtolower($file->getClientOriginalExtension()) === 'xlsx' ? 'xlsx' : 'csv',
             'entity' => $entity->value,
             'file_path' => $file->store('data-imports', 'local'),
             'status' => ImportStatus::UPLOADED->value,

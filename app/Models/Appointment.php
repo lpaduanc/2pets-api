@@ -193,6 +193,12 @@ class Appointment extends Model
      * Linhas de cobrança lançadas durante o atendimento (contrato §13.3) — a "conta"
      * em aberto enquanto o atendimento está `in_progress` e a fatura não foi paga.
      */
+    /** Leva e traz do agendamento (PLANO 3.7). */
+    public function transport(): HasOne
+    {
+        return $this->hasOne(PetTransport::class);
+    }
+
     public function charges(): HasMany
     {
         return $this->hasMany(AppointmentCharge::class);

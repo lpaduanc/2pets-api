@@ -23,8 +23,19 @@ class StoreDataImportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
+            // XLSX (PLANO, Fase 4) além de CSV/TXT; `.xls` (binário antigo) fica de fora — o Excel
+            // salva em xlsx desde 2007 e o leitor só cobre o formato aberto.
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'extensions:csv,txt,xlsx', 'max:10240'],
             'entity' => ['required', Rule::enum(ImportEntity::class)],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'file.mimes' => 'Envie a planilha em .xlsx ou .csv (o formato .xls antigo não é aceito: salve como .xlsx).',
+            'file.extensions' => 'Envie a planilha em .xlsx ou .csv (o formato .xls antigo não é aceito: salve como .xlsx).',
         ];
     }
 

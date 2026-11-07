@@ -3,6 +3,7 @@
 namespace App\Services\Appointment;
 
 use App\Models\Appointment;
+use App\Models\PetTransport;
 use App\Models\Service;
 
 /**
@@ -25,9 +26,13 @@ final class AppointmentServicesWriter
      */
     public function sync(Appointment $appointment, array $services): float
     {
-        $appointment->services()->delete();
+        // A linha da taxa do leva e traz (PLANO 3.7) não vem no `services[]` do formulário:
+        // fica intocada e continua somando na estimativa.
+        $transportLineIds = PetTransport::where('appointment_id', $appointment->id)->whereNotNull('appointment_service_id')->pluck('appointment_service_id');
+        $appointment->services()->whereNotIn('id', $transportLineIds)->delete();
+        $kept = (float) $appointment->services()->whereIn('id', $transportLineIds)->get()->sum(fn ($line): float => (float) $line->quantity * (float) $line->unit_price);
 
-        return round(array_sum(array_map(
+        return round($kept + array_sum(array_map(
             fn (array $line): float => $this->createLine($appointment, $line),
             $services,
         )), 2);

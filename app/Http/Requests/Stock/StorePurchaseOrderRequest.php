@@ -23,7 +23,7 @@ class StorePurchaseOrderRequest extends FormRequest
             'items' => ['required', 'array', 'min:1', 'max:500'],
             'items.*.product_id' => ['required', 'integer'],
             'items.*.quantity' => ['required', 'numeric', 'decimal:0,4', 'gt:0'],
-            'items.*.unit_cost' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
+            'items.*.unit_cost' => ['nullable', 'numeric', 'decimal:0,4', 'min:0'],
         ];
     }
 }

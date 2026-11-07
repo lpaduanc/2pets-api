@@ -25,7 +25,7 @@ class PurchaseOrderItem extends Model
         return [
             'quantity' => 'decimal:4',
             'received_quantity' => 'decimal:4',
-            'unit_cost' => 'decimal:2',
+            'unit_cost' => 'decimal:4',
             'total' => 'decimal:2',
         ];
     }

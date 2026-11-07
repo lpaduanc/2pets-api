@@ -6,17 +6,25 @@ namespace App\Services\Import;
  * Parser de CSV com detecção de encoding — item 26 do backlog gap-simplesvet.
  * Windows-1252 é o padrão de exportação de sistema legado brasileiro (decisão de produto já
  * confirmada pelo doc original) — sem detectar isso, acentuação vira caractere corrompido.
- * XLSX fica fora desta rodada (nenhuma lib de planilha instalada, ver spec §Já existe).
+ * XLSX (PLANO, Fase 4) passa por `XlsxRowReader` e sai no MESMO formato de linhas do CSV.
  */
 final class ImportFileParser
 {
     private const CANDIDATE_ENCODINGS = ['UTF-8', 'Windows-1252', 'ISO-8859-1'];
 
+    public function __construct(private readonly XlsxRowReader $xlsx = new XlsxRowReader) {}
+
     /**
+     * `$extension` é a do arquivo enviado (o temporário do upload não tem extensão).
+     *
      * @return array{headers: list<string>, rows: list<array<string, string>>}
      */
-    public function parse(string $filePath): array
+    public function parse(string $filePath, ?string $extension = null): array
     {
+        if (strtolower((string) $extension) === 'xlsx') {
+            return $this->parseXlsx($filePath);
+        }
+
         $content = $this->readAsUtf8($filePath);
         $lines = $this->splitLines($content);
 
@@ -27,6 +35,27 @@ final class ImportFileParser
         $headers = $this->parseLine(array_shift($lines));
 
         return ['headers' => $headers, 'rows' => $this->mapRowsToHeaders($headers, $lines)];
+    }
+
+    /**
+     * @return array{headers: list<string>, rows: list<array<string, string>>}
+     */
+    private function parseXlsx(string $filePath): array
+    {
+        $lines = $this->xlsx->read($filePath);
+
+        if ($lines === []) {
+            return ['headers' => [], 'rows' => []];
+        }
+
+        $headers = array_shift($lines);
+
+        // Colunas só formatadas à direita do cabeçalho não viram coluna (no CSV elas nem existem).
+        while ($headers !== [] && end($headers) === '') {
+            array_pop($headers);
+        }
+
+        return ['headers' => $headers, 'rows' => array_map(fn (array $columns): array => $this->combineWithHeaders($headers, $columns), $lines)];
     }
 
     private function readAsUtf8(string $filePath): string

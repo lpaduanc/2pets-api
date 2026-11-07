@@ -8,6 +8,8 @@ use App\Http\Resources\AppointmentResource;
 use App\Http\Resources\PetResource;
 use App\Http\Resources\Professional\NewPatientTutorResource;
 use App\Services\Professional\NewPatientAppointmentService;
+use App\Services\Transport\PetTransportService;
+use App\Services\Transport\TransportQuoteService;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -23,10 +25,20 @@ class NewPatientAppointmentController extends Controller
 {
     public function __construct(
         private readonly NewPatientAppointmentService $newPatientAppointmentService,
+        private readonly PetTransportService $transports,
+        private readonly TransportQuoteService $transportQuotes,
     ) {}
 
     public function store(StoreNewPatientAppointmentRequest $request): JsonResponse
     {
+        $transport = $request->validated('transport');
+        $organizationId = $request->user()->activeOrganizationId();
+
+        // PLANO 3.7: fora da área recusa antes de criar tutor, pet e agendamento.
+        if ($transport !== null) {
+            $this->transportQuotes->quote($organizationId, $request->user()->id, $transport['address']);
+        }
+
         $result = $this->newPatientAppointmentService->handle(
             $request->user(),
             $request->validated(),
@@ -34,9 +46,13 @@ class NewPatientAppointmentController extends Controller
             $request->userAgent(),
         );
 
+        if ($transport !== null) {
+            $this->transports->attach($result->appointment, $transport, $organizationId);
+        }
+
         return response()->json([
             'data' => [
-                'appointment' => new AppointmentResource($result->appointment->load(['client', 'pet', 'invoice:id,appointment_id'])),
+                'appointment' => new AppointmentResource($result->appointment->load(['client', 'pet', 'invoice:id,appointment_id', 'transport'])),
                 'pet' => new PetResource($result->pet),
                 'tutor' => new NewPatientTutorResource($result->tutor),
                 'claim_link_sent' => $result->claimLinkSent,

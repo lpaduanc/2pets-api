@@ -247,9 +247,16 @@ class AppServiceProvider extends ServiceProvider
      * Mesma natureza do reverse geocoding (CEP novo = geocoding pago), com folga maior
      * porque é caminho de erro: quem cai no fallback de CEP pode errar a digitação algumas
      * vezes. CEP repetido não gasta cota — ViaCEP e geocoding cacheiam por 30 dias.
+     *
+     * ── `purchase-quote-read` 30/min e `purchase-quote-write` 10/min por IP ──────────
+     * Link público do fornecedor na cotação (PLANO 3.5). Limitador NOMEADO de propósito: o
+     * `throttle:N,M` anônimo usa a mesma chave (IP) para toda rota que o usa, então abrir a
+     * página contava contra o limite de responder.
      */
     private function registerRateLimiters(): void
     {
+        RateLimiter::for('purchase-quote-read', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+        RateLimiter::for('purchase-quote-write', fn (Request $request): Limit => Limit::perMinute(10)->by($request->ip()));
         RateLimiter::for('public-search', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('reverse-geocode', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
         RateLimiter::for('address-search', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));

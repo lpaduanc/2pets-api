@@ -16,8 +16,11 @@ use App\Models\SoldPackage;
 use App\Services\Appointment\AppointmentServicesWriter;
 use App\Services\Appointment\AppointmentStatusTransitionService;
 use App\Services\Appointment\Recurrence\AppointmentSeriesService;
+use App\Services\Transport\PetTransportService;
+use App\Services\Transport\TransportQuoteService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class AppointmentController extends Controller
@@ -40,6 +43,8 @@ class AppointmentController extends Controller
         private readonly AppointmentStatusTransitionService $statusTransitionService,
         private readonly AppointmentServicesWriter $servicesWriter,
         private readonly AppointmentSeriesService $series,
+        private readonly PetTransportService $transports,
+        private readonly TransportQuoteService $transportQuotes,
     ) {}
 
     public function index(Request $request)
@@ -81,11 +86,35 @@ class AppointmentController extends Controller
         $data = $request->validated();
         $recurrence = $data['recurrence'] ?? null;
         $resolutions = $data['resolutions'] ?? [];
-        unset($data['recurrence'], $data['resolutions']);
+        $transport = $data['transport'] ?? null;
+        unset($data['recurrence'], $data['resolutions'], $data['transport']);
+        $organizationId = $request->user()->activeOrganizationId();
 
+        // PLANO 3.7: endereço fora da área recusa ANTES de criar qualquer agendamento.
+        if ($transport !== null) {
+            $this->transportQuotes->quote($organizationId, $request->user()->id, $transport['address']);
+        }
+
+        return DB::transaction(fn () => $this->createAppointments($request, $data, $recurrence, $resolutions, $transport, $organizationId));
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>|null  $recurrence
+     * @param  array<int, mixed>  $resolutions
+     * @param  array{type: string, address: array<string, string|null>}|null  $transport
+     */
+    private function createAppointments(StoreAppointmentRequest $request, array $data, ?array $recurrence, array $resolutions, ?array $transport, ?int $organizationId)
+    {
         // PLANO 3.1: com `recurrence`, cria a série (409 com os conflitos, se houver).
         if ($recurrence !== null) {
-            $first = $this->series->create($request->user(), $data + ['organization_id' => $request->user()->activeOrganizationId()], $recurrence, $resolutions);
+            $first = $this->series->create($request->user(), $data + ['organization_id' => $organizationId], $recurrence, $resolutions);
+
+            // PLANO 3.7: o leva e traz vale para cada ocorrência da série (mesmo endereço).
+            if ($transport !== null) {
+                Appointment::where('series_id', $first->series_id)->orderBy('id')->get()
+                    ->each(fn (Appointment $occurrence) => $this->transports->attach($occurrence, $transport, $organizationId));
+            }
 
             return (new AppointmentResource($first->load(self::RESPONSE_RELATIONS)))
                 ->additional([
@@ -112,7 +141,11 @@ class AppointmentController extends Controller
             $appointment->update(['price' => $this->servicesWriter->sync($appointment, $services)]);
         }
 
-        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id'])))
+        if ($transport !== null) {
+            $this->transports->attach($appointment, $transport, $organizationId);
+        }
+
+        return (new AppointmentResource($appointment->load(['client', 'pet', 'services.service', 'appointmentType', 'invoice:id,appointment_id', 'transport'])))
             ->additional(['message' => 'Consulta agendada com sucesso!'])
             ->response()
             ->setStatusCode(201);

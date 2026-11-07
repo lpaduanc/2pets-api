@@ -29,7 +29,7 @@ class ServiceAreaController extends Controller
 
     public function store(StoreServiceAreaRequest $request, Organization $organization): JsonResponse
     {
-        $area = $organization->serviceAreas()->create($request->validated());
+        $area = $organization->serviceAreas()->create($request->areaAttributes());
 
         return (new ServiceAreaResource($area))->response()->setStatusCode(201);
     }
@@ -37,7 +37,7 @@ class ServiceAreaController extends Controller
     public function update(StoreServiceAreaRequest $request, Organization $organization, int $id): ServiceAreaResource
     {
         $area = $organization->serviceAreas()->findOrFail($id);
-        $area->update($request->validated());
+        $area->update($request->areaAttributes());
 
         return new ServiceAreaResource($area);
     }

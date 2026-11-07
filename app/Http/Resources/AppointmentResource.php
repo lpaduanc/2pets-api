@@ -87,6 +87,15 @@ class AppointmentResource extends JsonResource
             // para QUALQUER tipo de agendamento, inclusive `grooming` (não tem MedicalRecord,
             // mas tem fatura igual). `null` até haver serviço/cobrança lançada (invariante 11).
             'invoice_id' => $this->whenLoaded('invoice', fn (?Invoice $invoice): ?int => $invoice?->id, null),
+            // PLANO 3.7: leva e traz (só quando carregado).
+            'transport' => $this->whenLoaded('transport', fn () => $this->transport === null ? null : [
+                'id' => $this->transport->id,
+                'type' => $this->transport->type->value,
+                'status' => $this->transport->status->value,
+                'fee' => (string) $this->transport->fee,
+                'distance_km' => $this->transport->distance_km === null ? null : (string) $this->transport->distance_km,
+                'service_area_id' => $this->transport->service_area_id,
+            ]),
 
             // Nested medical data (when loaded)
             'medical_records' => $this->whenLoaded('medicalRecords'),

@@ -166,6 +166,16 @@ return [
     'POST api/professional/pdv/scale-barcode',
     // Projeção de compra (PLANO 3.4): gerar pedidos exige `products.update` pelo cargo (no controller).
     'POST api/professional/stock/purchase-suggestions/orders',
+    // Cotação com fornecedores (PLANO 3.5): escopo da organização; escrita com `products.update` pelo cargo (no controller).
+    'GET api/professional/purchase-quotes',
+    'POST api/professional/purchase-quotes',
+    'GET api/professional/purchase-quotes/{id}',
+    'PUT api/professional/purchase-quotes/{id}',
+    'PATCH api/professional/purchase-quotes/{id}',
+    'DELETE api/professional/purchase-quotes/{id}',
+    'GET api/professional/purchase-quotes/{id}/comparison',
+    'POST api/professional/purchase-quotes/{id}/send',
+    'POST api/professional/purchase-quotes/{id}/orders',
     'GET api/professional/clients',
     'GET api/professional/clients/{client}',
     'GET api/professional/clients/{id}/message-history',

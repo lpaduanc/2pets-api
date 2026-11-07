@@ -12,6 +12,7 @@ use App\Services\Commercial\CommercialScopeResolver;
 use App\Support\Money\Decimal;
 use App\Support\Money\Money;
 use App\Support\Money\Quantity;
+use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -155,7 +156,9 @@ final class PurchaseOrderService
             $product = $this->scope->scopeQuery(Product::query(), $user)->findOrFail((int) $data['product_id']);
             $quantity = Quantity::of($data['quantity']);
             abort_unless($product->acceptsQuantity($quantity), 422, sprintf('"%s" é comprado em unidades inteiras.', $product->name));
-            $unitCost = Decimal::of($data['unit_cost'] ?? $product->last_cost);
+            // Unitário com 4 casas (custo unitário), total da linha em centavos a partir DELE:
+            // o que fica gravado sempre fecha quantidade × unitário.
+            $unitCost = Decimal::of($data['unit_cost'] ?? $product->last_cost)->toScale(4, RoundingMode::HalfUp);
             $lineTotal = Money::of($quantity->toBigDecimal()->multipliedBy($unitCost));
             $total = $total->plus($lineTotal);
 

@@ -21,6 +21,7 @@ use Illuminate\Validation\Rule;
  */
 class StoreAppointmentRequest extends FormRequest
 {
+    use \App\Http\Requests\Concerns\TransportRules;
     use RecurrenceRules;
 
     public function authorize(): bool
@@ -101,6 +102,8 @@ class StoreAppointmentRequest extends FormRequest
                 ->where('client_id', $this->input('client_id'))->where(fn ($q) => $q->where('status', '!=', 'cancelled'))],
             // PLANO 3.1: repetição (cria uma série) e resolução dos conflitos devolvidos no 409.
             ...$this->recurrenceRules(),
+            // PLANO 3.7: leva e traz no próprio agendamento.
+            ...$this->transportRules(),
         ];
     }
 

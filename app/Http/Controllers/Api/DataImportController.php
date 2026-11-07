@@ -90,8 +90,19 @@ class DataImportController extends Controller
         return $this->csvDownload($csv, "importacao-{$id}-erros.csv");
     }
 
-    public function template(string $entity): StreamedResponse
+    /** `?format=xlsx|csv` (PLANO, Fase 4); sem `format`, CSV como sempre. */
+    public function template(Request $request, string $entity): StreamedResponse
     {
+        $request->validate(['format' => ['nullable', 'in:csv,xlsx']]);
+
+        if ($request->query('format') === 'xlsx') {
+            $xlsx = $this->templateProvider->toXlsx(ImportEntity::from($entity));
+
+            return response()->streamDownload(function () use ($xlsx): void {
+                echo $xlsx;
+            }, "modelo-importacao-{$entity}.xlsx", ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
+        }
+
         $csv = $this->templateProvider->toCsv(ImportEntity::from($entity));
 
         return $this->csvDownload($csv, "modelo-importacao-{$entity}.csv");

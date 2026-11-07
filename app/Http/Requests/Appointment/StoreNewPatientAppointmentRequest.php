@@ -21,6 +21,8 @@ use Illuminate\Validation\Rule;
  */
 class StoreNewPatientAppointmentRequest extends FormRequest
 {
+    use \App\Http\Requests\Concerns\TransportRules;
+
     /** @var list<string> */
     public const NON_VET_TYPES = ['grooming', 'training', 'boarding', 'other', 'nutrition', 'behavioral'];
 
@@ -82,6 +84,8 @@ class StoreNewPatientAppointmentRequest extends FormRequest
 
             'existing_pet_id' => ['nullable', 'integer', 'exists:pets,id'],
             'create_new_pet' => ['boolean'],
+            // PLANO 3.7: leva e traz no próprio agendamento.
+            ...$this->transportRules(),
         ];
     }
 

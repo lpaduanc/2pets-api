@@ -18,7 +18,7 @@ final class FrontendRoute
     private const TUTOR_ROLE = 'tutor';
 
     /** Path prefixes served by the professional app (port 9300); everything else is the tutor app. */
-    private const PROFESSIONAL_APP_PREFIXES = ['/professional', '/company', '/admin', '/accept-invitation', '/documento'];
+    private const PROFESSIONAL_APP_PREFIXES = ['/professional', '/company', '/admin', '/accept-invitation', '/documento', '/cotacao'];
 
     public const TUTOR_DASHBOARD = '/tutor/dashboard';
 
@@ -87,6 +87,12 @@ final class FrontendRoute
     public static function publicQuoteDecision(string $plainToken): string
     {
         return "/orcamento/{$plainToken}";
+    }
+
+    /** Página pública de resposta do fornecedor à cotação (PLANO 3.5), servida pelo app pro. */
+    public static function publicPurchaseQuote(string $plainToken): string
+    {
+        return "/cotacao/{$plainToken}";
     }
 
     public static function tutorPetAuthorizedVets(int $petId): string

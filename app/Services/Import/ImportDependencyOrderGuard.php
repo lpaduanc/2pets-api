@@ -3,6 +3,7 @@
 namespace App\Services\Import;
 
 use App\Enums\Import\ImportEntity;
+use App\Exceptions\Import\ImportOutOfOrderException;
 use App\Models\Pet;
 use App\Models\ProfessionalClient;
 use Illuminate\Support\Collection;

@@ -23,6 +23,12 @@ class ServiceArea extends Model
         'name',
         'color',
         'active',
+        // PLANO 3.7: a área também é zona do leva e traz.
+        'delivery_enabled',
+        'delivery_rule_type',
+        'delivery_ceps',
+        'delivery_max_km',
+        'delivery_fee',
     ];
 
     /**
@@ -30,7 +36,13 @@ class ServiceArea extends Model
      */
     protected function casts(): array
     {
-        return ['active' => 'boolean'];
+        return [
+            'active' => 'boolean',
+            'delivery_enabled' => 'boolean',
+            'delivery_ceps' => 'array',
+            'delivery_max_km' => 'decimal:2',
+            'delivery_fee' => 'decimal:2',
+        ];
     }
 
     public function organization(): BelongsTo

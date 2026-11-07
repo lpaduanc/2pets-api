@@ -1,0 +1,60 @@
+{
+  "description": "Comparativo da cotação (PLANO 3.5): custo unitário real = preço + frete do fornecedor rateado pelos itens que ele cotou (regra do item 1.2, maior resto, peso = quantidade × preço), 4 casas. Menor custo real ganha; empate → menor prazo.",
+  "cases": [
+    {
+      "id": "cotacao-01",
+      "description": "Mesmos números da compra-01: frete 25,00 rateado 10,00 / 15,00. F2 sem frete e mais caro em A, mais barato em B.",
+      "items": [{"id": "A", "quantity": "10"}, {"id": "B", "quantity": "5"}],
+      "offers": [
+        {"key": "F1", "freight": "25.00", "delivery_days": 5, "prices": {"A": "20.00", "B": "60.00"}},
+        {"key": "F2", "freight": "0.00", "delivery_days": 3, "prices": {"A": "21.50", "B": "62.00"}}
+      ],
+      "expected": {
+        "real_unit_cost": {"A": {"F1": "21.0000", "F2": "21.5000"}, "B": {"F1": "63.0000", "F2": "62.0000"}},
+        "best": {"A": "F1", "B": "F2"},
+        "suppliers": {"F1": {"products_total": "500.00", "freight": "25.00", "total": "525.00"}, "F2": {"products_total": "525.00", "freight": "0.00", "total": "525.00"}}
+      }
+    },
+    {
+      "id": "cotacao-02",
+      "description": "Frete 10,00 em três linhas iguais: 3,34 + 3,33 + 3,33 (nenhum centavo some).",
+      "items": [{"id": "A", "quantity": "1"}, {"id": "B", "quantity": "1"}, {"id": "C", "quantity": "1"}],
+      "offers": [
+        {"key": "F1", "freight": "10.00", "delivery_days": 2, "prices": {"A": "10.00", "B": "10.00", "C": "10.00"}}
+      ],
+      "expected": {
+        "real_unit_cost": {"A": {"F1": "13.3400"}, "B": {"F1": "13.3300"}, "C": {"F1": "13.3300"}},
+        "best": {"A": "F1", "B": "F1", "C": "F1"},
+        "suppliers": {"F1": {"products_total": "30.00", "freight": "10.00", "total": "40.00"}}
+      }
+    },
+    {
+      "id": "cotacao-03",
+      "description": "F1 cota só A (granel 2,5 kg × 12,3456 = 30,86; + frete 5,00 inteiro nele = 14,3440/kg). F2 empata em A sem frete e entrega antes: ganha pelo prazo. B só F2 cotou.",
+      "items": [{"id": "A", "quantity": "2.5"}, {"id": "B", "quantity": "4"}],
+      "offers": [
+        {"key": "F1", "freight": "5.00", "delivery_days": 5, "prices": {"A": "12.3456"}},
+        {"key": "F2", "freight": "0.00", "delivery_days": 2, "prices": {"A": "14.344", "B": "9.99"}}
+      ],
+      "expected": {
+        "real_unit_cost": {"A": {"F1": "14.3440", "F2": "14.3440"}, "B": {"F2": "9.9900"}},
+        "best": {"A": "F2", "B": "F2"},
+        "suppliers": {"F1": {"products_total": "30.86", "freight": "5.00", "total": "35.86"}, "F2": {"products_total": "75.82", "freight": "0.00", "total": "75.82"}}
+      }
+    },
+    {
+      "id": "cotacao-04",
+      "description": "Ninguém cotou C: sem vencedor. Prazo ausente perde o empate.",
+      "items": [{"id": "A", "quantity": "3"}, {"id": "C", "quantity": "1"}],
+      "offers": [
+        {"key": "F1", "freight": "0.00", "delivery_days": null, "prices": {"A": "7.00"}},
+        {"key": "F2", "freight": "3.00", "delivery_days": 10, "prices": {"A": "6.00"}}
+      ],
+      "expected": {
+        "real_unit_cost": {"A": {"F1": "7.0000", "F2": "7.0000"}, "C": {}},
+        "best": {"A": "F2", "C": null},
+        "suppliers": {"F1": {"products_total": "21.00", "freight": "0.00", "total": "21.00"}, "F2": {"products_total": "18.00", "freight": "3.00", "total": "21.00"}}
+      }
+    }
+  ]
+}

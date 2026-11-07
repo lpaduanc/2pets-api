@@ -253,6 +253,16 @@ Route::get('/public/quotes/{token}', [QuoteDecisionController::class, 'show'])
 Route::post('/public/quotes/{token}/decide', [QuoteDecisionController::class, 'decide'])
     ->middleware('throttle:10,1');
 
+// Resposta do fornecedor à cotação sem login — docs/gap-petflow/PLANO.md 3.5, mesmo padrão do
+// link do orçamento acima (rotas soltas; gravar é mais apertado que ler). Limitadores nomeados
+// (AppServiceProvider): abrir a página não consome o limite de responder.
+Route::get('/public/purchase-quotes/{token}', [\App\Http\Controllers\Api\Public\PurchaseQuoteResponseController::class, 'show'])
+    ->middleware('throttle:purchase-quote-read');
+Route::post('/public/purchase-quotes/{token}/response', [\App\Http\Controllers\Api\Public\PurchaseQuoteResponseController::class, 'respond'])
+    ->middleware('throttle:purchase-quote-write');
+Route::post('/public/purchase-quotes/{token}/reject', [\App\Http\Controllers\Api\Public\PurchaseQuoteResponseController::class, 'reject'])
+    ->middleware('throttle:purchase-quote-write');
+
 // Lista curada de alertas clínicos do receituário — contrato
 // docs/atendimento-veterinario/03-contrato-receituario.md §5. Caminho literal do contrato
 // (`reference/prescription-alerts`), não `public/…`: sem PII, cacheável, mesma régua de
@@ -874,6 +884,12 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('purchase-orders/{id}/receive', [PurchaseOrderController::class, 'receive']);
         Route::apiResource('purchase-orders', PurchaseOrderController::class);
 
+        // Cotação com fornecedores (PLANO 3.5): ações literais antes do apiResource.
+        Route::post('purchase-quotes/{id}/send', [\App\Http\Controllers\Api\Stock\PurchaseQuoteController::class, 'send'])->whereNumber('id');
+        Route::get('purchase-quotes/{id}/comparison', [\App\Http\Controllers\Api\Stock\PurchaseQuoteController::class, 'comparison'])->whereNumber('id');
+        Route::post('purchase-quotes/{id}/orders', [\App\Http\Controllers\Api\Stock\PurchaseQuoteController::class, 'orders'])->whereNumber('id');
+        Route::apiResource('purchase-quotes', \App\Http\Controllers\Api\Stock\PurchaseQuoteController::class)->parameters(['purchase-quotes' => 'id'])->whereNumber('id');
+
         Route::get('products/{id}/stock-movements', [StockMovementController::class, 'product']);
         Route::get('products/{id}/batches', [StockMovementController::class, 'batches']);
         Route::get('stock-movements', [StockMovementController::class, 'index']);
@@ -1271,6 +1287,16 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             // existia NENHUM endpoint de listagem de `Location` antes desta rodada.
             Route::get('locations', [\App\Http\Controllers\Api\Professional\LocationController::class, 'index']);
         });
+
+        // Leva e traz (PLANO 3.7) — padrão da agenda: ler com `agenda.view.*`, mudar status com
+        // `agenda.manage`. Segmentos literais antes de `{id}`.
+        Route::middleware('permission:agenda.view.own|agenda.view.any')->group(function (): void {
+            Route::get('transports', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'index']);
+            Route::get('transports/kpis', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'kpis']);
+            Route::post('transports/quote', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'quote']);
+        });
+        Route::post('transports/{id}/status', [\App\Http\Controllers\Api\Transport\PetTransportController::class, 'status'])
+            ->whereNumber('id')->middleware('permission:agenda.manage');
 
         // BI: produtividade e vendas — item 20 do backlog gap-simplesvet
         // (docs/gap-simplesvet/specs/20-bi-produtividade-vendas-spec.md). `bi.view.own`/
