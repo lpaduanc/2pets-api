@@ -1,0 +1,29 @@
+{
+  "_doc": "Casos de referencia da etiqueta EAN-13 da balanca (docs/gap-petflow/PLANO.md, secao 3.3). Layout padrao: prefixo '2' + codigo do produto (5) + valor (6) + digito verificador (modulo 10 do EAN-13, pesos 1 e 3 a partir da esquerda). Modo weight: valor em gramas, quantidade = gramas / 1000, total = round(quantidade x preco/kg) HALF_UP. Modo price: valor em centavos, total preservado exato, quantidade = round(total / preco/kg, 3); o preco unitario da linha (2 casas) e o centavo que reproduz o total exato. Copia byte a byte em 2pets-pro/tests/fixtures/golden/scale.json.",
+  "barcodes": [
+    {
+      "id": "balanca-01",
+      "_conta": "Produto 00123, peso 001250 g: 1,250 kg x 32,90 = 41,125 -> 41,13.",
+      "input": { "barcode": "2001230012502", "settings": { "prefixes": ["2"], "code_length": 5, "value_length": 6, "mode": "weight" }, "price_per_kg": "32.90" },
+      "expected": { "valid": true, "scale_code": "00123", "quantity": "1.250", "unit_price": "32.90", "discount": "0.00", "total": "41.13" }
+    },
+    {
+      "id": "balanca-02",
+      "_conta": "Modo preco: valor embutido 004113 = 41,13 (preservado). Quantidade = 41,13 / 32,90 = 1,2501... -> 1,250; 1,250 x 32,90 = 41,125 -> 41,13: o preco do cadastro ja reproduz o total.",
+      "input": { "barcode": "2001230041137", "settings": { "prefixes": ["2"], "code_length": 5, "value_length": 6, "mode": "price" }, "price_per_kg": "32.90" },
+      "expected": { "valid": true, "scale_code": "00123", "quantity": "1.250", "unit_price": "32.90", "discount": "0.00", "total": "41.13" }
+    },
+    {
+      "id": "balanca-03",
+      "_conta": "Modo preco que nao fecha com o preco do cadastro: 41,10 / 32,90 = 1,2492... -> 1,249; 1,249 x 32,90 = 41,09 (perderia 1 centavo). Preco da linha 41,10 / 1,249 = 32,906... -> 32,91; 1,249 x 32,91 = 41,10459 -> 41,10: total preservado.",
+      "input": { "barcode": "2001230041106", "settings": { "prefixes": ["2"], "code_length": 5, "value_length": 6, "mode": "price" }, "price_per_kg": "32.90" },
+      "expected": { "valid": true, "scale_code": "00123", "quantity": "1.249", "unit_price": "32.91", "discount": "0.00", "total": "41.10" }
+    },
+    {
+      "id": "balanca-04",
+      "_conta": "Digito verificador errado (o certo de 200123001250 e 2): rejeita.",
+      "input": { "barcode": "2001230012503", "settings": { "prefixes": ["2"], "code_length": 5, "value_length": 6, "mode": "weight" }, "price_per_kg": "32.90" },
+      "expected": { "valid": false }
+    }
+  ]
+}

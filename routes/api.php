@@ -890,6 +890,18 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('sales/{sale}/returns/preview', [SaleReturnController::class, 'preview'])->whereNumber('sale');
         Route::apiResource('sale-returns', SaleReturnController::class)->only(['index', 'show', 'store']);
 
+        // Granel e balança (PLANO 3.3): escrita com `products.update` pelo cargo, no controller.
+        Route::get('stock/product-conversions', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'conversions']);
+        Route::post('stock/product-conversions', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'storeConversion']);
+        Route::match(['put', 'patch'], 'stock/product-conversions/{id}', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'updateConversion'])->whereNumber('id');
+        Route::delete('stock/product-conversions/{id}', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'destroyConversion'])->whereNumber('id');
+        Route::get('stock/package-openings', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'openings']);
+        Route::post('stock/package-openings', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'open']);
+        Route::get('stock/scale-settings', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'scaleSettings']);
+        Route::put('stock/scale-settings', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'updateScaleSettings']);
+        Route::get('stock/scale-export', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'export']);
+        Route::post('pdv/scale-barcode', \App\Http\Controllers\Api\Commercial\ScaleBarcodeController::class);
+
         Route::get('reports/stock-analysis', [StockReportController::class, 'analysis']);
         Route::get('reports/stock-expiring', [StockReportController::class, 'expiring']);
 

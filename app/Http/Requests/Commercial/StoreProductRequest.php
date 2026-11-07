@@ -44,6 +44,22 @@ class StoreProductRequest extends FormRequest
             'is_supply' => ['sometimes', 'boolean'],
 
             'product_group_id' => ['nullable', 'integer', 'exists:product_groups,id'],
+            // PLANO 3.3: código da etiqueta da balança (4 a 6 dígitos, único na organização) e venda por peso.
+            'scale_code' => ['nullable', 'string', 'regex:/^\d{4,6}$/', function (string $attribute, mixed $value, \Closure $fail): void {
+                if ($value === null || $value === '') {
+                    return;
+                }
+
+                $taken = app(\App\Services\Commercial\CommercialScopeResolver::class)->scopeQuery(\App\Models\Product::query(), $this->user())
+                    ->whereRaw('CAST(scale_code AS INTEGER) = ?', [(int) $value])
+                    ->when($this->route('id') !== null, fn ($q) => $q->whereKeyNot((int) $this->route('id')))
+                    ->exists();
+
+                if ($taken) {
+                    $fail('Outro produto já usa este código de balança.');
+                }
+            }],
+            'sold_by_weight' => ['sometimes', 'boolean'],
             // PLANO 2.4: centro de custo (vazio herda o do grupo).
             'cost_center_id' => ['nullable', 'integer', new \App\Rules\ScopedCostCenterExists($this->user())],
             'brand_id' => ['nullable', 'integer', 'exists:brands,id'],

@@ -43,6 +43,9 @@ class Product extends Model implements Sellable
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        // PLANO 3.3: código da balança (único no escopo) e venda por peso.
+        'scale_code',
+        'sold_by_weight',
         // PLANO 2.4: centro de custo (produto/serviço sem centro herdam o do grupo).
         'cost_center_id',
         'professional_id',
@@ -114,6 +117,7 @@ class Product extends Model implements Sellable
             'track_batches' => 'boolean',
             'is_active' => 'boolean',
             'is_supply' => 'boolean',
+            'sold_by_weight' => 'boolean',
             'images' => 'array',
         ];
     }

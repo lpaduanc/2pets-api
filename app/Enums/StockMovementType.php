@@ -33,6 +33,10 @@ enum StockMovementType: string
      */
     case COST_VARIANCE_IN = 'cost_variance_in';
     case COST_VARIANCE_OUT = 'cost_variance_out';
+    /** Abertura de embalagem (PLANO 3.3): sai o saco… */
+    case PACKAGE_OPEN_OUT = 'package_open_out';
+    /** …e entra o granel, com o valor exato que saiu do saco. */
+    case PACKAGE_OPEN_IN = 'package_open_in';
 
     public function label(): string
     {
@@ -51,6 +55,8 @@ enum StockMovementType: string
             self::OPENING_BALANCE => 'Saldo inicial',
             self::COST_VARIANCE_IN => 'Ajuste de custo (crédito)',
             self::COST_VARIANCE_OUT => 'Ajuste de custo (débito)',
+            self::PACKAGE_OPEN_OUT => 'Abertura de embalagem (saída)',
+            self::PACKAGE_OPEN_IN => 'Abertura de embalagem (entrada)',
         };
     }
 
@@ -58,7 +64,7 @@ enum StockMovementType: string
     {
         return match ($this) {
             self::PURCHASE_IN, self::RETURN_IN, self::ADJUSTMENT_IN,
-            self::TRANSFER_IN, self::OPENING_BALANCE, self::COST_VARIANCE_IN => StockDirection::IN,
+            self::TRANSFER_IN, self::OPENING_BALANCE, self::COST_VARIANCE_IN, self::PACKAGE_OPEN_IN => StockDirection::IN,
             default => StockDirection::OUT,
         };
     }

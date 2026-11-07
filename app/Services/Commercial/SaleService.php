@@ -776,6 +776,13 @@ final class SaleService
         // Preço como digitado (2 casas; o Form Request recusa mais) — nunca arredondado.
         $requested = Decimal::of($attributes['unit_price']);
 
+        // PLANO 3.3: etiqueta da balança no modo preço — o centavo que reproduz o total impresso
+        // (`ScaleLineCalculator`). Só o leitor da balança passa esta marca; o Form Request do
+        // item não a aceita, então não dá para forjá-la pela API.
+        if (($attributes['_scale_label'] ?? false) === true) {
+            return (string) $requested;
+        }
+
         // Comparação exata: o front manda o preço como texto decimal (`UnitPriceInput`), sem o
         // ruído de float que justificava a antiga tolerância de um centavo — que trocava um
         // preço legítimo (89,905) pelo do cadastro (89,90) sem avisar.

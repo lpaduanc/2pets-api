@@ -73,6 +73,8 @@ class Organization extends Model implements HasDepositSettings
         // PLANO 2.7: saldo de pacote vencido (crédito ao cliente | receita) e limiar de "À vencer".
         'expired_package_policy',
         'package_expiring_soon_days',
+        // PLANO 3.3: etiqueta EAN-13 da balança (prefixos, comprimentos, modo).
+        'scale_settings',
         'card_fee_reference_mode',
         // Crediário (PLANO 2.2): política de encargos de atraso.
         'credit_late_fee_percent',
@@ -104,6 +106,7 @@ class Organization extends Model implements HasDepositSettings
             'effective_sales_tax_rate' => 'decimal:4',
             'expired_package_policy' => \App\Enums\ExpiredPackagePolicy::class,
             'package_expiring_soon_days' => 'integer',
+            'scale_settings' => 'array',
             'card_fee_reference_mode' => CardFeeReferenceMode::class,
             'credit_late_fee_percent' => 'decimal:2',
             'credit_monthly_interest_percent' => 'decimal:4',
