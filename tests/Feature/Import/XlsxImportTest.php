@@ -34,9 +34,10 @@ class XlsxImportTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
         $this->vet = User::factory()->professional()->create();
         // Ordem de dependência da importação (pets pedem clientes; vacinas pedem pets).
-        $tutor = User::factory()->tutor()->create();
+        // O tutor tem o CPF das planilhas e o pet "Rex" (as vacinas apontam para ele).
+        $tutor = User::factory()->tutor()->create(['cpf' => '01234567890']);
         \App\Models\ProfessionalClient::create(['professional_id' => $this->vet->id, 'client_id' => $tutor->id]);
-        \App\Models\Pet::factory()->create(['user_id' => $tutor->id]);
+        \App\Models\Pet::factory()->create(['user_id' => $tutor->id, 'name' => 'Rex']);
     }
 
     /** @return array<string, array{0: string, 1: string, 2: list<list<mixed>>}> */
@@ -54,10 +55,10 @@ class XlsxImportTest extends TestCase
                 [null, null, null, null, null],
                 ['Maria Souza', ['text', '52998224725'], 'maria@example.com', ['mask', 800123456, '0000000000'], ['date', '1985-12-01']],
             ]],
-            'pets' => ['pets', "nome;especie;raca;sexo;peso;data_nascimento;castrado;cpf_tutor\nRex;cachorro;SRD;macho;12,5;05/03/2020;sim;01234567890\nMia;gato;;femea;3,2;;não;\n", [
+            'pets' => ['pets', "nome;especie;raca;sexo;peso;data_nascimento;castrado;cpf_tutor\nRex;cachorro;SRD;macho;12,5;05/03/2020;sim;01234567890\nMia;gato;;femea;3,2;;não;01234567890\n", [
                 ['nome', 'especie', 'raca', 'sexo', 'peso', 'data_nascimento', 'castrado', 'cpf_tutor'],
                 ['Rex', 'cachorro', 'SRD', 'macho', 12.5, ['date', '2020-03-05'], true, ['mask', 1234567890, '00000000000']],
-                ['Mia', 'gato', null, 'femea', 3.2, null, false, null],
+                ['Mia', 'gato', null, 'femea', 3.2, null, false, ['mask', 1234567890, '00000000000']],
             ]],
             'produtos' => ['products', "nome;codigo;codigo_de_barras;ncm;unidade;preco;custo;estoque_inicial\nRação 10kg;0042;07891234567895;23091000;UN;189,9;120,5;12\nAreia;0043;;25081000;KG;12,5;8;0,5\n", [
                 ['nome', 'codigo', 'codigo_de_barras', 'ncm', 'unidade', 'preco', 'custo', 'estoque_inicial'],
@@ -86,6 +87,47 @@ class XlsxImportTest extends TestCase
         $csvValidation = $this->actingAs($this->vet)->postJson("/api/data-imports/{$fromCsv->json('data.id')}/validate")->assertOk()->json();
         $xlsxValidation = $this->actingAs($this->vet)->postJson("/api/data-imports/{$fromXlsx->json('data.id')}/validate")->assertOk()->json();
         $this->assertSame($csvValidation, $xlsxValidation);
+    }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function executions(): array
+    {
+        $out = [];
+
+        foreach (array_keys(self::entities()) as $key) {
+            $out["{$key}-csv"] = [$key, 'csv'];
+            $out["{$key}-xlsx"] = [$key, 'xlsx'];
+        }
+
+        return $out;
+    }
+
+    /** Ponta a ponta: upload → validação → execução (fila síncrona na suíte) → registros criados. */
+    #[DataProvider('executions')]
+    public function test_import_runs_end_to_end_in_csv_and_xlsx(string $key, string $format): void
+    {
+        [$entity, $csv, $cells] = self::entities()[$key];
+        $file = $format === 'csv' ? UploadedFile::fake()->createWithContent("{$key}.csv", $csv) : $this->xlsx("{$key}.xlsx", $cells);
+        $id = $this->upload($entity, $file)->assertCreated()->json('data.id');
+        $validation = $this->actingAs($this->vet)->postJson("/api/data-imports/{$id}/validate")->assertOk()->json();
+        $this->assertGreaterThan(0, $validation['valid_rows'], json_encode($validation));
+
+        $this->actingAs($this->vet)->postJson("/api/data-imports/{$id}/execute", ['duplicate_strategy' => 'skip'])->assertStatus(202);
+
+        $import = DataImport::findOrFail($id);
+        $this->assertSame(\App\Enums\Import\ImportStatus::COMPLETED, $import->status);
+        $this->assertImported($entity);
+    }
+
+    private function assertImported(string $entity): void
+    {
+        match ($entity) {
+            // João tem o CPF do tutor que já existe (duplicado, pulado); Maria é nova.
+            'clients' => $this->assertSame(['52998224725', '0800123456', '1985-12-01'], (fn (User $u): array => [$u->cpf, $u->phone, $u->birth_date?->toDateString()])(User::where('email', 'maria@example.com')->sole())),
+            'pets' => $this->assertSame(['3.20', false], (fn ($p): array => [number_format((float) $p->weight, 2, '.', ''), (bool) $p->neutered])(\App\Models\Pet::where('name', 'Mia')->sole())),
+            'products' => $this->assertSame(['0042', '07891234567895', '189.90', '12.0000'], (fn ($p): array => [$p->code, $p->gtin, number_format((float) $p->price, 2, '.', ''), (string) $p->stock_quantity])(\App\Models\Product::where('name', 'Ração 10kg')->sole())),
+            'vaccinations' => $this->assertSame(1, \App\Models\Vaccination::whereHas('pet', fn ($q) => $q->where('name', 'Rex'))->count()),
+        };
     }
 
     public function test_leading_zeros_serial_dates_and_error_row_numbers(): void

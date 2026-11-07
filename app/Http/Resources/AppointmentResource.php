@@ -94,7 +94,7 @@ class AppointmentResource extends JsonResource
                 'status' => $this->transport->status->value,
                 'fee' => (string) $this->transport->fee,
                 'distance_km' => $this->transport->distance_km === null ? null : (string) $this->transport->distance_km,
-                'service_area_id' => $this->transport->service_area_id,
+                'delivery_zone_id' => $this->transport->delivery_zone_id,
             ]),
 
             // Nested medical data (when loaded)

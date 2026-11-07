@@ -112,7 +112,7 @@ class DataImportFlowTest extends TestCase
             ->postJson("/api/data-imports/{$import->id}/execute", ['duplicate_strategy' => 'skip']);
 
         $response->assertStatus(202);
-        $this->assertSame(ImportStatus::IMPORTING->value, $import->fresh()->status);
+        $this->assertSame(ImportStatus::IMPORTING, $import->fresh()->status);
         Queue::assertPushed(ImportBatchJob::class);
     }
 
@@ -176,7 +176,7 @@ class DataImportFlowTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('rolled_back', 1);
         $this->assertNull(User::find($client->id));
-        $this->assertSame(ImportStatus::ROLLED_BACK->value, $import->fresh()->status);
+        $this->assertSame(ImportStatus::ROLLED_BACK, $import->fresh()->status);
     }
 
     public function test_rollback_refuses_client_with_pet_created_after_import(): void

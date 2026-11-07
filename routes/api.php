@@ -552,6 +552,17 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::delete('/service-areas/{id}', [\App\Http\Controllers\Api\ServiceAreaController::class, 'destroy']);
             Route::put('/members/{member}/service-areas', [\App\Http\Controllers\Api\ServiceAreaController::class, 'syncMemberAreas']);
         });
+
+        // Zonas do leva e traz (PLANO 3.7) — tabela própria, não confundir com as áreas acima
+        // (setores). Leitura para quem vê a agenda; escrita com a gestão das áreas. Membro da
+        // organização da URL checado no controller.
+        Route::get('/delivery-zones', [\App\Http\Controllers\Api\Transport\DeliveryZoneController::class, 'index'])
+            ->middleware('permission:agenda.view.own|agenda.view.any');
+        Route::middleware('permission:service-areas.manage')->group(function (): void {
+            Route::post('/delivery-zones', [\App\Http\Controllers\Api\Transport\DeliveryZoneController::class, 'store']);
+            Route::put('/delivery-zones/{id}', [\App\Http\Controllers\Api\Transport\DeliveryZoneController::class, 'update'])->whereNumber('id');
+            Route::delete('/delivery-zones/{id}', [\App\Http\Controllers\Api\Transport\DeliveryZoneController::class, 'destroy'])->whereNumber('id');
+        });
     });
 
     // Accept requires auth: the membership is created under the calling user's own account.
@@ -1438,6 +1449,10 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
 
     // Catálogo de exame + pedido de exame — contrato docs/gap-simplesvet/specs/
     // 16-modelos-exame-laudos-spec.md. Permissões: docs/gap-simplesvet/specs/
+    // Modelos de prontuário (doc 14, mínimo do PLANO 3.8): só leitura, para quem escreve prontuário.
+    Route::get('record-templates', [\App\Http\Controllers\Api\RecordTemplateController::class, 'index'])->middleware('permission:medical-records.create');
+    Route::get('record-templates/{id}', [\App\Http\Controllers\Api\RecordTemplateController::class, 'show'])->whereNumber('id')->middleware('permission:medical-records.create');
+
     // permissoes-catalogo.md (`exam-templates.view`/`.manage`).
     Route::get('exam-types', [ExamTypeController::class, 'index'])->middleware('permission:exam-templates.view');
     Route::post('exam-types', [ExamTypeController::class, 'store'])->middleware('permission:exam-templates.manage');

@@ -70,14 +70,24 @@ class PetImportFlowTest extends TestCase
         $pet = Pet::where('name', 'Rex')->first();
         $this->assertNotNull($pet);
         $this->assertSame($client->id, $pet->user_id);
-        $this->assertSame(ImportStatus::COMPLETED->value, $import->fresh()->status);
+        $this->assertSame(ImportStatus::COMPLETED, $import->fresh()->status);
     }
 
-    public function test_rollback_of_a_pet_import_is_refused_not_silently_reported_as_success(): void
+    /**
+     * O desfazer de pets passou a existir (`ImportRollbackService::rollbackPet`): o teste antigo
+     * esperava recusa total, de quando o pet não tinha rollback. Agora: pet intocado sai; pet com
+     * ato clínico depois da importação é recusado com motivo.
+     */
+    public function test_rollback_of_a_pet_import_removes_untouched_pets_and_refuses_pets_with_clinical_activity(): void
     {
         $vet = User::factory()->professional()->create();
         $client = User::factory()->tutor()->create();
-        $pet = Pet::factory()->create(['user_id' => $client->id]);
+        $untouched = Pet::factory()->create(['user_id' => $client->id]);
+        $treated = Pet::factory()->create(['user_id' => $client->id]);
+        \App\Models\Appointment::create([
+            'pet_id' => $treated->id, 'client_id' => $client->id, 'professional_id' => $vet->id,
+            'appointment_date' => now()->toDateString(), 'appointment_time' => '10:00', 'type' => 'consultation', 'status' => 'scheduled',
+        ]);
 
         $import = DataImport::create([
             'professional_id' => $vet->id,
@@ -87,20 +97,24 @@ class PetImportFlowTest extends TestCase
             'status' => ImportStatus::COMPLETED->value,
             'batch_uuid' => (string) Str::uuid(),
         ]);
-        $import->rows()->create([
-            'row_number' => 1,
-            'raw' => ['nome' => $pet->name],
-            'status' => ImportRowStatus::IMPORTED->value,
-            'created_record_type' => Pet::class,
-            'created_record_id' => $pet->id,
-        ]);
+
+        foreach ([$untouched, $treated] as $index => $pet) {
+            $import->rows()->create([
+                'row_number' => $index + 1,
+                'raw' => ['nome' => $pet->name],
+                'status' => ImportRowStatus::IMPORTED->value,
+                'created_record_type' => Pet::class,
+                'created_record_id' => $pet->id,
+            ]);
+        }
 
         $response = $this->actingAs($vet)->postJson("/api/data-imports/{$import->id}/rollback");
 
         $response->assertOk();
-        $response->assertJsonPath('rolled_back', 0);
+        $response->assertJsonPath('rolled_back', 1);
         $this->assertCount(1, $response->json('refused'));
-        $this->assertNotNull(Pet::find($pet->id));
+        $this->assertNull(Pet::find($untouched->id));
+        $this->assertNotNull(Pet::find($treated->id));
     }
 
     /**

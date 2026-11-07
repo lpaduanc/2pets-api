@@ -15,6 +15,8 @@ use App\Models\Vaccination;
  */
 final class ImportedVaccinationProvisioner
 {
+    private const DEFAULT_DOSE = 1;
+
     /**
      * @param  array{pet_id: int, vaccine_name: string, manufacturer: ?string, batch_number: ?string, application_date: string, expiry_date: ?string, next_dose_date: ?string, dose_number: ?int, notes: ?string}  $normalized
      */
@@ -29,8 +31,10 @@ final class ImportedVaccinationProvisioner
             'application_date' => $normalized['application_date'],
             'expiry_date' => $normalized['expiry_date'],
             'next_dose_date' => $normalized['next_dose_date'],
-            'dose_number' => $normalized['dose_number'],
-            'notes' => $normalized['notes'],
+            // Coluna "dose" é opcional na planilha; `dose_number` é NOT NULL (padrão 1 no banco) e o
+            // `null` explícito derrubava o lote com 500. Sem dose informada = 1ª dose, como o DEFAULT.
+            'dose_number' => $normalized['dose_number'] ?? self::DEFAULT_DOSE,
+            'notes' => $normalized['notes'] ?? null,
         ]);
     }
 }

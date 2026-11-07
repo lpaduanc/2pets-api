@@ -22,6 +22,8 @@ use Illuminate\Support\Facades\DB;
  */
 final class ImportedProductProvisioner
 {
+    private const DEFAULT_UNIT = 'UN';
+
     public function __construct(
         private readonly PricingService $pricing,
         private readonly StockService $stock,
@@ -58,19 +60,22 @@ final class ImportedProductProvisioner
      */
     private function attributesFrom(array $normalized, User $actor): array
     {
+        // Coluna vazia na planilha chega `null`; `unit_of_sale` e `average_cost` são NOT NULL e o
+        // `null` explícito passava por cima do DEFAULT do banco (500 no lote). Mesmo padrão do
+        // cadastro: unidade "UN" e custo zero até a primeira compra.
         return [
             'name' => $normalized['name'],
             'sku' => $normalized['sku'] ?? $this->skuGenerator->generateFrom($normalized['name'], $actor),
-            'code' => $normalized['code'],
-            'gtin' => $normalized['gtin'],
-            'ncm' => $normalized['ncm'],
-            'unit_of_sale' => $normalized['unit_of_sale'],
-            'brand_id' => $normalized['brand_id'],
-            'product_group_id' => $normalized['product_group_id'],
-            'price' => $normalized['price'],
-            'average_cost' => $normalized['average_cost'],
-            'markup_percent' => $normalized['markup_percent'],
-            'stock_quantity' => $normalized['stock_quantity'],
+            'code' => $normalized['code'] ?? null,
+            'gtin' => $normalized['gtin'] ?? null,
+            'ncm' => $normalized['ncm'] ?? null,
+            'unit_of_sale' => $normalized['unit_of_sale'] ?? self::DEFAULT_UNIT,
+            'brand_id' => $normalized['brand_id'] ?? null,
+            'product_group_id' => $normalized['product_group_id'] ?? null,
+            'price' => $normalized['price'] ?? null,
+            'average_cost' => $normalized['average_cost'] ?? '0',
+            'markup_percent' => $normalized['markup_percent'] ?? null,
+            'stock_quantity' => $normalized['stock_quantity'] ?? 0,
             'controls_stock' => true,
             'is_active' => true,
         ];

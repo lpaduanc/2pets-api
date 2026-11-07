@@ -31,11 +31,13 @@ final class ImportedClientProvisioner
     public function create(array $normalized, int $professionalId): User
     {
         $client = User::create([
+            // Opcionais com `??`: linha validada por versão anterior do validador (ou montada só com
+            // o nome) não tem todas as chaves, e `Undefined array key` derrubava o lote com 500.
             'name' => $normalized['name'],
-            'email' => $normalized['email'],
-            'cpf' => $normalized['cpf'],
-            'phone' => $normalized['phone'],
-            'address' => $normalized['address'],
+            'email' => $normalized['email'] ?? null,
+            'cpf' => $normalized['cpf'] ?? null,
+            'phone' => $normalized['phone'] ?? null,
+            'address' => $normalized['address'] ?? null,
             'birth_date' => $normalized['birth_date'] ?? null,
             'password' => bcrypt(Str::random(self::RANDOM_PASSWORD_LENGTH)),
             'user_type' => 'tutor',

@@ -13,7 +13,7 @@ class PetTransport extends Model
     public const RESOURCE_RELATIONS = ['appointment.pet:id,name', 'appointment.client:id,name', 'zone:id,name', 'driver:id,name'];
 
     protected $fillable = [
-        'organization_id', 'professional_id', 'appointment_id', 'service_area_id', 'appointment_service_id',
+        'organization_id', 'professional_id', 'appointment_id', 'delivery_zone_id', 'appointment_service_id',
         'type', 'zip_code', 'address', 'complement', 'city', 'state', 'distance_km', 'fee', 'driver_id', 'status',
         'scheduled_pickup_at', 'on_the_way_at', 'picked_up_at', 'delivered_at', 'failed_at', 'cancelled_at',
     ];
@@ -42,7 +42,7 @@ class PetTransport extends Model
 
     public function zone(): BelongsTo
     {
-        return $this->belongsTo(ServiceArea::class, 'service_area_id')->withTrashed();
+        return $this->belongsTo(DeliveryZone::class, 'delivery_zone_id');
     }
 
     public function driver(): BelongsTo

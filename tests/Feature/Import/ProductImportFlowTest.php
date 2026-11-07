@@ -52,8 +52,8 @@ class ProductImportFlowTest extends TestCase
 
         $product = Product::where('name', 'Ração Premium')->first();
         $this->assertNotNull($product);
-        $this->assertSame(20, $product->stock_quantity);
-        $this->assertSame(ImportStatus::COMPLETED->value, $import->fresh()->status);
+        $this->assertSame('20.0000', (string) $product->stock_quantity); // Quantidade decimal (4 casas) desde a Fase 0.
+        $this->assertSame(ImportStatus::COMPLETED, $import->fresh()->status);
     }
 
     public function test_opening_stock_balance_is_recorded_as_a_stock_movement_not_a_raw_write(): void

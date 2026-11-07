@@ -68,7 +68,7 @@ class VaccinationImportFlowTest extends TestCase
         $vaccination = Vaccination::where('pet_id', $pet->id)->first();
         $this->assertNotNull($vaccination);
         $this->assertNull($vaccination->professional_id);
-        $this->assertSame(ImportStatus::COMPLETED->value, $import->fresh()->status);
+        $this->assertSame(ImportStatus::COMPLETED, $import->fresh()->status);
     }
 
     /**

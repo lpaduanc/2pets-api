@@ -4,10 +4,10 @@ namespace Tests\Feature\Transport;
 
 use App\Contracts\GeocodingProvider;
 use App\Models\Appointment;
+use App\Models\DeliveryZone;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\PetTransport;
-use App\Models\ServiceArea;
 use App\Models\User;
 use App\Services\Invoice\AppointmentInvoiceService;
 use Carbon\CarbonImmutable;
@@ -17,7 +17,7 @@ use Tests\Feature\Commercial\Concerns\BuildsCounterFixtures;
 use Tests\TestCase;
 
 /**
- * Leva e traz (docs/gap-petflow/PLANO.md, 3.7): zona por faixa de CEP, fallback por distância
+ * Leva e traz (docs/gap-petflow/PLANO.md, 3.7): CRUD das zonas (`delivery_zones`), zona por faixa de CEP, fallback por distância
  * (Haversine a partir da clínica), fora da área, taxa como item de venda do agendamento, fluxo
  * de status com horários, KPIs e outra organização. Geocodificação por um provedor falso.
  */
@@ -85,14 +85,19 @@ class PetTransportTest extends TestCase
         $this->quote(['address' => 'Rua Longe, 1', 'city' => 'Jundiaí', 'state' => 'SP'])->assertUnprocessable()->assertJsonPath('message', 'Endereço fora da área do leva e traz.');
         $this->quote(['address' => 'Lugar que o mapa não acha'])->assertUnprocessable()->assertJsonValidationErrors('address');
 
-        // A área devolve a regra no formato do contrato; desligar limpa a regra.
-        $area = ServiceArea::where('name', 'Centro')->sole();
-        $this->owner()->getJson("/api/organizations/{$this->clinic->id}/service-areas")->assertOk()
-            ->assertJsonFragment(['name' => 'Centro', 'delivery_enabled' => true, 'rule_type' => 'cep', 'ceps' => ['01000-000..01999-999', '04500-000'], 'fee' => '15.00']);
-        $this->owner()->putJson("/api/organizations/{$this->clinic->id}/service-areas/{$area->id}", ['delivery_enabled' => false])->assertOk()
-            ->assertJsonPath('data.delivery_enabled', false)->assertJsonPath('data.ceps', [])->assertJsonPath('data.fee', null);
-        $this->owner()->postJson("/api/organizations/{$this->clinic->id}/service-areas", ['name' => 'Sem regra', 'delivery_enabled' => true, 'rule_type' => 'distance', 'fee' => '5'])
-            ->assertUnprocessable()->assertJsonValidationErrors('max_km');
+        // CRUD das zonas: CEPs normalizados; trocar a regra limpa a outra; regra incompleta → 422.
+        $zones = "/api/organizations/{$this->clinic->id}/delivery-zones";
+        $centro = DeliveryZone::where('name', 'Centro')->sole();
+        $this->owner()->getJson($zones)->assertOk()->assertJsonCount(4, 'data')
+            ->assertJsonFragment(['name' => 'Centro', 'rule_type' => 'cep', 'ceps' => ['01000-000..01999-999', '04500-000'], 'max_km' => null, 'fee' => '15.00', 'active' => true]);
+        $this->owner()->putJson("{$zones}/{$centro->id}", ['rule_type' => 'distance', 'max_km' => 2])->assertOk()
+            ->assertJsonPath('data.ceps', [])->assertJsonPath('data.max_km', '2.00');
+        $this->owner()->postJson($zones, ['name' => 'Sem regra', 'rule_type' => 'distance', 'fee' => '5'])->assertUnprocessable()->assertJsonValidationErrors('max_km');
+        // Zona inativa não cota: o CEP do Centro cai para a distância e o endereço não geocodifica.
+        $this->owner()->putJson("{$zones}/{$centro->id}", ['rule_type' => 'cep', 'ceps' => ['01000-000..01999-999'], 'active' => false])->assertOk();
+        $this->quote(['zip_code' => '01310-100'])->assertUnprocessable();
+        // Setor (área de atendimento) não tem mais nada de leva e traz.
+        $this->assertArrayNotHasKey('rule_type', $this->owner()->postJson("/api/organizations/{$this->clinic->id}/service-areas", ['name' => 'Banho e Tosa'])->assertCreated()->json('data'));
     }
 
     public function test_fee_becomes_a_service_line_of_the_appointment_and_reaches_the_invoice(): void
@@ -157,6 +162,14 @@ class PetTransportTest extends TestCase
     public function test_cancelling_drops_the_fee_line_and_other_organizations_are_blocked(): void
     {
         $id = $this->transportId('01310-100');
+        $zones = "/api/organizations/{$this->clinic->id}/delivery-zones";
+        $centro = DeliveryZone::where('name', 'Centro')->sole();
+        $unused = DeliveryZone::where('name', 'Até 10 km')->sole();
+        // Zona usada em transporte é desativada (o transporte guarda a zona); a não usada é apagada.
+        $this->owner()->deleteJson("{$zones}/{$centro->id}")->assertOk()->assertJsonPath('data.active', false);
+        $this->owner()->deleteJson("{$zones}/{$unused->id}")->assertOk();
+        $this->assertNull(DeliveryZone::find($unused->id));
+        $this->assertSame('Centro', $this->owner()->getJson('/api/professional/transports?date=2026-11-10')->json('data.0.zone.name'));
         $transport = PetTransport::findOrFail($id);
         $this->changeStatus($id, ['status' => 'cancelled'])->assertOk()->assertJsonPath('data.status', 'cancelled');
         $this->assertSame(0, $transport->appointment->services()->count());
@@ -170,6 +183,11 @@ class PetTransportTest extends TestCase
         // As zonas são da organização: a outra não tem nenhuma.
         $this->postJson('/api/professional/transports/quote', ['zip_code' => '01310-100'])->assertUnprocessable();
         $this->getJson('/api/professional/transports/kpis?from=2026-11-01&to=2026-11-30')->assertOk()->assertJsonPath('data.success_rate', null);
+        // Zonas da outra organização: invisíveis e intocáveis.
+        $this->getJson($zones)->assertNotFound();
+        $this->putJson("{$zones}/{$centro->id}", ['fee' => '1'])->assertNotFound();
+        // Recepção vê a agenda (lê as zonas), mas não gerencia setores (não escreve zona).
+        $this->actingAs($this->receptionist, 'sanctum')->getJson($zones)->assertOk();
         // Sem permissão da agenda (tutor): 403.
         $this->actingAs($this->tutor, 'sanctum')->getJson('/api/professional/transports')->assertForbidden();
     }
@@ -177,7 +195,7 @@ class PetTransportTest extends TestCase
     /** @param  array<string, mixed>  $rule */
     private function zone(string $name, array $rule): void
     {
-        $this->owner()->postJson("/api/organizations/{$this->clinic->id}/service-areas", ['name' => $name, 'delivery_enabled' => true] + $rule)->assertCreated();
+        $this->owner()->postJson("/api/organizations/{$this->clinic->id}/delivery-zones", ['name' => $name] + $rule)->assertCreated();
     }
 
     /** @param  array<string, mixed>  $payload */

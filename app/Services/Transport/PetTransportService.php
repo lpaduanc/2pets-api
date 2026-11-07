@@ -63,7 +63,7 @@ final class PetTransportService
                 'organization_id' => $organizationId,
                 'professional_id' => $appointment->professional_id,
                 'appointment_id' => $appointment->id,
-                'service_area_id' => $quote['zone']->id,
+                'delivery_zone_id' => $quote['zone']->id,
                 'appointment_service_id' => $line->id,
                 'type' => PetTransportType::from($transport['type']),
                 'zip_code' => $address['zip_code'] ?? null,

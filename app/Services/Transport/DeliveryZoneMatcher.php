@@ -2,7 +2,7 @@
 
 namespace App\Services\Transport;
 
-use App\Models\ServiceArea;
+use App\Models\DeliveryZone;
 use Illuminate\Support\Collection;
 
 /**
@@ -16,8 +16,8 @@ use Illuminate\Support\Collection;
  */
 final class DeliveryZoneMatcher
 {
-    /** @param  Collection<int, ServiceArea>  $zones */
-    public function byCep(Collection $zones, string $cep): ?ServiceArea
+    /** @param  Collection<int, DeliveryZone>  $zones */
+    public function byCep(Collection $zones, string $cep): ?DeliveryZone
     {
         $target = self::digits($cep);
 
@@ -25,16 +25,16 @@ final class DeliveryZoneMatcher
             return null;
         }
 
-        return $zones->filter(fn (ServiceArea $zone): bool => $zone->delivery_rule_type === 'cep' && $this->contains((array) $zone->delivery_ceps, (int) $target))
-            ->sortBy([fn ($a, $b) => (float) $a->delivery_fee <=> (float) $b->delivery_fee, fn ($a, $b) => $a->id <=> $b->id])
+        return $zones->filter(fn (DeliveryZone $zone): bool => $zone->rule_type === DeliveryZone::RULE_CEP && $this->contains((array) $zone->ceps, (int) $target))
+            ->sortBy([fn ($a, $b) => (float) $a->fee <=> (float) $b->fee, fn ($a, $b) => $a->id <=> $b->id])
             ->first();
     }
 
-    /** @param  Collection<int, ServiceArea>  $zones */
-    public function byDistance(Collection $zones, float $distanceKm): ?ServiceArea
+    /** @param  Collection<int, DeliveryZone>  $zones */
+    public function byDistance(Collection $zones, float $distanceKm): ?DeliveryZone
     {
-        return $zones->filter(fn (ServiceArea $zone): bool => $zone->delivery_rule_type === 'distance' && $zone->delivery_max_km !== null && (float) $zone->delivery_max_km >= $distanceKm)
-            ->sortBy([fn ($a, $b) => (float) $a->delivery_max_km <=> (float) $b->delivery_max_km, fn ($a, $b) => $a->id <=> $b->id])
+        return $zones->filter(fn (DeliveryZone $zone): bool => $zone->rule_type === DeliveryZone::RULE_DISTANCE && $zone->max_km !== null && (float) $zone->max_km >= $distanceKm)
+            ->sortBy([fn ($a, $b) => (float) $a->max_km <=> (float) $b->max_km, fn ($a, $b) => $a->id <=> $b->id])
             ->first();
     }
 

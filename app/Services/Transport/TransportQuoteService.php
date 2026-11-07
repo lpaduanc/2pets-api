@@ -2,8 +2,8 @@
 
 namespace App\Services\Transport;
 
+use App\Models\DeliveryZone;
 use App\Models\Organization;
-use App\Models\ServiceArea;
 use App\Services\Location\GeocodingService;
 use App\Support\GeoDistance;
 use App\Support\Money\Money;
@@ -30,7 +30,7 @@ final class TransportQuoteService
 
     /**
      * @param  array{zip_code?: string|null, address?: string|null, complement?: string|null, city?: string|null, state?: string|null}  $address
-     * @return array{zone: ServiceArea, distance_km: string|null, fee: string}
+     * @return array{zone: DeliveryZone, distance_km: string|null, fee: string}
      */
     public function quote(?int $organizationId, int $professionalId, array $address): array
     {
@@ -38,7 +38,7 @@ final class TransportQuoteService
         $byCep = $this->matcher->byCep($zones, (string) ($address['zip_code'] ?? ''));
 
         if ($byCep !== null) {
-            return ['zone' => $byCep, 'distance_km' => null, 'fee' => Money::of($byCep->delivery_fee ?? 0)->toString()];
+            return ['zone' => $byCep, 'distance_km' => null, 'fee' => Money::of($byCep->fee)->toString()];
         }
 
         $distance = $this->distance($organizationId, $address);
@@ -48,15 +48,15 @@ final class TransportQuoteService
             throw ValidationException::withMessages(['address' => self::OUT_OF_AREA]);
         }
 
-        return ['zone' => $byDistance, 'distance_km' => number_format($distance, 2, '.', ''), 'fee' => Money::of($byDistance->delivery_fee ?? 0)->toString()];
+        return ['zone' => $byDistance, 'distance_km' => number_format($distance, 2, '.', ''), 'fee' => Money::of($byDistance->fee)->toString()];
     }
 
-    /** @return Collection<int, ServiceArea> */
+    /** @return Collection<int, DeliveryZone> */
     private function zones(?int $organizationId, int $professionalId): Collection
     {
-        return ServiceArea::query()
+        return DeliveryZone::query()
             ->when($organizationId !== null, fn ($q) => $q->where('organization_id', $organizationId), fn ($q) => $q->whereNull('organization_id')->where('professional_id', $professionalId))
-            ->where('active', true)->where('delivery_enabled', true)
+            ->where('active', true)
             ->get();
     }
 

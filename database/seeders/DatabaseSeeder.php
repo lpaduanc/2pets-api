@@ -39,6 +39,7 @@ class DatabaseSeeder extends Seeder
             SpecialtySeeder::class,
             FoodAllergySeeder::class,
             DietaryRestrictionSeeder::class,
+            RecordTemplateSeeder::class,
             PetSeeder::class,
             ProfessionalSeeder::class,
             MedicalDataSeeder::class,
