@@ -70,6 +70,12 @@ class UpdateProductRequest extends FormRequest
             'stock_quantity' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0'],
             'min_stock' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0'],
             'max_stock' => ['sometimes', 'nullable', 'numeric', 'decimal:0,4', 'min:0'],
+            // Projeção de compra (PLANO 3.4): vazio = herda (fornecedor → 15 dias; 30 dias; 1).
+            'preferred_supplier_id' => ['sometimes', 'nullable', 'integer', new \App\Rules\ScopedSupplierExists($this->user())],
+            'lead_time_days' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:365'],
+            'target_coverage_days' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:365'],
+            'purchase_multiple' => ['sometimes', 'nullable', 'numeric', 'decimal:0,4', 'gt:0', 'max:99999999'],
+            'use_safety_stock' => ['sometimes', 'boolean'],
             'decimal_places_allowed' => ['sometimes', 'integer', 'between:0,4'],
             'expiry_date' => ['sometimes', 'nullable', 'date'],
 

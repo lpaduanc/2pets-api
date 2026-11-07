@@ -68,7 +68,8 @@ final class StockAnalysisService
         $products = $this->scope->scopeQuery(Product::query(), $user)
             ->where('controls_stock', true)
             ->where('is_active', true)
-            ->with('lastSupplier:id,lead_time_days')
+            // Fornecedores com nome: a projeção de compra (3.4) mostra e agrupa por eles.
+            ->with(['lastSupplier:id,legal_name,trade_name,lead_time_days', 'preferredSupplier:id,legal_name,trade_name,lead_time_days'])
             ->orderBy('name')
             ->get();
 

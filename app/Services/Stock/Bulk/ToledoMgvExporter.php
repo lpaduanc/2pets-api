@@ -21,8 +21,11 @@ use Illuminate\Support\Str;
  *   pos 69-74  código da informação extra 6 "000000"
  *
  * Fonte: layout do ITENSMGV.TXT do MGV5 da Toledo do Brasil, como implementado no componente
- * ACBrCargaBal (projeto ACBr) e nos manuais de integração do MGV. O MGV6/MGV7 aceita campos a
- * mais no fim da linha; a versão do MGV das clínicas-piloto ainda precisa ser confirmada
+ * ACBrCargaBal (projeto ACBr) e nos manuais de integração do MGV. Confirmado pela TOTVS em "Como
+ * estão dispostas as informações no ITENSMGV.txt conforme o layout oficial da Toledo" (central de
+ * atendimento TOTVS): DD(2) T(1) CCCCCC(6) PPPPPP(6) VVV(3) D1(25) D2(25) + extras. Um fórum cita
+ * uma versão antiga do MGV5 com descritivo único de 50; o MGV6/MGV7 aceita campos a mais no fim
+ * da linha; a versão do MGV das clínicas-piloto ainda precisa ser confirmada
  * (`docs/PENDENCIAS.md`). Filizola e outros formatos ficam para depois.
  */
 final class ToledoMgvExporter

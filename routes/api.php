@@ -899,6 +899,7 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('stock/package-openings', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'open']);
         Route::get('stock/scale-settings', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'scaleSettings']);
         Route::put('stock/scale-settings', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'updateScaleSettings']);
+        Route::post('stock/purchase-suggestions/orders', [\App\Http\Controllers\Api\Stock\PurchaseSuggestionController::class, 'store']);
         Route::get('stock/scale-export', [\App\Http\Controllers\Api\Stock\BulkStockController::class, 'export']);
         Route::post('pdv/scale-barcode', \App\Http\Controllers\Api\Commercial\ScaleBarcodeController::class);
 

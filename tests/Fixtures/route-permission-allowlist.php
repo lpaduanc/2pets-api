@@ -164,6 +164,8 @@ return [
     'PUT api/professional/stock/scale-settings',
     'GET api/professional/stock/scale-export',
     'POST api/professional/pdv/scale-barcode',
+    // Projeção de compra (PLANO 3.4): gerar pedidos exige `products.update` pelo cargo (no controller).
+    'POST api/professional/stock/purchase-suggestions/orders',
     'GET api/professional/clients',
     'GET api/professional/clients/{client}',
     'GET api/professional/clients/{id}/message-history',

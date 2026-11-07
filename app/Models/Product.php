@@ -43,6 +43,12 @@ class Product extends Model implements Sellable
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        // PLANO 3.4: parâmetros da projeção de compra (vazios usam o padrão).
+        'preferred_supplier_id',
+        'lead_time_days',
+        'target_coverage_days',
+        'purchase_multiple',
+        'use_safety_stock',
         // PLANO 3.3: código da balança (único no escopo) e venda por peso.
         'scale_code',
         'sold_by_weight',
@@ -118,6 +124,10 @@ class Product extends Model implements Sellable
             'is_active' => 'boolean',
             'is_supply' => 'boolean',
             'sold_by_weight' => 'boolean',
+            'lead_time_days' => 'integer',
+            'target_coverage_days' => 'integer',
+            'purchase_multiple' => 'decimal:4',
+            'use_safety_stock' => 'boolean',
             'images' => 'array',
         ];
     }
@@ -145,6 +155,11 @@ class Product extends Model implements Sellable
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function preferredSupplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'preferred_supplier_id');
     }
 
     public function lastSupplier(): BelongsTo

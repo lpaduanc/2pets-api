@@ -75,6 +75,12 @@ class ProductResource extends JsonResource
             'stock_quantity' => $this->stock_quantity,
             'min_stock' => $this->min_stock,
             'max_stock' => $this->max_stock,
+            // Parâmetros da projeção de compra (PLANO 3.4); `null` = herda o padrão.
+            'preferred_supplier_id' => $this->preferred_supplier_id,
+            'lead_time_days' => $this->lead_time_days,
+            'target_coverage_days' => $this->target_coverage_days,
+            'purchase_multiple' => $this->purchase_multiple,
+            'use_safety_stock' => (bool) $this->use_safety_stock,
             'stock_situation' => $this->stockSituation(),
             'expiry_date' => $this->expiry_date?->toDateString(),
             'is_expired' => $this->isExpired(),

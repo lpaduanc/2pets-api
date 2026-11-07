@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Stock\Projection\PurchaseProjectionService;
 use App\Services\Stock\StockAnalysisService;
 use App\Support\Money\Decimal;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,7 @@ class StockReportController extends Controller
     public function __construct(
         private readonly CommercialScopeResolver $scope,
         private readonly StockAnalysisService $analysis,
+        private readonly PurchaseProjectionService $projection,
     ) {}
 
     public function analysis(Request $request): JsonResponse
@@ -29,7 +31,10 @@ class StockReportController extends Controller
         $request->validate([
             'situation' => ['nullable', Rule::enum(StockSituation::class)],
             'search' => ['nullable', 'string', 'max:100'],
+            'window' => ['nullable', 'integer', Rule::in(PurchaseProjectionService::WINDOWS)],
+            'needs_purchase' => ['nullable', 'boolean'],
         ]);
+        $window = $request->integer('window', PurchaseProjectionService::DEFAULT_WINDOW);
 
         $rows = $this->analysis->classify($request->user());
         $summary = $this->analysis->summarize($rows);
@@ -45,6 +50,11 @@ class StockReportController extends Controller
             ->sortByDesc('capital')
             ->values();
 
+        // Projeção de compra (3.4) sobre a janela pedida; a classificação segue nos 90 dias dela.
+        $projection = $this->projection->project($filtered->pluck('product'), $window);
+        $filtered = $filtered->map(fn (array $row): array => $row + ['projection' => $projection[$row['product']->id]])
+            ->when($request->boolean('needs_purchase'), fn ($c) => $c->filter(fn (array $row): bool => (float) $row['projection']['suggested_quantity'] > 0)->values());
+
         $perPage = $this->resolvePerPage($request, 50);
         $page = max(1, $request->integer('page', 1));
         $total = $filtered->count();
@@ -55,6 +65,7 @@ class StockReportController extends Controller
                 'name' => $row['product']->name,
                 'code' => $row['product']->code,
                 'unit_of_sale' => $row['product']->unit_of_sale,
+                'decimal_places_allowed' => (int) $row['product']->decimal_places_allowed,
             ],
             'situation' => $row['situation']->value,
             'situation_label' => $row['situation']->label(),
@@ -63,6 +74,7 @@ class StockReportController extends Controller
         return response()->json([
             'summary' => $summary,
             'criteria' => $this->analysis->criteria(),
+            'window_days' => $window,
             'data' => $data,
             'meta' => [
                 'current_page' => $page,

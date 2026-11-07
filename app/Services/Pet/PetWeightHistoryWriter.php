@@ -4,6 +4,7 @@ namespace App\Services\Pet;
 
 use App\Models\PetWeightHistory;
 use App\Models\User;
+use App\Support\BusinessClock;
 use Carbon\Carbon;
 
 /**
@@ -29,7 +30,10 @@ final class PetWeightHistoryWriter
             'pet_id' => $petId,
             'measured_by_user_id' => $measuredBy->id,
             'weight' => $weight,
-            'measured_at' => $measuredAt,
+            // A tela lê `measured_at` como DATA (o lançamento manual já chega só com a data): grava
+            // o dia de negócio do instante (São Paulo), senão o peso registrado entre 21h e
+            // meia-noite cairia no dia seguinte (UTC).
+            'measured_at' => $measuredAt->copy()->setTimezone(BusinessClock::timezone())->toDateString(),
         ]);
     }
 }
