@@ -586,6 +586,17 @@ class User extends Authenticatable implements HasMedia
     }
 
     /**
+     * Permissão efetiva = papel Spatie OU exceção pontual da organização — a mesma régua de
+     * `EnsurePermission`. Checagem fina dentro do controller (ex.: mostrar contato em massa)
+     * tem de usar esta, não `can()`: com `can()` sozinho, quem passou pela rota via override
+     * entrava na tela sem o dado que a permissão libera.
+     */
+    public function hasEffectivePermission(string $permission): bool
+    {
+        return $this->can($permission) || $this->hasOrganizationPermissionOverride($permission);
+    }
+
+    /**
      * União das exceções pontuais já efetivamente concedidas (pós blindagem clínica) em
      * todas as organizações ativas desta pessoa — usado por `PermissionSummaryService` para
      * que `GET me/permissions` reflita a mesma fonte de verdade de `EnsurePermission`.

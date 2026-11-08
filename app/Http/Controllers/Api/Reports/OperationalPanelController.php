@@ -87,6 +87,6 @@ class OperationalPanelController extends Controller
      */
     private function includeContact(Request $request): bool
     {
-        return $request->user()->can(self::CONTACT_PERMISSION);
+        return $request->user()->hasEffectivePermission(self::CONTACT_PERMISSION);
     }
 }

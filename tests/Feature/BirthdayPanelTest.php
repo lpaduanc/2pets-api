@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Enums\OrganizationRole;
+use App\Models\Organization;
+use App\Models\OrganizationMember;
 use App\Models\Pet;
 use App\Models\ProfessionalClient;
 use App\Models\User;
@@ -110,5 +113,35 @@ class BirthdayPanelTest extends TestCase
         $tutor = collect($response->json('data.pets'))->first()['tutor'];
         $this->assertArrayHasKey('phone', $tutor);
         $this->assertSame($this->client->email, $tutor['email']);
+    }
+
+    /**
+     * Exceção pontual da organização (`organization_members.permissions`): a rota já deixava
+     * entrar, mas o controller checava só o papel Spatie e escondia o contato. A permissão
+     * efetiva tem de valer igual na rota, na lista e na exportação.
+     */
+    public function test_organization_override_shows_contact_and_allows_export(): void
+    {
+        OrganizationMember::factory()->for(Organization::factory()->create(), 'organization')->create([
+            'user_id' => $this->professional->id,
+            'role' => OrganizationRole::VETERINARIAN->value,
+            'permissions' => ['clients.contact.view-bulk'],
+            'is_active' => true,
+        ]);
+        // Criar o vínculo re-deriva os papéis pelo cargo: o papel é fixado depois, e o teste
+        // confirma que a permissão vem só da exceção da organização.
+        $this->professional->syncRoles(['clinic_vet']);
+        $this->professional->refresh();
+        $this->assertFalse($this->professional->can('clients.contact.view-bulk'));
+        Pet::factory()->create([
+            'user_id' => $this->client->id,
+            'birth_date' => now()->addDay()->subYears(1)->toDateString(),
+        ]);
+
+        $response = $this->getJson('/api/professional/reports/birthdays?scope=pets')->assertOk();
+
+        $tutor = collect($response->json('data.pets'))->first()['tutor'];
+        $this->assertSame($this->client->email, $tutor['email']);
+        $this->get('/api/professional/reports/birthdays/export?scope=pets')->assertOk();
     }
 }

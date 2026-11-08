@@ -119,7 +119,7 @@ class OperationalPanelExportController extends Controller
     private function authorizeExport(Request $request): void
     {
         abort_unless(
-            $request->user()->can(self::CONTACT_PERMISSION),
+            $request->user()->hasEffectivePermission(self::CONTACT_PERMISSION),
             403,
             'Você não tem permissão para exportar contato de clientes em massa.'
         );
