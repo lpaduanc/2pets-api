@@ -25,6 +25,8 @@ class FiscalDocumentResource extends JsonResource
         return [
             'id' => $this->id,
             'sale_id' => $this->sale_id,
+            // Número que a pessoa vê em Vendas (#13), não o id interno — a lista mostrava "Venda #46".
+            'sale_number' => $this->whenLoaded('sale', fn () => $this->sale?->number),
             'operation' => $this->operation?->value,
             'direction' => $this->direction?->value,
             'sale_return_id' => $this->sale_return_id,

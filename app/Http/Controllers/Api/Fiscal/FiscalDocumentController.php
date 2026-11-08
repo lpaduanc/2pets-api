@@ -120,6 +120,6 @@ class FiscalDocumentController extends Controller
      */
     private function scopedQuery(User $user): Builder
     {
-        return $this->scope->scopeQuery(FiscalDocument::query(), $user);
+        return $this->scope->scopeQuery(FiscalDocument::query(), $user)->with('sale:id,number');
     }
 }

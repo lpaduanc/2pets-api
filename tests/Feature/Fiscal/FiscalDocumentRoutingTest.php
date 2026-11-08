@@ -44,6 +44,12 @@ class FiscalDocumentRoutingTest extends TestCase
 
         $this->assertCount(1, $documents);
         $this->assertSame('nfce', $documents[0]['kind']);
+
+        // A lista mostra o número da venda que aparece em Vendas, não o id interno.
+        $saleNumber = \App\Models\Sale::findOrFail($saleId)->number;
+        $this->getJson('/api/professional/fiscal-documents')
+            ->assertOk()
+            ->assertJsonPath('data.0.sale_number', $saleNumber);
     }
 
     public function test_a_resale_sale_always_emits_nfe_never_nfce_even_in_person(): void
