@@ -4,10 +4,12 @@ namespace App\Services\Fiscal;
 
 use App\Contracts\FiscalProviderGateway;
 use App\Enums\FiscalDocumentKind;
+use App\Enums\FiscalDocumentOperation;
 use App\Enums\FiscalDocumentStatus;
 use App\Models\FiscalDocument;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\User;
 use App\Services\Commercial\Card\CardSurchargePolicy;
 use App\Support\Money\Money;
@@ -16,20 +18,22 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Emissão fiscal a partir de uma venda — contrato
- * docs/gap-simplesvet/05-emissao-fiscal-nfe-nfce-nfse-spec.md.
+ * docs/gap-simplesvet/05-emissao-fiscal-nfe-nfce-nfse-spec.md e docs/gap-petflow/specs/
+ * fase4-fiscal-sem-envio.md.
  *
- * Roteamento: venda só de serviço a PF emite NFS-e; só de produto emite NFC-e/NF-e
- * (`FiscalOperation::productDocument()`, já existe desde o item 01); venda mista emite as
- * duas — nunca um documento só. Revenda (`fiscal_operation.isResale()`) sempre NF-e, nunca
- * NFC-e, mesmo presencial.
+ * Roteamento: venda só de serviço emite NFS-e; só de produto emite NFC-e/NF-e
+ * (`FiscalOperation::productDocument()`); venda mista emite as duas — nunca um documento só.
+ * Revenda (`fiscal_operation.isResale()`) sempre NF-e, nunca NFC-e, mesmo presencial.
  *
- * Type-hint na INTERFACE (`FiscalProviderGateway`), nunca na implementação — o bind fica em
- * `AppServiceProvider` (DIP).
+ * Cada documento leva os itens congelados (`FiscalSaleLineBuilder`), o número reservado e o
+ * despacho com tratamento de indisponibilidade (`FiscalDocumentIssuer`).
  */
 final class FiscalDocumentService
 {
     public function __construct(
         private readonly FiscalProviderGateway $gateway,
+        private readonly FiscalSaleLineBuilder $lines,
+        private readonly FiscalDocumentIssuer $issuer,
     ) {}
 
     /**
@@ -48,53 +52,30 @@ final class FiscalDocumentService
         }
 
         $this->assertNotAlreadyIssued($sale);
-
+        $sale->loadMissing(['items.sellable', 'client']);
         $parts = $this->documentParts($sale);
 
-        return DB::transaction(function () use ($sale, $parts): Collection {
-            $documents = collect();
-
-            if (isset($parts['product'])) {
-                $documents->push($this->issueOne($sale, $this->productDocumentKind($sale), $parts['product']));
-            }
-
-            if (isset($parts['service'])) {
-                $documents->push($this->issueOne($sale, FiscalDocumentKind::NFSE, $parts['service']));
-            }
-
-            return $documents;
-        });
+        return DB::transaction(fn (): Collection => collect($parts)->map(
+            fn (array $part, string $type): FiscalDocument => $this->issueOne($sale, $this->kindFor($sale, $type), $part)
+        )->values());
     }
 
     /**
-     * Base (itens já com o desconto do cabeçalho, `Sale::netItemTotals`) e acréscimo de cada
-     * documento, só dos tipos presentes na venda. Tudo em `Money` com rateio pelo maior resto:
-     * Σ bases = subtotal − desconto e Σ acréscimos = acréscimo da venda, então Σ totais dos
-     * documentos = total da venda, centavo a centavo (o antigo fator float podia errar 1 centavo).
+     * Itens e acréscimo de cada documento, só dos tipos presentes na venda. O acréscimo é rateado
+     * pelo maior resto entre produto e serviço sobre a base (líquido) de cada um: Σ totais dos
+     * documentos = total da venda, centavo a centavo.
      *
-     * @return array<'product'|'service', array{base: Money, surcharge: Money}>
+     * @return array<'product'|'service', array{items: Collection<int, SaleItem>, surcharge: Money}>
      */
     private function documentParts(Sale $sale): array
     {
-        $bases = [];
-
-        foreach ($sale->netItemTotals() as $itemId => $net) {
-            $item = $sale->items->firstWhere('id', $itemId);
-
-            if ($item->isCourtesy()) {
-                continue;
-            }
-
-            $type = $item->sellable_type === Product::class ? 'product' : 'service';
-            $bases[$type] = ($bases[$type] ?? Money::zero())->plus($net);
-        }
-
+        $net = $sale->netItemTotals();
+        $items = $sale->items->reject(fn (SaleItem $item): bool => $item->isCourtesy())
+            ->groupBy(fn (SaleItem $item): string => $item->sellable_type === Product::class ? 'product' : 'service');
+        $bases = $items->map(fn (Collection $group): Money => Money::sum($group->map(fn (SaleItem $item): Money => $net[$item->id])))->all();
         $surcharges = $this->surchargeShares($sale, $bases);
 
-        return array_map(
-            fn (string $type): array => ['base' => $bases[$type], 'surcharge' => $surcharges[$type]],
-            array_combine(array_keys($bases), array_keys($bases)),
-        );
+        return $items->map(fn (Collection $group, string $type): array => ['items' => $group->values(), 'surcharge' => $surcharges[$type]])->all();
     }
 
     /**
@@ -121,12 +102,23 @@ final class FiscalDocumentService
         return $sale->items->isNotEmpty() && $sale->items->every(fn ($item): bool => $item->isCourtesy());
     }
 
+    /**
+     * Cancelamento grava protocolo, motivo e data. Contingência ainda não chegou à SEFAZ: não há
+     * o que cancelar lá — transmite primeiro (spec fase4-fiscal §4).
+     */
     public function cancel(FiscalDocument $document, string $reason): FiscalDocument
     {
+        abort_if($document->status === FiscalDocumentStatus::CONTINGENCY, 422, 'Documento em contingência: transmita antes de cancelar.');
         abort_unless($document->status->canBeCancelled(), 422, 'Só um documento autorizado pode ser cancelado.');
 
         $result = $this->gateway->cancel($document, $reason);
-        $document->update(['status' => $result->status->value]);
+        $document->update([
+            'status' => $result->status->value,
+            'cancellation_protocol' => $result->protocol,
+            'cancellation_reason' => $reason,
+            'cancelled_at' => $result->status === FiscalDocumentStatus::CANCELLED ? now() : null,
+            'rejection_reason' => $result->rejectionReason,
+        ]);
 
         return $document->fresh();
     }
@@ -135,44 +127,33 @@ final class FiscalDocumentService
      * O acréscimo vai somado ao total do documento: "outras despesas acessórias" (vOutro) na
      * NF-e/NFC-e, somado ao valor do serviço na NFS-e — o mapeamento por layout é do gateway.
      *
-     * @param  array{base: Money, surcharge: Money}  $part
+     * @param  array{items: Collection<int, SaleItem>, surcharge: Money}  $part
      */
     private function issueOne(Sale $sale, FiscalDocumentKind $kind, array $part): FiscalDocument
     {
-        $ownership = ['organization_id' => $sale->organization_id, 'professional_id' => $sale->professional_id];
-
-        $document = FiscalDocument::create($ownership + [
+        return $this->issuer->issue([
+            'organization_id' => $sale->organization_id,
+            'professional_id' => $sale->professional_id,
             'sale_id' => $sale->id,
+            'operation' => FiscalDocumentOperation::SALE->value,
             'kind' => $kind->value,
-            'status' => FiscalDocumentStatus::PENDING->value,
-            'total' => $part['base']->plus($part['surcharge'])->toString(),
             'surcharge_amount' => $part['surcharge']->toString(),
-        ]);
-
-        $result = $this->gateway->issue($document);
-
-        $document->update([
-            'status' => $result->status->value,
-            'access_key' => $result->accessKey,
-            'provider_id' => $result->providerId,
-            'rejection_reason' => $result->rejectionReason,
-            'issued_at' => $result->status === FiscalDocumentStatus::AUTHORIZED ? now() : null,
-        ]);
-
-        return $document->fresh();
+        ], $this->lines->build($sale, $kind, $part['items'], $part['surcharge']));
     }
 
     /** NFC-e para consumidor final presencial/domiciliar; NF-e para o resto — nunca NFC-e em revenda. */
-    private function productDocumentKind(Sale $sale): FiscalDocumentKind
+    private function kindFor(Sale $sale, string $type): FiscalDocumentKind
     {
-        return FiscalDocumentKind::from($sale->fiscal_operation->productDocument());
+        return $type === 'service' ? FiscalDocumentKind::NFSE : FiscalDocumentKind::from($sale->fiscal_operation->productDocument());
     }
 
+    /** Só documento DA VENDA ocupa a emissão (devolução tem documento próprio). */
     private function assertNotAlreadyIssued(Sale $sale): void
     {
         $hasOpenDocument = FiscalDocument::query()
             ->where('sale_id', $sale->id)
-            ->whereNotIn('status', [FiscalDocumentStatus::CANCELLED->value, FiscalDocumentStatus::DENIED->value])
+            ->operation(FiscalDocumentOperation::SALE)
+            ->blockingReissue()
             ->exists();
 
         abort_if($hasOpenDocument, 422, 'Esta venda já tem documento fiscal emitido ou em processamento.');

@@ -18,9 +18,18 @@ class ProductGroup extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * Perfil tributário efetivo, preenchido em lote por `TaxProfileResolver::annotateGroups`.
+     *
+     * @var array{id: int|null, name: string|null, source: string|null}|null
+     */
+    public ?array $effectiveTaxProfile = null;
+
     protected $fillable = [
         // PLANO 2.4: centro de custo (produto/serviço sem centro herdam o do grupo).
         'cost_center_id',
+        // Fase 4 fiscal: herdado pelos produtos do grupo e dos subgrupos sem perfil próprio.
+        'tax_profile_id',
         'organization_id',
         'professional_id',
         'name',
@@ -58,6 +67,11 @@ class ProductGroup extends Model
     public function children(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    public function taxProfile(): BelongsTo
+    {
+        return $this->belongsTo(TaxProfile::class);
     }
 
     public function products(): HasMany

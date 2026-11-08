@@ -3,12 +3,14 @@
 namespace Tests\Feature\Commercial\Concerns;
 
 use App\Enums\OrganizationRole;
+use App\Enums\TaxRegime;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\Pet;
 use App\Models\Product;
 use App\Models\ProfessionalClient;
 use App\Models\Service;
+use App\Models\TaxProfile;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 
@@ -36,6 +38,9 @@ trait BuildsCounterFixtures
 
     protected Pet $pet;
 
+    /** Perfil tributário padrão da clínica (Fase 4 fiscal): produto sem perfil próprio herda este. */
+    protected TaxProfile $defaultTaxProfile;
+
     protected function buildClinic(): void
     {
         // Item 22 do backlog gap-simplesvet: `OrganizationMember::observe(...)` reconcilia o
@@ -62,6 +67,45 @@ trait BuildsCounterFixtures
 
         // Cliente do DONO, não da recepcionista: o balcão enxerga os clientes da equipe toda.
         ProfessionalClient::create(['professional_id' => $this->owner->id, 'client_id' => $this->tutor->id]);
+
+        // Fase 4 fiscal (docs/gap-petflow/specs/fase4-fiscal-sem-envio.md): emitir NFC-e/NF-e
+        // exige regime, perfil tributário e NCM — o balcão padrão já nasce emitível.
+        $this->clinic->forceFill(['tax_regime' => TaxRegime::SIMPLES_NACIONAL->value])->save();
+        $this->defaultTaxProfile = $this->makeTaxProfile(['is_default' => true]);
+    }
+
+    /**
+     * Perfil "Simples — revenda sem ST" (CSOSN 102) com todas as faixas de CFOP preenchidas.
+     *
+     * @param  array<string, mixed>  $overrides
+     * @param  array<string, array<string, string>>  $cfops  [operação => [escopo => CFOP]] que substituem as padrão
+     */
+    protected function makeTaxProfile(array $overrides = [], array $cfops = [], ?Organization $organization = null): TaxProfile
+    {
+        $profile = TaxProfile::create($overrides + [
+            'organization_id' => ($organization ?? $this->clinic)->id,
+            'professional_id' => $this->owner->id,
+            'name' => 'Simples — revenda',
+            'origin' => '0',
+            'icms_csosn' => '102',
+            'pis_cst' => '49',
+            'cofins_cst' => '49',
+        ]);
+
+        $slots = array_replace_recursive([
+            'sale_consumer' => ['intrastate' => '5102', 'interstate' => '6108'],
+            'sale_resale' => ['intrastate' => '5102', 'interstate' => '6102'],
+            'return_from_customer' => ['intrastate' => '1202', 'interstate' => '2202'],
+            'return_to_supplier' => ['intrastate' => '5202', 'interstate' => '6202'],
+        ], $cfops);
+
+        foreach ($slots as $operation => $scopes) {
+            foreach ($scopes as $scope => $cfop) {
+                $profile->cfops()->create(['operation' => $operation, 'scope' => $scope, 'cfop' => $cfop]);
+            }
+        }
+
+        return $profile->load('cfops');
     }
 
     /** @param  array<string, mixed>  $overrides */
@@ -71,6 +115,8 @@ trait BuildsCounterFixtures
             'professional_id' => ($by ?? $this->owner)->id,
             'organization_id' => ($organization ?? $this->clinic)->id,
             'name' => 'Ração Premium 3kg',
+            // NCM 2309.10.00 (alimento para cães e gatos): sem NCM a NFC-e/NF-e é recusada.
+            'ncm' => '23091000',
             'sku' => 'SKU-'.uniqid(),
             'price' => 100.00,
             'stock_quantity' => 10,

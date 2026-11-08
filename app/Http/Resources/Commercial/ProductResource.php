@@ -45,6 +45,10 @@ class ProductResource extends JsonResource
             'product_group_id' => $this->product_group_id,
             // PLANO 2.4: centro do cadastro; vazio = herda o do grupo (`CostCenterResolver`).
             'cost_center_id' => $this->cost_center_id,
+            // Fase 4 fiscal: perfil do cadastro (vazio = herda) e o efetivo {id, name, source},
+            // presente quando o controller resolveu em lote (`TaxProfileResolver`).
+            'tax_profile_id' => $this->tax_profile_id,
+            'effective_tax_profile' => $this->when($this->resource->effectiveTaxProfile !== null, fn (): ?array => $this->resource->effectiveTaxProfile),
             // PLANO 3.3: balança.
             'scale_code' => $this->scale_code,
             'sold_by_weight' => (bool) $this->sold_by_weight,

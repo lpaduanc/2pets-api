@@ -43,6 +43,11 @@ class SaleReturn extends Model
         return $this->hasMany(SaleReturnItem::class);
     }
 
+    public function fiscalDocuments(): HasMany
+    {
+        return $this->hasMany(FiscalDocument::class);
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

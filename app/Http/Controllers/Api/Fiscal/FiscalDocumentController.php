@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Fiscal;
 
 use App\Enums\FiscalDocumentKind;
+use App\Enums\FiscalDocumentOperation;
 use App\Enums\FiscalDocumentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fiscal\StoreFiscalCancellationRequest;
@@ -11,6 +12,7 @@ use App\Models\FiscalDocument;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Fiscal\FiscalDocumentDispatcher;
 use App\Services\Fiscal\FiscalDocumentService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -28,6 +30,7 @@ class FiscalDocumentController extends Controller
     public function __construct(
         private readonly CommercialScopeResolver $scope,
         private readonly FiscalDocumentService $fiscalDocuments,
+        private readonly FiscalDocumentDispatcher $dispatcher,
     ) {}
 
     public function store(Request $request, int $saleId): JsonResponse
@@ -55,11 +58,13 @@ class FiscalDocumentController extends Controller
         $request->validate([
             'status' => ['nullable', Rule::enum(FiscalDocumentStatus::class)],
             'kind' => ['nullable', Rule::enum(FiscalDocumentKind::class)],
+            'operation' => ['nullable', Rule::enum(FiscalDocumentOperation::class)],
         ]);
 
         $documents = $this->scopedQuery($request->user())
             ->when($request->filled('status'), fn (Builder $q) => $q->where('status', $request->string('status')->toString()))
             ->when($request->filled('kind'), fn (Builder $q) => $q->where('kind', $request->string('kind')->toString()))
+            ->when($request->filled('operation'), fn (Builder $q) => $q->where('operation', $request->string('operation')->toString()))
             ->orderByDesc('id')
             ->get();
 
@@ -70,7 +75,19 @@ class FiscalDocumentController extends Controller
     {
         $document = $this->findForUser($request->user(), $id, 'view');
 
-        return new FiscalDocumentResource($document);
+        return new FiscalDocumentResource($document->load(['items', 'referencedDocument']));
+    }
+
+    /**
+     * Reenvia o pendente ou consulta o processando/em contingência agora, sem esperar o
+     * `fiscal:reconcile` (spec fase4-fiscal §4). Estado final volta como está.
+     */
+    public function sync(Request $request, int $id): FiscalDocumentResource
+    {
+        Gate::forUser($request->user())->authorize('create', FiscalDocument::class);
+        $document = $this->findForUser($request->user(), $id, 'view');
+
+        return new FiscalDocumentResource($this->dispatcher->sync($document)->load(['items', 'referencedDocument']));
     }
 
     public function cancel(StoreFiscalCancellationRequest $request, int $id): FiscalDocumentResource

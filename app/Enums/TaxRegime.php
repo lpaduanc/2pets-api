@@ -23,6 +23,15 @@ enum TaxRegime: string
         };
     }
 
+    /**
+     * Simples Nacional e MEI informam CSOSN no ICMS; Lucro Presumido e Real, CST (spec
+     * fase4-fiscal §3.2).
+     */
+    public function usesCsosn(): bool
+    {
+        return in_array($this, [self::SIMPLES_NACIONAL, self::MEI], true);
+    }
+
     /** @return list<string> */
     public static function values(): array
     {

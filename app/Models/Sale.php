@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DiscountType;
+use App\Enums\FiscalDocumentOperation;
 use App\Enums\FiscalDocumentStatus;
 use App\Enums\FiscalOperation;
 use App\Enums\QuoteStatus;
@@ -213,9 +214,13 @@ class Sale extends Model
             ->where('reference_type', self::class);
     }
 
+    /**
+     * Só os documentos DA VENDA: a NF-e de devolução também guarda o `sale_id`, mas não cumpre
+     * (nem cria) obrigação de emitir a venda (spec fase4-fiscal §2).
+     */
     public function fiscalDocuments(): HasMany
     {
-        return $this->hasMany(FiscalDocument::class);
+        return $this->hasMany(FiscalDocument::class)->where('operation', FiscalDocumentOperation::SALE->value);
     }
 
     /**
@@ -421,8 +426,9 @@ class Sale extends Model
      */
     private function issuedFiscalDocumentKinds(): Collection
     {
+        // Contingência conta como emitida: o cliente já levou o DANFE (spec fase4-fiscal §4).
         return $this->fiscalDocuments
-            ->where('status', FiscalDocumentStatus::AUTHORIZED)
+            ->filter(fn (FiscalDocument $document): bool => $document->status->countsAsIssued())
             ->map(fn (FiscalDocument $document): string => $document->kind->value)
             ->values();
     }
@@ -445,7 +451,7 @@ class Sale extends Model
             'fiscalDocuments',
             fn (Builder $documents) => $documents
                 ->where('kind', $kind)
-                ->where('status', FiscalDocumentStatus::AUTHORIZED->value)
+                ->whereIn('status', FiscalDocumentStatus::valuesWhere(fn (FiscalDocumentStatus $status): bool => $status->countsAsIssued()))
         );
 
         return match ($document) {

@@ -103,3 +103,13 @@ Schedule::command('appointments:extend-series')->dailyAt('02:00')
     ->withoutOverlapping()
     ->onOneServer()
     ->appendOutputTo(storage_path('logs/appointment-series.log'));
+
+/**
+ * `fiscal:reconcile` — spec docs/gap-petflow/specs/fase4-fiscal-sem-envio.md §4. A cada 5 min:
+ * a NFC-e em contingência tem prazo de transmissão em horas e o backoff de retentativa começa em
+ * 1 minuto (`config/fiscal.php`); 5 minutos mantém o atraso máximo pequeno sem martelar a SEFAZ.
+ */
+Schedule::command('fiscal:reconcile')->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->appendOutputTo(storage_path('logs/fiscal-reconcile.log'));

@@ -9,6 +9,7 @@ use App\Models\FiscalDocument;
 use App\Models\Organization;
 use App\Services\Commercial\Card\CardSurchargePolicy;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Fiscal\FiscalNumberingSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -24,7 +25,10 @@ use Illuminate\Support\Facades\Gate;
  */
 class FiscalSettingsController extends Controller
 {
-    public function __construct(private readonly CommercialScopeResolver $scope) {}
+    public function __construct(
+        private readonly CommercialScopeResolver $scope,
+        private readonly FiscalNumberingSettings $numbering,
+    ) {}
 
     public function show(Request $request): JsonResponse
     {
@@ -38,7 +42,7 @@ class FiscalSettingsController extends Controller
         Gate::forUser($request->user())->authorize('create', FiscalDocument::class);
 
         $organization = $this->organizationFor($request);
-        $organization->update($request->validated());
+        $this->numbering->apply($organization, $request->validated());
 
         return response()->json(['data' => $this->toArray($organization->fresh()), 'message' => 'Dados fiscais atualizados.']);
     }
@@ -76,6 +80,6 @@ class FiscalSettingsController extends Controller
             'credit_late_fee_percent' => (string) ($organization->credit_late_fee_percent ?? '2.00'),
             'credit_monthly_interest_percent' => (string) ($organization->credit_monthly_interest_percent ?? '1.0000'),
             'credit_grace_days' => (int) ($organization->credit_grace_days ?? 0),
-        ];
+        ] + $this->numbering->snapshot($organization);
     }
 }

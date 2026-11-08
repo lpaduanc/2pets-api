@@ -1,0 +1,188 @@
+{
+  "_doc": "Casos de referencia do fiscal sem transmissao (docs/gap-petflow/specs/fase4-fiscal-sem-envio.md, secoes 3 e 7). Dinheiro 2 casas, aliquota 4 casas, HALF_UP uma vez por fato; rateios por maior resto (Money::allocate); devolucoes pelo rateio acumulado cum(F,q) = q >= total ? F : round(F x q / total). Copia byte a byte em 2pets-pro/tests/fixtures/golden/fiscal.json.",
+  "items": [
+    {
+      "id": "fiscal-item-01",
+      "_conta": "Desconto do cabecalho 13,00 com pesos 100:30 -> 10,00 e 3,00 (exato) => liquidos 90,00 e 27,00. Acrescimo 2,60 com pesos 90:27 -> 2,60 x 90/117 = 2,00 e 0,60 => totais 92,00 e 27,60; soma 119,60 = 130 - 13 + 2,60. CST 00 18%: 92,00 x 0,18 = 16,56; 27,60 x 0,18 = 4,968 -> 4,97. PIS 0,65% e COFINS 3% sobre (total - ICMS): 92,00 - 16,56 = 75,44 -> PIS 0,49036 -> 0,49, COFINS 2,2632 -> 2,26; 27,60 - 4,97 = 22,63 -> PIS 0,147095 -> 0,15, COFINS 0,6789 -> 0,68. CSOSN 102: nada destacado.",
+      "input": {
+        "lines": {
+          "racao": {"gross": "100.00", "discount": "0.00"},
+          "coleira": {"gross": "30.00", "discount": "0.00"}
+        },
+        "header_discount": "13.00",
+        "surcharge": "2.60"
+      },
+      "expected": {
+        "lines": {
+          "racao": {"gross": "100.00", "discount": "10.00", "net": "90.00", "surcharge": "2.00", "total": "92.00"},
+          "coleira": {"gross": "30.00", "discount": "3.00", "net": "27.00", "surcharge": "0.60", "total": "27.60"}
+        },
+        "document_total": "119.60"
+      },
+      "taxes": [
+        {
+          "rule": {"cst": "00", "icms_rate": "18", "pis_cst": "01", "pis_rate": "0.65", "cofins_cst": "01", "cofins_rate": "3"},
+          "expected": {
+            "racao": {"icms_base": "92.00", "icms_rate": "18.0000", "icms_amount": "16.56", "fcp_amount": "0.00", "pis_base": "75.44", "pis_amount": "0.49", "cofins_base": "75.44", "cofins_amount": "2.26"},
+            "coleira": {"icms_base": "27.60", "icms_rate": "18.0000", "icms_amount": "4.97", "fcp_amount": "0.00", "pis_base": "22.63", "pis_amount": "0.15", "cofins_base": "22.63", "cofins_amount": "0.68"}
+          }
+        },
+        {
+          "rule": {"csosn": "102", "icms_rate": "18", "pis_cst": "49", "cofins_cst": "49"},
+          "expected": {
+            "racao": {"icms_base": "0.00", "icms_rate": "0.0000", "icms_amount": "0.00", "fcp_amount": "0.00", "pis_base": "0.00", "pis_amount": "0.00", "cofins_base": "0.00", "cofins_amount": "0.00"},
+            "coleira": {"icms_base": "0.00", "icms_rate": "0.0000", "icms_amount": "0.00", "fcp_amount": "0.00", "pis_base": "0.00", "pis_amount": "0.00", "cofins_base": "0.00", "cofins_amount": "0.00"}
+          }
+        }
+      ]
+    },
+    {
+      "id": "fiscal-item-02",
+      "_conta": "Tres itens de 10,00, desconto 0,10: 10 centavos x 1000/3000 = 3,33 centavos cada; sobra 1 centavo, empate de resto e de peso -> primeiro item: 0,04 / 0,03 / 0,03 => liquidos 9,96 / 9,97 / 9,97. Acrescimo 0,05 com pesos 996:997:997 (de 2990): 1,6656 / 1,6672 / 1,6672 centavos -> pisos 1/1/1, sobram 2 centavos para os maiores restos (itens b e c) => 0,01 / 0,02 / 0,02. Totais 9,97 / 9,99 / 9,99 = 29,95 = 30 - 0,10 + 0,05.",
+      "input": {
+        "lines": {
+          "a": {"gross": "10.00", "discount": "0.00"},
+          "b": {"gross": "10.00", "discount": "0.00"},
+          "c": {"gross": "10.00", "discount": "0.00"}
+        },
+        "header_discount": "0.10",
+        "surcharge": "0.05"
+      },
+      "expected": {
+        "lines": {
+          "a": {"gross": "10.00", "discount": "0.04", "net": "9.96", "surcharge": "0.01", "total": "9.97"},
+          "b": {"gross": "10.00", "discount": "0.03", "net": "9.97", "surcharge": "0.02", "total": "9.99"},
+          "c": {"gross": "10.00", "discount": "0.03", "net": "9.97", "surcharge": "0.02", "total": "9.99"}
+        },
+        "document_total": "29.95"
+      },
+      "taxes": []
+    }
+  ],
+  "cfop": [
+    {"id": "fiscal-cfop-01-sp-consumidor", "profile": "geral", "kind": "nfe", "operation": "sale_consumer", "emitter_state": "SP", "recipient_state": "SP", "expected_scope": "intrastate", "expected": "5102"},
+    {"id": "fiscal-cfop-01-rj-revenda", "profile": "geral", "kind": "nfe", "operation": "sale_resale", "emitter_state": "SP", "recipient_state": "RJ", "expected_scope": "interstate", "expected": "6102"},
+    {"id": "fiscal-cfop-01-rj-consumidor", "profile": "geral", "kind": "nfe", "operation": "sale_consumer", "emitter_state": "SP", "recipient_state": "RJ", "expected_scope": "interstate", "expected": "6108"},
+    {"id": "fiscal-cfop-01-nfce-sempre-dentro", "profile": "geral", "kind": "nfce", "operation": "sale_consumer", "emitter_state": "SP", "recipient_state": "RJ", "expected_scope": "intrastate", "expected": "5102"},
+    {"id": "fiscal-cfop-01-sem-uf", "profile": "geral", "kind": "nfe", "operation": "sale_consumer", "emitter_state": "SP", "recipient_state": null, "expected_scope": "intrastate", "expected": "5102"},
+    {"id": "fiscal-cfop-01-st", "profile": "com_st", "kind": "nfce", "operation": "sale_consumer", "emitter_state": "SP", "recipient_state": "SP", "expected_scope": "intrastate", "expected": "5405"},
+    {"id": "fiscal-cfop-01-devolucao-cliente", "profile": "geral", "kind": "nfe", "operation": "return_from_customer", "emitter_state": "SP", "recipient_state": "sp", "expected_scope": "intrastate", "expected": "1202"},
+    {"id": "fiscal-cfop-01-faixa-ausente", "profile": "com_st", "kind": "nfe", "operation": "sale_resale", "emitter_state": "SP", "recipient_state": "SP", "expected_scope": "intrastate", "expected": null},
+    {"id": "fiscal-compra-dev-01-st-sp", "profile": "com_st", "kind": "nfe", "operation": "return_to_supplier", "emitter_state": "SP", "recipient_state": "SP", "expected_scope": "intrastate", "expected": "5411"},
+    {"id": "fiscal-compra-dev-01-st-mg", "profile": "com_st", "kind": "nfe", "operation": "return_to_supplier", "emitter_state": "SP", "recipient_state": "MG", "expected_scope": "interstate", "expected": "6411"},
+    {"id": "fiscal-compra-dev-01-sem-st", "profile": "geral", "kind": "nfe", "operation": "return_to_supplier", "emitter_state": "SP", "recipient_state": "SP", "expected_scope": "intrastate", "expected": "5202"}
+  ],
+  "cfop_profiles": {
+    "geral": {
+      "sale_consumer": {"intrastate": "5102", "interstate": "6108"},
+      "sale_resale": {"intrastate": "5102", "interstate": "6102"},
+      "return_from_customer": {"intrastate": "1202", "interstate": "2202"},
+      "return_to_supplier": {"intrastate": "5202", "interstate": "6202"}
+    },
+    "com_st": {
+      "sale_consumer": {"intrastate": "5405", "interstate": "6404"},
+      "return_from_customer": {"intrastate": "1411", "interstate": "2411"},
+      "return_to_supplier": {"intrastate": "5411", "interstate": "6411"}
+    }
+  },
+  "profile_resolution": {
+    "_conta": "Arvore: 1 (perfil 10) <- 2 (sem perfil) <- 3 (perfil 30) e 2 <- 4 (perfil 40, INATIVO); 5 <-> 6 em ciclo, sem perfil. Ativos: 10, 30, 50 (padrao), 60. Produto -> grupo direto -> pais -> padrao -> nenhum; inativo e pulado.",
+    "groups": {
+      "1": {"parent_id": null, "tax_profile_id": 10},
+      "2": {"parent_id": 1, "tax_profile_id": null},
+      "3": {"parent_id": 2, "tax_profile_id": 30},
+      "4": {"parent_id": 2, "tax_profile_id": 40},
+      "5": {"parent_id": 6, "tax_profile_id": null},
+      "6": {"parent_id": 5, "tax_profile_id": null}
+    },
+    "active": [10, 30, 50, 60],
+    "cases": [
+      {"id": "fiscal-perfil-01-produto", "default": 50, "own": 60, "group": 3, "expected": [60, "product"]},
+      {"id": "fiscal-perfil-01-grupo-direto", "default": 50, "own": null, "group": 3, "expected": [30, "group"]},
+      {"id": "fiscal-perfil-01-avo", "default": 50, "own": null, "group": 2, "expected": [10, "parent_group"]},
+      {"id": "fiscal-perfil-01-grupo-inativo-sobe", "default": 50, "own": null, "group": 4, "expected": [10, "parent_group"]},
+      {"id": "fiscal-perfil-01-proprio-inativo-cai-no-padrao", "default": 50, "own": 40, "group": null, "expected": [50, "default"]},
+      {"id": "fiscal-perfil-01-padrao", "default": 50, "own": null, "group": null, "expected": [50, "default"]},
+      {"id": "fiscal-perfil-01-ciclo-cai-no-padrao", "default": 50, "own": null, "group": 5, "expected": [50, "default"]},
+      {"id": "fiscal-perfil-01-nenhum", "default": null, "own": null, "group": null, "expected": null}
+    ]
+  },
+  "sale_returns": [
+    {
+      "id": "fiscal-devolucao-01-proporcional",
+      "_conta": "Item original da racao (fiscal-item-01): 2 un, bruto 100,00, desconto 10,00, acrescimo 2,00, CST 00 18%. Devolve 1 de 2: bruto 50,00; liquido cum(90,00) = 45,00; desconto 5,00; acrescimo cum(2,00) = 1,00; total 46,00; alvo ICMS base 92,00 / 16,56 -> base 46,00 e ICMS 8,28.",
+      "original": {"quantity": "2", "gross_total": "100.00", "discount_share": "10.00", "surcharge_share": "2.00", "ipi_amount": "0.00", "icms_st_amount": "0.00"},
+      "rule": {"cfop": "1202", "cst": "00", "icms_rate": "18"},
+      "refund_surcharge": true,
+      "slices": [
+        {"before": "0", "quantity": "1", "expected": {"gross_total": "50.00", "discount_share": "5.00", "surcharge_share": "1.00", "total": "46.00", "icms_base": "46.00", "icms_amount": "8.28"}},
+        {"before": "1", "quantity": "1", "expected": {"gross_total": "50.00", "discount_share": "5.00", "surcharge_share": "1.00", "total": "46.00", "icms_base": "46.00", "icms_amount": "8.28"}}
+      ]
+    },
+    {
+      "id": "fiscal-devolucao-01-mantem-acrescimo",
+      "_conta": "Mesma racao com a politica keep: alvo sem acrescimo -> total 90,00, base 90,00, ICMS 16,20. Devolve 1 de 2: total 45,00, base 45,00, ICMS 8,10.",
+      "original": {"quantity": "2", "gross_total": "100.00", "discount_share": "10.00", "surcharge_share": "2.00", "ipi_amount": "0.00", "icms_st_amount": "0.00"},
+      "rule": {"cfop": "1202", "cst": "00", "icms_rate": "18"},
+      "refund_surcharge": false,
+      "slices": [
+        {"before": "0", "quantity": "1", "expected": {"gross_total": "50.00", "discount_share": "5.00", "surcharge_share": "0.00", "total": "45.00", "icms_base": "45.00", "icms_amount": "8.10"}}
+      ]
+    },
+    {
+      "id": "fiscal-devolucao-02",
+      "_conta": "3 x 18,52 = 55,56; ICMS 18% = 10,0008 -> 10,00. Devolve 1: liquido 55,56 / 3 = 18,52, ICMS 10,00 / 3 = 3,333 -> 3,33. Depois 2 (ultima, leva o resto): liquido 55,56 - 18,52 = 37,04, ICMS 10,00 - 3,33 = 6,67.",
+      "original": {"quantity": "3", "gross_total": "55.56", "discount_share": "0.00", "surcharge_share": "0.00", "ipi_amount": "0.00", "icms_st_amount": "0.00"},
+      "rule": {"cfop": "1202", "cst": "00", "icms_rate": "18"},
+      "refund_surcharge": true,
+      "slices": [
+        {"before": "0", "quantity": "1", "expected": {"gross_total": "18.52", "discount_share": "0.00", "surcharge_share": "0.00", "total": "18.52", "icms_base": "18.52", "icms_amount": "3.33"}},
+        {"before": "1", "quantity": "2", "expected": {"gross_total": "37.04", "discount_share": "0.00", "surcharge_share": "0.00", "total": "37.04", "icms_base": "37.04", "icms_amount": "6.67"}}
+      ]
+    }
+  ],
+  "purchase_returns": [
+    {
+      "id": "fiscal-compra-dev-01",
+      "_conta": "10 x 20,00 = 200,00, IPI 10,00, ST 15,00, custo de entrada 225,00. Devolve 4: 80,00, IPI 4,00, ST 6,00, estoque 90,00, total 80 + 4 + 6 = 90,00. Depois 6 (resto): 120,00, IPI 6,00, ST 9,00, estoque 135,00, total 135,00.",
+      "item": {"quantity": "10", "total_cost": "200.00", "discount": "0.00", "ipi_amount": "10.00", "icms_st_amount": "15.00", "landed_total_cost": "225.00"},
+      "slices": [
+        {"before": "0", "quantity": "4", "expected": {"products_total": "80.00", "discount_share": "0.00", "ipi_share": "4.00", "icms_st_share": "6.00", "stock_value": "90.00", "total": "90.00"}},
+        {"before": "4", "quantity": "6", "expected": {"products_total": "120.00", "discount_share": "0.00", "ipi_share": "6.00", "icms_st_share": "9.00", "stock_value": "135.00", "total": "135.00"}}
+      ]
+    },
+    {
+      "id": "fiscal-compra-dev-01-ipi-quebrado",
+      "_conta": "10 un, 100,00, IPI 7,77, custo de entrada 107,77. Devolve 3: IPI 7,77 x 0,3 = 2,331 -> 2,33; estoque 32,331 -> 32,33; total 30,00 + 2,33 = 32,33. Depois 7: IPI 7,77 - 2,33 = 5,44; estoque 75,44; total 70,00 + 5,44 = 75,44.",
+      "item": {"quantity": "10", "total_cost": "100.00", "discount": "0.00", "ipi_amount": "7.77", "icms_st_amount": "0.00", "landed_total_cost": "107.77"},
+      "slices": [
+        {"before": "0", "quantity": "3", "expected": {"products_total": "30.00", "discount_share": "0.00", "ipi_share": "2.33", "icms_st_share": "0.00", "stock_value": "32.33", "total": "32.33"}},
+        {"before": "3", "quantity": "7", "expected": {"products_total": "70.00", "discount_share": "0.00", "ipi_share": "5.44", "icms_st_share": "0.00", "stock_value": "75.44", "total": "75.44"}}
+      ]
+    },
+    {
+      "id": "fiscal-compra-dev-01-com-desconto",
+      "_conta": "3 un, bruto 100,00, desconto 10,00 (liquido 90,00). Devolve 1: produtos 33,333 -> 33,33, desconto 3,333 -> 3,33, total 30,00. Depois 2: 66,67 - 6,67 = 60,00.",
+      "item": {"quantity": "3", "total_cost": "90.00", "discount": "10.00", "ipi_amount": "0.00", "icms_st_amount": "0.00", "landed_total_cost": "90.00"},
+      "slices": [
+        {"before": "0", "quantity": "1", "expected": {"products_total": "33.33", "discount_share": "3.33", "ipi_share": "0.00", "icms_st_share": "0.00", "stock_value": "30.00", "total": "30.00"}},
+        {"before": "1", "quantity": "2", "expected": {"products_total": "66.67", "discount_share": "6.67", "ipi_share": "0.00", "icms_st_share": "0.00", "stock_value": "60.00", "total": "60.00"}}
+      ]
+    }
+  ],
+  "invalidation": {
+    "_conta": "Usados 1, 2, 3, 5, 6, 9 (o 8 foi rejeitado e nao consome numero), 7 inutilizado, proximo 10. Lacunas: 4 e 8. Com a serie comecando no 5 (veio de outro sistema), so o 8.",
+    "gaps": [
+      {"id": "fiscal-inut-01-lacunas", "used": [1, 2, 3, 5, 6, 9], "invalidated": [[7, 7]], "start_number": 1, "next_number": 10, "expected": [{"from": 4, "to": 4}, {"from": 8, "to": 8}]},
+      {"id": "fiscal-inut-01-serie-migrada", "used": [5, 6, 9], "invalidated": [[7, 7]], "start_number": 5, "next_number": 10, "expected": [{"from": 8, "to": 8}]},
+      {"id": "fiscal-inut-01-lacuna-no-fim", "used": [1, 2], "invalidated": [], "start_number": 1, "next_number": 6, "expected": [{"from": 3, "to": 5}]}
+    ],
+    "violations": [
+      {"id": "fiscal-inut-01-valida", "from": 4, "to": 4, "reason": "Numero pulado por falha de conexao", "used": [1, 2, 3, 5, 6, 9], "invalidated": [[7, 7]], "expected": []},
+      {"id": "fiscal-inut-01-numero-usado", "from": 5, "to": 6, "reason": "Numero pulado por falha de conexao", "used": [1, 2, 3, 5, 6, 9], "invalidated": [[7, 7]], "expected": ["used_number"]},
+      {"id": "fiscal-inut-01-sobreposicao", "from": 7, "to": 7, "reason": "Numero pulado por falha de conexao", "used": [1, 2, 3, 5, 6, 9], "invalidated": [[7, 7]], "expected": ["overlap"]},
+      {"id": "fiscal-inut-01-ordem", "from": 9, "to": 8, "reason": "Numero pulado por falha de conexao", "used": [], "invalidated": [], "expected": ["order"]},
+      {"id": "fiscal-inut-01-justificativa-curta", "from": 4, "to": 4, "reason": "pulou", "used": [], "invalidated": [], "expected": ["reason_length"]}
+    ]
+  }
+}

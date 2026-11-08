@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
 use App\Services\Commercial\Pricing\ProductPriceHistoryRecorder;
 use App\Services\Commercial\PricingService;
+use App\Services\Fiscal\TaxProfileResolver;
 use App\Services\Stock\StockService;
 use App\Support\Money\Decimal;
 use App\Support\Money\Quantity;
@@ -45,6 +46,7 @@ class ProductController extends Controller
         private readonly PricingService $pricing,
         private readonly StockService $stock,
         private readonly ProductPriceHistoryRecorder $priceHistory,
+        private readonly TaxProfileResolver $taxProfiles,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -61,6 +63,8 @@ class ProductController extends Controller
         $products = $query->orderBy('name')
             ->paginate($this->resolvePerPage($request, self::DEFAULT_PER_PAGE))
             ->withQueryString();
+        // Fase 4 fiscal: perfil tributário efetivo em lote (sem N+1 no resource).
+        $this->taxProfiles->annotateProducts($products->getCollection());
 
         return ProductResource::collection($products);
     }
@@ -93,7 +97,10 @@ class ProductController extends Controller
             return $product;
         });
 
-        return (new ProductResource($product->load(ProductResource::RESOURCE_RELATIONS)))
+        $product->load(ProductResource::RESOURCE_RELATIONS);
+        $this->taxProfiles->annotateProducts([$product]);
+
+        return (new ProductResource($product))
             ->additional(['message' => 'Produto cadastrado com sucesso.'])
             ->response()
             ->setStatusCode(201);
@@ -104,6 +111,7 @@ class ProductController extends Controller
         $product = $this->scopedQuery($request->user())
             ->with(ProductResource::RESOURCE_RELATIONS)
             ->findOrFail($id);
+        $this->taxProfiles->annotateProducts([$product]);
 
         return new ProductResource($product);
     }
@@ -163,7 +171,10 @@ class ProductController extends Controller
             }
         });
 
-        return new ProductResource($product->fresh(ProductResource::RESOURCE_RELATIONS));
+        $product = $product->fresh(ProductResource::RESOURCE_RELATIONS);
+        $this->taxProfiles->annotateProducts([$product]);
+
+        return new ProductResource($product);
     }
 
     public function destroy(Request $request, int $id): JsonResponse

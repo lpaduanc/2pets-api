@@ -30,6 +30,8 @@ class StoreProductGroupRequest extends FormRequest
             'active' => ['nullable', 'boolean'],
             // PLANO 2.4: produto e serviço do grupo sem centro próprio herdam este.
             'cost_center_id' => ['sometimes', 'nullable', 'integer', new \App\Rules\ScopedCostCenterExists($this->user())],
+            // Fase 4 fiscal: herdado pelos produtos do grupo e dos subgrupos sem perfil próprio.
+            'tax_profile_id' => ['sometimes', 'nullable', 'integer', new \App\Rules\ScopedTaxProfileExists($this->user())],
         ];
     }
 }

@@ -42,6 +42,14 @@ class Product extends Model implements Sellable
 
     use HasFactory, SoftDeletes;
 
+    /**
+     * Perfil tributário efetivo, preenchido em lote por `TaxProfileResolver::annotateProducts`
+     * para o resource não resolver item a item (N+1). `null` = não resolvido nesta resposta.
+     *
+     * @var array{id: int|null, name: string|null, source: string|null}|null
+     */
+    public ?array $effectiveTaxProfile = null;
+
     protected $fillable = [
         // PLANO 3.4: parâmetros da projeção de compra (vazios usam o padrão).
         'preferred_supplier_id',
@@ -54,6 +62,8 @@ class Product extends Model implements Sellable
         'sold_by_weight',
         // PLANO 2.4: centro de custo (produto/serviço sem centro herdam o do grupo).
         'cost_center_id',
+        // Fase 4 fiscal: perfil tributário próprio; vazio herda o do grupo (`TaxProfileResolver`).
+        'tax_profile_id',
         'professional_id',
         'organization_id',
         'category_id',
@@ -145,6 +155,11 @@ class Product extends Model implements Sellable
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class);
+    }
+
+    public function taxProfile(): BelongsTo
+    {
+        return $this->belongsTo(TaxProfile::class);
     }
 
     public function group(): BelongsTo

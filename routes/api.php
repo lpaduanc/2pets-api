@@ -890,6 +890,15 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('purchases/{id}/cancel', [PurchaseController::class, 'cancel']);
         Route::apiResource('purchases', PurchaseController::class);
 
+        // Devolução de compra ao fornecedor (Fase 4 fiscal, spec fase4-fiscal-sem-envio §3.6): só
+        // estoque, com `products.update` (quem mexe no estoque do catálogo).
+        Route::middleware('permission:products.update')->group(function (): void {
+            Route::post('purchases/{id}/returns/preview', [\App\Http\Controllers\Api\Stock\PurchaseReturnController::class, 'preview'])->whereNumber('id');
+            Route::get('purchase-returns', [\App\Http\Controllers\Api\Stock\PurchaseReturnController::class, 'index']);
+            Route::get('purchase-returns/{id}', [\App\Http\Controllers\Api\Stock\PurchaseReturnController::class, 'show'])->whereNumber('id');
+            Route::post('purchase-returns', [\App\Http\Controllers\Api\Stock\PurchaseReturnController::class, 'store']);
+        });
+
         Route::post('purchase-orders/{id}/send', [PurchaseOrderController::class, 'send']);
         Route::post('purchase-orders/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
         Route::post('purchase-orders/{id}/receive', [PurchaseOrderController::class, 'receive']);
@@ -1141,6 +1150,35 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::post('fiscal-documents/{id}/cancel', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentController::class, 'cancel'])
             ->whereNumber('id')
             ->middleware('permission:fiscal-documents.cancel');
+        // Fase 4 fiscal sem transmissão — docs/gap-petflow/specs/fase4-fiscal-sem-envio.md §6.
+        // Perfil tributário: leitura também para quem vê o catálogo (o cadastro de produto mostra
+        // o perfil efetivo); escrita só com `fiscal-settings.manage`. `templates` antes de `{id}`.
+        Route::middleware('permission:products.view|fiscal-settings.manage')->group(function (): void {
+            Route::get('tax-profiles/templates', [\App\Http\Controllers\Api\Fiscal\TaxProfileController::class, 'templates']);
+            Route::get('tax-profiles', [\App\Http\Controllers\Api\Fiscal\TaxProfileController::class, 'index']);
+            Route::get('tax-profiles/{id}', [\App\Http\Controllers\Api\Fiscal\TaxProfileController::class, 'show'])->whereNumber('id');
+        });
+        Route::middleware('permission:fiscal-settings.manage')->group(function (): void {
+            Route::post('tax-profiles', [\App\Http\Controllers\Api\Fiscal\TaxProfileController::class, 'store']);
+            Route::put('tax-profiles/{id}', [\App\Http\Controllers\Api\Fiscal\TaxProfileController::class, 'update'])->whereNumber('id');
+            Route::delete('tax-profiles/{id}', [\App\Http\Controllers\Api\Fiscal\TaxProfileController::class, 'destroy'])->whereNumber('id');
+            Route::get('fiscal-contingency', [\App\Http\Controllers\Api\Fiscal\FiscalContingencyController::class, 'show']);
+            Route::post('fiscal-contingency', [\App\Http\Controllers\Api\Fiscal\FiscalContingencyController::class, 'store']);
+            Route::delete('fiscal-contingency', [\App\Http\Controllers\Api\Fiscal\FiscalContingencyController::class, 'destroy']);
+        });
+        // Inutilização: mesma população de `fiscal-documents.cancel` (owner), permissão própria.
+        Route::middleware('permission:fiscal-numbers.invalidate')->group(function (): void {
+            Route::get('fiscal-number-invalidations/gaps', [\App\Http\Controllers\Api\Fiscal\FiscalNumberInvalidationController::class, 'gaps']);
+            Route::get('fiscal-number-invalidations', [\App\Http\Controllers\Api\Fiscal\FiscalNumberInvalidationController::class, 'index']);
+            Route::post('fiscal-number-invalidations', [\App\Http\Controllers\Api\Fiscal\FiscalNumberInvalidationController::class, 'store']);
+        });
+        Route::middleware('permission:fiscal-documents.issue')->group(function (): void {
+            Route::post('sale-returns/{id}/fiscal-documents', [\App\Http\Controllers\Api\Fiscal\ReturnFiscalDocumentController::class, 'saleReturn'])->whereNumber('id');
+            Route::post('purchase-returns/{id}/fiscal-documents', [\App\Http\Controllers\Api\Fiscal\ReturnFiscalDocumentController::class, 'purchaseReturn'])->whereNumber('id');
+            Route::post('fiscal-documents/{id}/sync', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentController::class, 'sync'])->whereNumber('id');
+            Route::post('fiscal-contingency/transmit', [\App\Http\Controllers\Api\Fiscal\FiscalContingencyController::class, 'transmit']);
+        });
+
         // Config fiscal (regime, inscrições) — leitura e escrita são o mesmo `fiscal-settings.manage`:
         // não há audiência de "só ver a configuração" no catálogo, e a spec 05 já restringe as
         // duas a OWNER.

@@ -80,6 +80,11 @@ class Organization extends Model implements HasDepositSettings
         'credit_late_fee_percent',
         'credit_monthly_interest_percent',
         'credit_grace_days',
+        // Fase 4 fiscal: ambiente e série por modelo. A contingência
+        // (`fiscal_contingency_*`) fica FORA: só `FiscalContingencyService` liga e desliga.
+        'fiscal_environment',
+        'nfe_series',
+        'nfce_series',
     ];
 
     /**
@@ -111,7 +116,15 @@ class Organization extends Model implements HasDepositSettings
             'credit_late_fee_percent' => 'decimal:2',
             'credit_monthly_interest_percent' => 'decimal:4',
             'credit_grace_days' => 'integer',
+            'fiscal_environment' => \App\Enums\FiscalEnvironment::class,
+            'fiscal_contingency_started_at' => 'datetime',
         ];
+    }
+
+    /** Em contingência fiscal (SEFAZ fora): NFC-e sai offline, NF-e espera (spec fase4-fiscal §4). */
+    public function isInFiscalContingency(): bool
+    {
+        return $this->fiscal_contingency_started_at !== null;
     }
 
     public function depositEnabled(): bool

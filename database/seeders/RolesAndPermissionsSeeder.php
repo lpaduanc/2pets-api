@@ -217,6 +217,9 @@ class RolesAndPermissionsSeeder extends Seeder
             'fiscal-documents.issue',
             'fiscal-documents.cancel',
             'fiscal-settings.manage',
+            // Fase 4 fiscal (docs/gap-petflow/specs/fase4-fiscal-sem-envio.md §3.7): inutilizar
+            // faixa de numeração junto à SEFAZ. Mesmos papéis de `fiscal-documents.cancel`.
+            'fiscal-numbers.invalidate',
 
             // --- Comercial (comissão, pacotes de serviço, lista de preços) ---
             'commissions.view.own',
@@ -396,7 +399,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.dre.view', 'reports.cash-flow.view',
             'acquirer-settlements.view', 'acquirer-settlements.manage',
             'client-account.view.own', 'client-account.manage',
-            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage',
+            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage', 'fiscal-numbers.invalidate',
             'commissions.view.own', 'commissions.rule.manage',
             'service-packages.view', 'service-packages.manage',
             'price-lists.view', 'price-lists.manage',
@@ -487,7 +490,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.dre.view', 'reports.cash-flow.view',
             'acquirer-settlements.view', 'acquirer-settlements.manage',
             'client-account.view.any', 'client-account.manage',
-            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage',
+            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage', 'fiscal-numbers.invalidate',
             'commissions.view.any', 'commissions.rule.manage',
             'service-packages.view', 'service-packages.manage',
             'price-lists.view', 'price-lists.manage',
@@ -605,7 +608,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'reports.dre.view', 'reports.cash-flow.view',
             'acquirer-settlements.view', 'acquirer-settlements.manage',
             'client-account.view.any', 'client-account.manage',
-            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage',
+            'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage', 'fiscal-numbers.invalidate',
             'commissions.view.any', 'commissions.rule.manage',
             'service-packages.view', 'service-packages.manage',
             'price-lists.view', 'price-lists.manage',

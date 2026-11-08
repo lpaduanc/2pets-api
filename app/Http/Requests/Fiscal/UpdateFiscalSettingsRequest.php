@@ -4,6 +4,7 @@ namespace App\Http\Requests\Fiscal;
 
 use App\Enums\CardFeeReferenceMode;
 use App\Enums\CardSurchargeReturnPolicy;
+use App\Enums\FiscalEnvironment;
 use App\Enums\StateRegistrationType;
 use App\Enums\TaxRegime;
 use Illuminate\Foundation\Http\FormRequest;
@@ -47,6 +48,12 @@ class UpdateFiscalSettingsRequest extends FormRequest
             'credit_late_fee_percent' => ['sometimes', 'numeric', 'decimal:0,2', 'min:0', 'max:2'],
             'credit_monthly_interest_percent' => ['sometimes', 'numeric', 'decimal:0,4', 'min:0', 'max:1'],
             'credit_grace_days' => ['sometimes', 'integer', 'min:0', 'max:30'],
+            // Fase 4 fiscal: ambiente (numeração separada por ambiente), série e próximo número por
+            // modelo — quem vem de outro sistema continua a numeração de lá.
+            'fiscal_environment' => ['sometimes', Rule::enum(FiscalEnvironment::class)],
+            'fiscal_series' => ['sometimes', 'array:nfe,nfce'],
+            'fiscal_series.*.series' => ['sometimes', 'string', 'regex:/^\d{1,3}$/'],
+            'fiscal_series.*.next_number' => ['sometimes', 'integer', 'min:1', 'max:999999999'],
         ];
     }
 }

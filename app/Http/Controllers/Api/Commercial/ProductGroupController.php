@@ -7,6 +7,7 @@ use App\Http\Requests\Commercial\StoreProductGroupRequest;
 use App\Http\Resources\Commercial\ProductGroupResource;
 use App\Models\ProductGroup;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Services\Fiscal\TaxProfileResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -20,7 +21,10 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 class ProductGroupController extends Controller
 {
-    public function __construct(private readonly CommercialScopeResolver $scope) {}
+    public function __construct(
+        private readonly CommercialScopeResolver $scope,
+        private readonly TaxProfileResolver $taxProfiles,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -30,6 +34,7 @@ class ProductGroupController extends Controller
             ->withCount(['products', 'services'])
             ->orderBy('name')
             ->get();
+        $this->taxProfiles->annotateGroups($groups);
 
         return ProductGroupResource::collection($groups);
     }
@@ -41,6 +46,8 @@ class ProductGroupController extends Controller
         $group = ProductGroup::create(
             $request->validated() + $this->scope->ownershipFor($request->user())
         );
+
+        $this->taxProfiles->annotateGroups([$group]);
 
         return (new ProductGroupResource($group))
             ->additional(['message' => 'Grupo criado com sucesso.'])
@@ -54,8 +61,10 @@ class ProductGroupController extends Controller
         $this->assertParentIsVisible($request, $group);
 
         $group->update($request->validated());
+        $group = $group->fresh(['parent']);
+        $this->taxProfiles->annotateGroups([$group]);
 
-        return new ProductGroupResource($group->fresh(['parent']));
+        return new ProductGroupResource($group);
     }
 
     public function destroy(Request $request, int $id): JsonResponse

@@ -55,6 +55,8 @@ class UpdateProductRequest extends FormRequest
             'sold_by_weight' => ['sometimes', 'boolean'],
             // PLANO 2.4: centro de custo (vazio herda o do grupo).
             'cost_center_id' => ['sometimes', 'nullable', 'integer', new \App\Rules\ScopedCostCenterExists($this->user())],
+            // Fase 4 fiscal: perfil próprio; vazio herda o do grupo.
+            'tax_profile_id' => ['sometimes', 'nullable', 'integer', new \App\Rules\ScopedTaxProfileExists($this->user())],
             'brand_id' => ['sometimes', 'nullable', 'integer', 'exists:brands,id'],
             'category_id' => ['sometimes', 'nullable', 'integer', 'exists:product_categories,id'],
             'immunization_product_id' => ['sometimes', 'nullable', 'integer', 'exists:immunization_products,id'],

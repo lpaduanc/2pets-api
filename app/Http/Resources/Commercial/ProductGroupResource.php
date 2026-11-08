@@ -25,6 +25,9 @@ class ProductGroupResource extends JsonResource
             'active' => $this->active,
             // PLANO 2.4: herdado por produto/serviço do grupo sem centro próprio.
             'cost_center_id' => $this->cost_center_id,
+            // Fase 4 fiscal: perfil do grupo e o efetivo (herdado do pai/padrão) {id, name, source}.
+            'tax_profile_id' => $this->tax_profile_id,
+            'effective_tax_profile' => $this->when($this->resource->effectiveTaxProfile !== null, fn (): ?array => $this->resource->effectiveTaxProfile),
             'children' => self::collection($this->whenLoaded('children')),
             'products_count' => $this->whenCounted('products'),
             'services_count' => $this->whenCounted('services'),
