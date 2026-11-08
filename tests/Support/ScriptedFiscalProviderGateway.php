@@ -38,7 +38,8 @@ final class ScriptedFiscalProviderGateway implements FiscalProviderGateway
     public static function bind(\Illuminate\Contracts\Foundation\Application $app, ?FiscalProviderCapabilities $capabilities = null): self
     {
         $gateway = new self($capabilities ?? new FiscalProviderCapabilities(true, true, true));
-        $app->instance(FiscalProviderGateway::class, $gateway);
+        // O driver é escolhido por dono (`FiscalGatewayResolver`); o roteirizado vale para todos.
+        $app->instance(\App\Contracts\FiscalGatewayResolver::class, new FixedFiscalGatewayResolver($gateway));
 
         return $gateway;
     }

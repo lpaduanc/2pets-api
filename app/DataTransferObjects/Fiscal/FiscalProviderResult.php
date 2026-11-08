@@ -12,6 +12,9 @@ use App\Enums\FiscalDocumentStatus;
  *
  * `number`/`series`: só quando o provedor numera (NFS-e no Emissor Nacional); NF-e/NFC-e usam o
  * número que nós reservamos. `notice`: aviso informativo do provedor (não é erro).
+ * `xmlPath`/`pdfPath`: caminho no disco PRIVADO do XML (procNFe, procEventoNFe, procInutNFe ou o
+ * assinado da contingência) e do DANFE/DANFCE — só o driver da SEFAZ própria grava (spec
+ * docs/gap-petflow/specs/fase4-transmissao-propria-nfe-nfce.md §8).
  */
 final readonly class FiscalProviderResult
 {
@@ -24,5 +27,7 @@ final readonly class FiscalProviderResult
         public ?int $number = null,
         public ?string $series = null,
         public ?string $notice = null,
+        public ?string $xmlPath = null,
+        public ?string $pdfPath = null,
     ) {}
 }

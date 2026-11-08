@@ -55,6 +55,20 @@ enum FiscalOperation: string
     }
 
     /**
+     * `ide/indPres` da NF-e/NFC-e (spec fase4-transmissao §5.1): presencial 1, internet 2,
+     * teleatendimento 3, entrega em domicílio 4 (o "delivery/atendimento domiciliar" da clínica).
+     */
+    public function presenceIndicator(): string
+    {
+        return match ($this) {
+            self::IN_PERSON_CONSUMER, self::IN_PERSON_RESALE => '1',
+            self::ONLINE_ORDER_CARRIER => '2',
+            self::PHONE_ORDER_CARRIER => '3',
+            self::DELIVERY_CONSUMER, self::DELIVERY_RESALE => '4',
+        };
+    }
+
+    /**
      * Operações cujos produtos saem em NFC-e — o inverso sai em NF-e. Mesma regra de
      * `productDocument()`, em forma de lista para a cláusula `whereIn` do filtro de pendência.
      *

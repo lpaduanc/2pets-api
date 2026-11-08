@@ -18,7 +18,9 @@ use App\Enums\FiscalEnvironment;
  * - `emitter`/`recipient` → `emit`/`dest` (`FiscalParty::toArray`);
  * - `items[]` → `det` (`prod` + `imposto`: ICMS por CST/CSOSN, PIS, COFINS, IPI devolvido, ST);
  * - `totals` → `total/ICMSTot` (vProd, vDesc, vOutro, vBC, vICMS, vFCP, vPIS, vCOFINS, vIPI, vST, vNF);
- * - `references` → `NFref/refNFe` (devoluções).
+ * - `references` → `NFref/refNFe` (devoluções);
+ * - `payments` → `pag/detPag` (forma e valor, já rateados para somar o total do documento);
+ *   `presence`/`finalConsumer` → `ide/indPres`/`ide/indFinal` (spec fase4-transmissao §5).
  *
  * Valores monetários como string de 2 casas; alíquotas e preço unitário com 4.
  */
@@ -28,6 +30,8 @@ final readonly class FiscalInvoicePayload
      * @param  list<array<string, mixed>>  $items
      * @param  array<string, string>  $totals
      * @param  list<string>  $references  chaves de acesso referenciadas
+     * @param  list<array{method: string|null, amount: string}>  $payments  `method` = `PaymentMethodKind`; vazio ⇒ sem pagamento
+     * @param  string|null  $presence  `indPres` (0 não se aplica, 1 presencial, 2 internet, 3 telefone, 4 entrega)
      */
     public function __construct(
         public int $documentId,
@@ -44,6 +48,9 @@ final readonly class FiscalInvoicePayload
         public array $items,
         public array $totals,
         public array $references,
+        public array $payments = [],
+        public ?string $presence = null,
+        public bool $finalConsumer = true,
     ) {}
 
     /** @return array<string, mixed> */
@@ -64,6 +71,9 @@ final readonly class FiscalInvoicePayload
             'items' => $this->items,
             'totals' => $this->totals,
             'references' => $this->references,
+            'payments' => $this->payments,
+            'presence' => $this->presence,
+            'final_consumer' => $this->finalConsumer,
         ];
     }
 }

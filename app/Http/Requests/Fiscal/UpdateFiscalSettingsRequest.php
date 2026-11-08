@@ -12,8 +12,8 @@ use Illuminate\Validation\Rule;
 
 /**
  * Regime/inscrições da organização emitente — contrato
- * docs/gap-simplesvet/05-emissao-fiscal-nfe-nfce-nfse-spec.md. Certificado A1 NÃO passa por
- * aqui: fluxo de upload fica com o cofre externo (`security-specialist`).
+ * docs/gap-simplesvet/05-emissao-fiscal-nfe-nfce-nfse-spec.md. Certificado A1 e CSC NÃO passam
+ * por aqui: têm endpoints próprios (spec fase4-transmissao-propria-nfe-nfce §3/§4).
  */
 class UpdateFiscalSettingsRequest extends FormRequest
 {
@@ -54,6 +54,8 @@ class UpdateFiscalSettingsRequest extends FormRequest
             'fiscal_series' => ['sometimes', 'array:nfe,nfce'],
             'fiscal_series.*.series' => ['sometimes', 'string', 'regex:/^\d{1,3}$/'],
             'fiscal_series.*.next_number' => ['sometimes', 'integer', 'min:1', 'max:999999999'],
+            // cMun do emitente (7 dígitos do IBGE) — só quando o nome da cidade não bate com a tabela.
+            'city_ibge_code' => ['sometimes', 'nullable', 'digits:7'],
         ];
     }
 }

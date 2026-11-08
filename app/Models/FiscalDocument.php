@@ -60,6 +60,7 @@ class FiscalDocument extends Model
         'attempts',
         'next_retry_at',
         'last_error',
+        'cancellation_xml_path',
     ];
 
     /**

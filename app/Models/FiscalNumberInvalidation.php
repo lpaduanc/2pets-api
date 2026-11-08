@@ -37,6 +37,7 @@ class FiscalNumberInvalidation extends Model
         'rejection_reason',
         'protocol',
         'invalidated_at',
+        'xml_path',
     ];
 
     /**

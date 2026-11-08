@@ -14,6 +14,8 @@
         "laravel/scout": "^11.1",
         "laravel/socialite": "*",
         "laravel/tinker": "^2.10.1",
+        "nfephp-org/sped-da": "^1.1",
+        "nfephp-org/sped-nfe": "^5.2",
         "phpoffice/phpspreadsheet": "^5.10",
         "spatie/laravel-activitylog": "^4.12",
         "spatie/laravel-medialibrary": "^11.21",

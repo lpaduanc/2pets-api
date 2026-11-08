@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Fiscal;
 
+use App\Contracts\FiscalGatewayResolver;
 use App\Contracts\FiscalProviderGateway;
+use App\DataTransferObjects\Fiscal\FiscalOwner;
+use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalDocumentStatus;
 use App\Models\FiscalDocument;
 use App\Models\FiscalNumberInvalidation;
@@ -18,7 +21,8 @@ use Tests\TestCase;
  * `LogFiscalProviderGateway` — driver padrão do ambiente, contrato
  * docs/gap-simplesvet/specs/05-emissao-fiscal-nfe-nfce-nfse-spec.md e docs/gap-petflow/specs/
  * fase4-fiscal-sem-envio.md §5: "a emissão funciona sem nenhuma credencial configurada". Também
- * prova o bind por interface (DIP).
+ * prova que o resolver por dono (`FiscalGatewayResolver`, spec fase4-transmissao §6) escolhe o
+ * simulado para quem não tem certificado A1.
  */
 class FiscalProviderGatewayTest extends TestCase
 {
@@ -31,9 +35,9 @@ class FiscalProviderGatewayTest extends TestCase
         $this->buildClinic();
     }
 
-    public function test_the_container_resolves_the_interface_to_the_log_driver_by_default(): void
+    public function test_the_resolver_picks_the_log_driver_for_an_owner_without_certificate(): void
     {
-        $gateway = app(FiscalProviderGateway::class);
+        $gateway = $this->defaultGateway();
 
         $this->assertInstanceOf(LogFiscalProviderGateway::class, $gateway);
         $this->assertSame('log', $gateway->name());
@@ -47,7 +51,7 @@ class FiscalProviderGatewayTest extends TestCase
         Log::spy();
 
         $document = $this->makeDocument(['series' => '1', 'number' => 7]);
-        $result = app(FiscalProviderGateway::class)->issue($document, app(FiscalInvoicePayloadBuilder::class)->build($document));
+        $result = $this->defaultGateway()->issue($document, app(FiscalInvoicePayloadBuilder::class)->build($document));
 
         $this->assertSame(FiscalDocumentStatus::AUTHORIZED, $result->status);
         $this->assertMatchesRegularExpression('/^\d{44}$/', $result->accessKey);
@@ -69,7 +73,7 @@ class FiscalProviderGatewayTest extends TestCase
     {
         $this->clinic->forceFill(['fiscal_contingency_started_at' => now(), 'fiscal_contingency_reason' => 'SEFAZ fora do ar desde 10h'])->save();
         $document = $this->makeDocument(['emission_mode' => 'offline_contingency', 'series' => '1', 'number' => 3]);
-        $gateway = app(FiscalProviderGateway::class);
+        $gateway = $this->defaultGateway();
 
         $issued = $gateway->issue($document, app(FiscalInvoicePayloadBuilder::class)->build($document));
         $this->assertSame(FiscalDocumentStatus::CONTINGENCY, $issued->status);
@@ -88,7 +92,7 @@ class FiscalProviderGatewayTest extends TestCase
     public function test_cancelling_always_succeeds_with_a_protocol(): void
     {
         $document = $this->makeDocument();
-        $result = app(FiscalProviderGateway::class)->cancel($document, 'Erro de digitação');
+        $result = $this->defaultGateway()->cancel($document, 'Erro de digitação');
 
         $this->assertSame(FiscalDocumentStatus::CANCELLED, $result->status);
         $this->assertNotNull($result->protocol);
@@ -106,7 +110,7 @@ class FiscalProviderGatewayTest extends TestCase
             'reason' => 'Falha no sistema ao emitir os números',
         ]);
 
-        $result = app(FiscalProviderGateway::class)->invalidate($invalidation);
+        $result = $this->defaultGateway()->invalidate($invalidation);
 
         $this->assertSame(FiscalDocumentStatus::AUTHORIZED, $result->status);
         $this->assertNotNull($result->protocol);
@@ -131,5 +135,10 @@ class FiscalProviderGatewayTest extends TestCase
             'status' => 'pending',
             'total' => 100,
         ]);
+    }
+
+    private function defaultGateway(): FiscalProviderGateway
+    {
+        return app(FiscalGatewayResolver::class)->forOwner(FiscalOwner::forOrganization($this->clinic->id), FiscalDocumentKind::NFCE);
     }
 }

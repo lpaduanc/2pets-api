@@ -2,8 +2,9 @@
 
 namespace App\Services\Fiscal;
 
-use App\Contracts\FiscalProviderGateway;
+use App\Contracts\FiscalGatewayResolver;
 use App\DataTransferObjects\Fiscal\FiscalOwner;
+use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalDocumentOperation;
 use App\Enums\FiscalDocumentStatus;
 use App\Enums\FiscalEmissionMode;
@@ -18,11 +19,16 @@ use Illuminate\Support\Facades\DB;
  *
  * Todo documento nasce em emissão normal; o despacho decide a contingência
  * (`FiscalDocumentDispatcher`).
+ *
+ * O despacho acontece DEPOIS do commit (spec fase4-transmissao-propria-nfe-nfce §7.3): com a SEFAZ
+ * real, autorizar dentro de uma transação que depois desfaz deixaria uma nota autorizada na SEFAZ
+ * sem registro aqui (e o número voltaria a ser usado). Também não segura o lock da sequência
+ * durante a ida à SEFAZ.
  */
 final class FiscalDocumentIssuer
 {
     public function __construct(
-        private readonly FiscalProviderGateway $gateway,
+        private readonly FiscalGatewayResolver $gateways,
         private readonly FiscalNumberSequencer $sequencer,
         private readonly FiscalDocumentDispatcher $dispatcher,
     ) {}
@@ -33,12 +39,24 @@ final class FiscalDocumentIssuer
      */
     public function issue(array $attributes, array $rows): FiscalDocument
     {
+        return $this->dispatcher->send($this->create($attributes, $rows));
+    }
+
+    /**
+     * Grava o documento pendente com os itens e o número reservado, sem despachar — quem emite
+     * vários documentos de uma vez (venda mista) cria todos numa transação e despacha depois.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public function create(array $attributes, array $rows): FiscalDocument
+    {
         return DB::transaction(function () use ($attributes, $rows): FiscalDocument {
             $document = FiscalDocument::create($this->documentAttributes($attributes, $rows));
             $document->items()->createMany($rows);
             $this->sequencer->reserve($document);
 
-            return $this->dispatcher->send($document->fresh());
+            return $document->fresh();
         });
     }
 
@@ -54,9 +72,9 @@ final class FiscalDocumentIssuer
 
         return $attributes + [
             'emission_mode' => FiscalEmissionMode::NORMAL->value,
-            // Quem vai transmitir fica gravado desde já: um pendente por queda do provedor também
-            // mostra para onde será reenviado.
-            'provider' => $this->gateway->name(),
+            // Quem vai transmitir fica gravado desde já e não muda mais (`forDocument`): um
+            // pendente por queda da SEFAZ é reenviado para a SEFAZ, nunca "autorizado" pelo simulado.
+            'provider' => $this->gateways->forOwner($owner, FiscalDocumentKind::from($attributes['kind']))->name(),
             'direction' => $operation->direction()->value,
             'environment' => $this->sequencer->environmentFor($owner)->value,
             'status' => FiscalDocumentStatus::PENDING->value,

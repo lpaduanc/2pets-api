@@ -44,7 +44,7 @@ class FiscalContingencyTest extends TestCase
 
         $this->getJson("/api/professional/sales/{$saleId}")->assertJsonPath('data.fiscal_pending', []);
         $this->getJson('/api/professional/reports/fiscal-pending')->assertJsonPath('data.0.id', $document['id']);
-        $this->postJson("/api/professional/fiscal-documents/{$document['id']}/cancel", ['reason' => 'Erro'])
+        $this->postJson("/api/professional/fiscal-documents/{$document['id']}/cancel", ['reason' => 'Erro de digitação no item'])
             ->assertStatus(422)
             ->assertJsonPath('message', 'Documento em contingência: transmita antes de cancelar.');
 

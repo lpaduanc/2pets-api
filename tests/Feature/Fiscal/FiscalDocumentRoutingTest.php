@@ -91,7 +91,7 @@ class FiscalDocumentRoutingTest extends TestCase
         $saleId = $this->paidSale(services: [60]);
         $documentId = $this->issue($saleId)[0]['id'];
 
-        $this->postJson("/api/professional/fiscal-documents/{$documentId}/cancel", ['reason' => 'Duplicada'])
+        $this->postJson("/api/professional/fiscal-documents/{$documentId}/cancel", ['reason' => 'Nota emitida em duplicidade'])
             ->assertOk()
             ->assertJsonPath('data.status', 'cancelled');
 
@@ -107,9 +107,9 @@ class FiscalDocumentRoutingTest extends TestCase
         $saleId = $this->paidSale(services: [60]);
         $documentId = $this->issue($saleId)[0]['id'];
 
-        $this->postJson("/api/professional/fiscal-documents/{$documentId}/cancel", ['reason' => 'Duplicada'])->assertOk();
+        $this->postJson("/api/professional/fiscal-documents/{$documentId}/cancel", ['reason' => 'Nota emitida em duplicidade'])->assertOk();
 
-        $this->postJson("/api/professional/fiscal-documents/{$documentId}/cancel", ['reason' => 'De novo'])
+        $this->postJson("/api/professional/fiscal-documents/{$documentId}/cancel", ['reason' => 'Cancelando de novo a mesma nota'])
             ->assertStatus(422);
     }
 

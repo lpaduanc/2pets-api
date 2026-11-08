@@ -2,7 +2,7 @@
 
 namespace App\Services\Fiscal;
 
-use App\Contracts\FiscalProviderGateway;
+use App\Contracts\FiscalGatewayResolver;
 use App\DataTransferObjects\Fiscal\FiscalProviderResult;
 use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalDocumentStatus;
@@ -26,7 +26,7 @@ final class FiscalDocumentDispatcher
     private const HELD_BY_CONTINGENCY = 'Empresa em contingência: a NF-e será transmitida quando a SEFAZ voltar.';
 
     public function __construct(
-        private readonly FiscalProviderGateway $gateway,
+        private readonly FiscalGatewayResolver $gateways,
         private readonly FiscalInvoicePayloadBuilder $payloads,
     ) {}
 
@@ -39,14 +39,15 @@ final class FiscalDocumentDispatcher
         }
 
         $this->switchToOfflineContingency($document, $organization);
+        $gateway = $this->gateways->forDocument($document);
 
         try {
-            $result = $this->gateway->issue($document, $this->payloads->build($document));
+            $result = $gateway->issue($document, $this->payloads->build($document));
         } catch (FiscalProviderUnavailable $unavailable) {
             return $this->registerFailure($document, $unavailable);
         }
 
-        return $this->apply($document, $result);
+        return $this->apply($document, $result, $gateway->name());
     }
 
     /**
@@ -63,18 +64,21 @@ final class FiscalDocumentDispatcher
             return $document;
         }
 
+        $gateway = $this->gateways->forDocument($document);
+
         try {
-            return $this->apply($document, $this->gateway->checkStatus($document));
+            return $this->apply($document, $gateway->checkStatus($document), $gateway->name());
         } catch (FiscalProviderUnavailable $unavailable) {
             return $this->registerFailure($document, $unavailable);
         }
     }
 
-    public function apply(FiscalDocument $document, FiscalProviderResult $result): FiscalDocument
+    /** `xml_path`/`pdf_path`: arquivos que o driver gravou no disco privado (só a SEFAZ própria grava). */
+    public function apply(FiscalDocument $document, FiscalProviderResult $result, string $provider): FiscalDocument
     {
         $document->update([
             'status' => $result->status->value,
-            'provider' => $this->gateway->name(),
+            'provider' => $provider,
             'access_key' => $result->accessKey ?? $document->access_key,
             'provider_id' => $result->providerId ?? $document->provider_id,
             'protocol' => $result->protocol ?? $document->protocol,
@@ -84,6 +88,8 @@ final class FiscalDocumentDispatcher
             'issued_at' => $result->status->countsAsIssued() ? ($document->issued_at ?? now()) : null,
             'next_retry_at' => null,
             'last_error' => $result->notice,
+            'xml_path' => $result->xmlPath ?? $document->xml_path,
+            'pdf_path' => $result->pdfPath ?? $document->pdf_path,
         ]);
 
         return $document->fresh();

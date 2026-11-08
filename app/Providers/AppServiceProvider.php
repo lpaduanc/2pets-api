@@ -3,7 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\AddressSuggestionProvider;
-use App\Contracts\FiscalProviderGateway;
+use App\Contracts\FiscalGatewayResolver;
 use App\Contracts\GeocodingProvider;
 use App\Contracts\PaymentGatewayInterface;
 use App\Events\MedicalRecordFinalized;
@@ -118,10 +118,13 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(PaymentGatewayInterface::class, MercadoPagoService::class);
 
-        // docs/gap-simplesvet/specs/05-emissao-fiscal-nfe-nfce-nfse-spec.md: driver padrão do
-        // ambiente é o fake/log — sem credencial configurada, a emissão "funciona" (grava com
-        // status simulado, loga o payload). Trocar para um provedor real é só mudar este bind.
-        $this->app->bind(FiscalProviderGateway::class, \App\Services\Fiscal\LogFiscalProviderGateway::class);
+        // Driver fiscal POR DONO (docs/gap-petflow/specs/fase4-transmissao-propria-nfe-nfce.md §6):
+        // SEFAZ própria quando a organização tem A1 válido (+ CSC na NFC-e) e
+        // `fiscal.sefaz.enabled`; senão o simulado (log). Não há mais um bind global do gateway.
+        $this->app->bind(FiscalGatewayResolver::class, \App\Services\Fiscal\Transmission\OwnerFiscalGatewayResolver::class);
+        // Transporte SOAP do sped-common atrás de contrato: os testes trocam por um dublê e nunca
+        // falam com a SEFAZ de verdade.
+        $this->app->bind(\App\Services\Fiscal\Sefaz\SefazTransportFactory::class, \App\Services\Fiscal\Sefaz\CurlSefazTransportFactory::class);
 
         // O parâmetro `?DueDateService $dueDates = null` do planner existe para o teste puro
         // (`new FinancialInstallmentPlanner`). O container do Laravel 12 NÃO resolve classe

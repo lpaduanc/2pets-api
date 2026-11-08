@@ -2,7 +2,7 @@
 
 namespace App\Services\Fiscal;
 
-use App\Contracts\FiscalProviderGateway;
+use App\Contracts\FiscalGatewayResolver;
 use App\DataTransferObjects\Fiscal\FiscalOwner;
 use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalEnvironment;
@@ -20,7 +20,7 @@ final class FiscalNumberingSettings
 
     public function __construct(
         private readonly FiscalNumberSequencer $sequencer,
-        private readonly FiscalProviderGateway $gateway,
+        private readonly FiscalGatewayResolver $gateways,
     ) {}
 
     /** @param  array<string, mixed>  $data  payload validado de `UpdateFiscalSettingsRequest` */
@@ -41,6 +41,8 @@ final class FiscalNumberingSettings
     public function snapshot(Organization $organization): array
     {
         $owner = FiscalOwner::forOrganization($organization->id);
+        // Driver da NF-e deste dono (o da NFC-e pode diferir: depende do CSC — ver `transmission`).
+        $gateway = $this->gateways->forOwner($owner, FiscalDocumentKind::NFE);
 
         return [
             'fiscal_environment' => ($organization->fiscal_environment ?? FiscalEnvironment::HOMOLOGATION)->value,
@@ -50,7 +52,7 @@ final class FiscalNumberingSettings
                 'started_at' => $organization->fiscal_contingency_started_at?->toIso8601String(),
                 'reason' => $organization->fiscal_contingency_reason,
             ],
-            'provider' => ['name' => $this->gateway->name(), 'capabilities' => $this->gateway->capabilities()->toArray()],
+            'provider' => ['name' => $gateway->name(), 'capabilities' => $gateway->capabilities()->toArray()],
         ];
     }
 

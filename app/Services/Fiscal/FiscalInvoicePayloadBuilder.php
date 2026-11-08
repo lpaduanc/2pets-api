@@ -34,7 +34,13 @@ final class FiscalInvoicePayloadBuilder
         'total' => 'total',
     ];
 
-    public function __construct(private readonly FiscalPartyResolver $parties) {}
+    /** `indPres` das devoluções: "não se aplica" (NF-e de devolução não é venda presencial). */
+    private const PRESENCE_NOT_APPLICABLE = '0';
+
+    public function __construct(
+        private readonly FiscalPartyResolver $parties,
+        private readonly FiscalPaymentAllocator $payments,
+    ) {}
 
     public function build(FiscalDocument $document): FiscalInvoicePayload
     {
@@ -55,7 +61,45 @@ final class FiscalInvoicePayloadBuilder
             items: $document->items->map(fn (FiscalDocumentItem $item): array => $this->item($item))->values()->all(),
             totals: $this->totals($document),
             references: array_values(array_filter([$document->referenced_access_key])),
+            payments: $this->paymentsFor($document),
+            presence: $this->presenceFor($document),
+            finalConsumer: $this->isFinalConsumer($document),
         );
+    }
+
+    /**
+     * Só a venda tem pagamento; devolução sai "sem pagamento" (tPag 90).
+     *
+     * @return list<array{method: string|null, amount: string}>
+     */
+    private function paymentsFor(FiscalDocument $document): array
+    {
+        if (($document->operation ?? FiscalDocumentOperation::SALE) !== FiscalDocumentOperation::SALE) {
+            return [];
+        }
+
+        return $this->payments->forSale($document->sale, (string) $document->total);
+    }
+
+    private function presenceFor(FiscalDocument $document): string
+    {
+        if (($document->operation ?? FiscalDocumentOperation::SALE) !== FiscalDocumentOperation::SALE) {
+            return self::PRESENCE_NOT_APPLICABLE;
+        }
+
+        return $document->sale?->fiscal_operation?->presenceIndicator() ?? self::PRESENCE_NOT_APPLICABLE;
+    }
+
+    /** Revenda e devolução ao fornecedor não são consumidor final (`indFinal = 0`). */
+    private function isFinalConsumer(FiscalDocument $document): bool
+    {
+        if ($document->purchase_return_id !== null) {
+            return false;
+        }
+
+        $sale = $document->sale ?? $document->saleReturn?->sale;
+
+        return ! ($sale?->fiscal_operation?->isResale() ?? false);
     }
 
     private function recipient(FiscalDocument $document): ?FiscalParty

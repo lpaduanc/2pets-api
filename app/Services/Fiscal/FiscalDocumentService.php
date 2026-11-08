@@ -2,10 +2,12 @@
 
 namespace App\Services\Fiscal;
 
-use App\Contracts\FiscalProviderGateway;
+use App\Contracts\FiscalGatewayResolver;
 use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalDocumentOperation;
 use App\Enums\FiscalDocumentStatus;
+use App\Exceptions\Fiscal\FiscalProviderUnavailable;
+use App\Exceptions\Fiscal\NfeXmlInvalid;
 use App\Models\FiscalDocument;
 use App\Models\Product;
 use App\Models\Sale;
@@ -31,9 +33,10 @@ use Illuminate\Support\Facades\DB;
 final class FiscalDocumentService
 {
     public function __construct(
-        private readonly FiscalProviderGateway $gateway,
+        private readonly FiscalGatewayResolver $gateways,
         private readonly FiscalSaleLineBuilder $lines,
         private readonly FiscalDocumentIssuer $issuer,
+        private readonly FiscalDocumentDispatcher $dispatcher,
     ) {}
 
     /**
@@ -55,9 +58,13 @@ final class FiscalDocumentService
         $sale->loadMissing(['items.sellable', 'client']);
         $parts = $this->documentParts($sale);
 
-        return DB::transaction(fn (): Collection => collect($parts)->map(
-            fn (array $part, string $type): FiscalDocument => $this->issueOne($sale, $this->kindFor($sale, $type), $part)
+        // Venda mista: os dois documentos nascem juntos (ou nenhum) e só DEPOIS do commit vão ao
+        // driver — nada autorizado na SEFAZ fica sem registro se o segundo falhar na validação.
+        $documents = DB::transaction(fn (): Collection => collect($parts)->map(
+            fn (array $part, string $type): FiscalDocument => $this->createOne($sale, $this->kindFor($sale, $type), $part)
         )->values());
+
+        return $documents->map(fn (FiscalDocument $document): FiscalDocument => $this->dispatcher->send($document));
     }
 
     /**
@@ -103,21 +110,32 @@ final class FiscalDocumentService
     }
 
     /**
-     * Cancelamento grava protocolo, motivo e data. Contingência ainda não chegou à SEFAZ: não há
-     * o que cancelar lá — transmite primeiro (spec fase4-fiscal §4).
+     * Cancelamento grava protocolo, motivo, data e o XML do evento. Contingência ainda não chegou
+     * à SEFAZ: não há o que cancelar lá — transmite primeiro (spec fase4-fiscal §4). Recusa da
+     * SEFAZ (ex.: prazo de cancelamento vencido) NÃO mexe no documento — ele continua autorizado
+     * — e volta 422 com o motivo; SEFAZ fora do ar volta 503 (spec fase4-transmissao §7.3).
      */
     public function cancel(FiscalDocument $document, string $reason): FiscalDocument
     {
         abort_if($document->status === FiscalDocumentStatus::CONTINGENCY, 422, 'Documento em contingência: transmita antes de cancelar.');
         abort_unless($document->status->canBeCancelled(), 422, 'Só um documento autorizado pode ser cancelado.');
 
-        $result = $this->gateway->cancel($document, $reason);
+        try {
+            $result = $this->gateways->forDocument($document)->cancel($document, $reason);
+        } catch (FiscalProviderUnavailable $unavailable) {
+            abort(503, 'SEFAZ indisponível para o cancelamento agora: '.$unavailable->getMessage());
+        } catch (NfeXmlInvalid $invalid) {
+            abort(422, $invalid->getMessage());
+        }
+
+        abort_unless($result->status === FiscalDocumentStatus::CANCELLED, 422, 'A SEFAZ recusou o cancelamento: '.$result->rejectionReason);
+
         $document->update([
             'status' => $result->status->value,
             'cancellation_protocol' => $result->protocol,
             'cancellation_reason' => $reason,
-            'cancelled_at' => $result->status === FiscalDocumentStatus::CANCELLED ? now() : null,
-            'rejection_reason' => $result->rejectionReason,
+            'cancelled_at' => now(),
+            'cancellation_xml_path' => $result->xmlPath,
         ]);
 
         return $document->fresh();
@@ -129,9 +147,9 @@ final class FiscalDocumentService
      *
      * @param  array{items: Collection<int, SaleItem>, surcharge: Money}  $part
      */
-    private function issueOne(Sale $sale, FiscalDocumentKind $kind, array $part): FiscalDocument
+    private function createOne(Sale $sale, FiscalDocumentKind $kind, array $part): FiscalDocument
     {
-        return $this->issuer->issue([
+        return $this->issuer->create([
             'organization_id' => $sale->organization_id,
             'professional_id' => $sale->professional_id,
             'sale_id' => $sale->id,

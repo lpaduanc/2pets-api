@@ -60,7 +60,8 @@ class TaxProfile extends Model
 
     public function cfops(): HasMany
     {
-        return $this->hasMany(TaxProfileCfop::class);
+        // Ordem de cadastro: sem ORDER BY o PostgreSQL devolve as faixas em ordem variável.
+        return $this->hasMany(TaxProfileCfop::class)->orderBy('id');
     }
 
     public function products(): HasMany

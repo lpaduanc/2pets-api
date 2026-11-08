@@ -1146,6 +1146,9 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
             Route::get('fiscal-documents', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentController::class, 'index']);
             Route::get('fiscal-documents/{id}', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentController::class, 'show'])->whereNumber('id');
             Route::get('reports/fiscal-pending', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentController::class, 'pending']);
+            // XML autorizado e DANFE/DANFCE da transmissão própria (spec fase4-transmissao §8).
+            Route::get('fiscal-documents/{id}/xml', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentFileController::class, 'xml'])->whereNumber('id');
+            Route::get('fiscal-documents/{id}/pdf', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentFileController::class, 'pdf'])->whereNumber('id');
         });
         Route::post('fiscal-documents/{id}/cancel', [\App\Http\Controllers\Api\Fiscal\FiscalDocumentController::class, 'cancel'])
             ->whereNumber('id')
@@ -1185,6 +1188,14 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
         Route::middleware('permission:fiscal-settings.manage')->group(function (): void {
             Route::get('fiscal-settings', [\App\Http\Controllers\Api\Fiscal\FiscalSettingsController::class, 'show']);
             Route::put('fiscal-settings', [\App\Http\Controllers\Api\Fiscal\FiscalSettingsController::class, 'update']);
+            // Transmissão própria (spec fase4-transmissao-propria-nfe-nfce §3/§4): A1 e CSC. O
+            // upload tem limite próprio — tentativa de senha por força bruta no .pfx.
+            Route::get('fiscal-settings/certificate', [\App\Http\Controllers\Api\Fiscal\FiscalCertificateController::class, 'show']);
+            Route::post('fiscal-settings/certificate', [\App\Http\Controllers\Api\Fiscal\FiscalCertificateController::class, 'store'])->middleware('throttle:10,1');
+            Route::delete('fiscal-settings/certificate', [\App\Http\Controllers\Api\Fiscal\FiscalCertificateController::class, 'destroy']);
+            Route::put('fiscal-settings/nfce-csc', [\App\Http\Controllers\Api\Fiscal\FiscalNfceCscController::class, 'update']);
+            Route::delete('fiscal-settings/nfce-csc/{environment}', [\App\Http\Controllers\Api\Fiscal\FiscalNfceCscController::class, 'destroy'])
+                ->whereIn('environment', \App\Enums\FiscalEnvironment::values());
         });
 
         // My patients — pets this vet has active PetVetAccess grants for (enriched list).

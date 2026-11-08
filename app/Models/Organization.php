@@ -85,6 +85,8 @@ class Organization extends Model implements HasDepositSettings
         'fiscal_environment',
         'nfe_series',
         'nfce_series',
+        // Transmissão própria: cMun do emitente quando o nome da cidade não bate com o IBGE.
+        'city_ibge_code',
     ];
 
     /**

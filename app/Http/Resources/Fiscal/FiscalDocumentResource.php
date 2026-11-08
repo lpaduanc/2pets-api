@@ -58,6 +58,10 @@ class FiscalDocumentResource extends JsonResource
             // Parte do acréscimo de repasse da taxa contida no `total` (PLANO 1.1); string de 2
             // casas, como os demais campos de acréscimo.
             'surcharge_amount' => Money::of($this->surcharge_amount ?? '0')->toString(),
+            // Só se há arquivo — o caminho no disco privado nunca sai; o download é por
+            // `GET fiscal-documents/{id}/xml|pdf` (spec fase4-transmissao §8).
+            'has_xml' => $this->xml_path !== null,
+            'has_pdf' => $this->pdf_path !== null,
             'items' => FiscalDocumentItemResource::collection($this->whenLoaded('items')),
             'referenced_document' => $this->whenLoaded('referencedDocument', fn (): ?array => $this->referencedDocument === null ? null : [
                 'id' => $this->referencedDocument->id,

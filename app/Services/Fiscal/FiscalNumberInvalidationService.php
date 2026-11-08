@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal;
 
+use App\Contracts\FiscalGatewayResolver;
 use App\Contracts\FiscalProviderGateway;
 use App\DataTransferObjects\Fiscal\FiscalOwner;
 use App\Enums\FiscalDocumentKind;
@@ -28,7 +29,7 @@ final class FiscalNumberInvalidationService
     ];
 
     public function __construct(
-        private readonly FiscalProviderGateway $gateway,
+        private readonly FiscalGatewayResolver $gateways,
         private readonly FiscalNumberSequencer $sequencer,
         private readonly FiscalNumberGaps $rules,
     ) {}
@@ -36,9 +37,10 @@ final class FiscalNumberInvalidationService
     /** @param  array{kind: string, number_from: int, number_to: int, reason: string}  $data */
     public function create(FiscalOwner $owner, User $user, array $data): FiscalNumberInvalidation
     {
-        abort_unless($this->gateway->capabilities()->invalidation, 422, 'O emissor fiscal configurado não faz inutilização de numeração.');
-
         $kind = FiscalDocumentKind::from($data['kind']);
+        $gateway = $this->gateways->forOwner($owner, $kind);
+        abort_unless($gateway->capabilities()->invalidation, 422, 'O emissor fiscal configurado não faz inutilização de numeração.');
+
         $series = $this->sequencer->seriesFor($owner, $kind);
         $this->assertValid($owner, $kind, $data);
 
@@ -52,10 +54,10 @@ final class FiscalNumberInvalidationService
             'number_to' => (int) $data['number_to'],
             'reason' => trim($data['reason']),
             'status' => FiscalNumberInvalidationStatus::PENDING->value,
-            'provider' => $this->gateway->name(),
+            'provider' => $gateway->name(),
         ]);
 
-        return $this->transmit($invalidation);
+        return $this->transmit($invalidation, $gateway);
     }
 
     /** @return array{kind: string, series: string, environment: string, start_number: int, next_number: int, gaps: list<array{from: int, to: int}>} */
@@ -95,10 +97,10 @@ final class FiscalNumberInvalidationService
         }
     }
 
-    private function transmit(FiscalNumberInvalidation $invalidation): FiscalNumberInvalidation
+    private function transmit(FiscalNumberInvalidation $invalidation, FiscalProviderGateway $gateway): FiscalNumberInvalidation
     {
         try {
-            $result = $this->gateway->invalidate($invalidation);
+            $result = $gateway->invalidate($invalidation);
         } catch (FiscalProviderUnavailable) {
             // Fica pendente (ocupa a faixa); a tela permite pedir de novo quando a SEFAZ voltar.
             return $invalidation;
@@ -111,6 +113,7 @@ final class FiscalNumberInvalidationService
             'provider_id' => $result->providerId,
             'rejection_reason' => $result->rejectionReason,
             'invalidated_at' => $authorized ? now() : null,
+            'xml_path' => $result->xmlPath,
         ]);
 
         return $invalidation->fresh();
