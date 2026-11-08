@@ -153,10 +153,17 @@ class FiscalDocumentRoutingTest extends TestCase
         return $saleId;
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * Emite como o DONO: `paidSale()` deixa a recepcionista autenticada (é ela quem opera o
+     * caixa), mas emitir/cancelar documento fiscal é só do owner (`fiscal-documents.issue`).
+     * As chamadas seguintes do teste (reemissão, cancelamento) seguem como owner.
+     *
+     * @return list<array<string, mixed>>
+     */
     private function issue(int $saleId): array
     {
-        return $this->postJson("/api/professional/sales/{$saleId}/fiscal-documents")
+        return $this->actingAs($this->owner, 'sanctum')
+            ->postJson("/api/professional/sales/{$saleId}/fiscal-documents")
             ->assertCreated()
             ->json('data');
     }

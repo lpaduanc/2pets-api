@@ -3,11 +3,11 @@
 namespace Tests\Feature;
 
 use App\Enums\VetAccessLevel;
-use App\Models\Inventory;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
+use App\Models\Product;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -105,6 +105,33 @@ class ImmunizationProtocolGraphSchedulingTest extends TestCase
         $this->assertSame('2026-04-03', $thirdDose['scheduled_for']); // 2026-03-13 + 21 dias
     }
 
+    /**
+     * Regressão: aplicar a 1ª dose recalcula a 2ª e, em cascata, a 3ª — que conta da nova data
+     * PREVISTA da 2ª (ainda não aplicada), não de um `applied_at` que não existe.
+     */
+    public function test_applying_the_first_dose_cascades_to_grandchildren_from_the_rescheduled_date(): void
+    {
+        $protocol = $this->createThreeDoseProtocol();
+        $plan = $this->postJson("/api/pets/{$this->pet->id}/immunization-plans", [
+            'protocol_id' => $protocol,
+            'started_at' => '2026-01-01',
+        ])->json('data');
+
+        $firstDoseId = collect($plan['doses'])->firstWhere('dose_number', 1)['id'];
+
+        // 1ª dose prevista para 2026-02-15, aplicada com 10 dias de atraso.
+        $this->postJson(
+            "/api/pets/{$this->pet->id}/immunization-plans/{$plan['id']}/doses/{$firstDoseId}/apply",
+            ['applied_at' => '2026-02-25']
+        )->assertOk();
+
+        $doses = collect($this->getJson("/api/pets/{$this->pet->id}/immunization-plans/{$plan['id']}")
+            ->json('data.doses'))->keyBy('dose_number');
+
+        $this->assertSame('2026-03-18', $doses[2]['scheduled_for']); // 2026-02-25 + 21 dias
+        $this->assertSame('2026-04-08', $doses[3]['scheduled_for']); // 2026-03-18 + 21 dias
+    }
+
     public function test_overdue_dose_is_derived_never_persisted_as_a_column(): void
     {
         $protocol = $this->createThreeDoseProtocol();
@@ -132,13 +159,16 @@ class ImmunizationProtocolGraphSchedulingTest extends TestCase
     }
 
     /** Reaproveita a trava de saldo já implementada em `ClinicalStockDeductionService`. */
-    public function test_applying_a_dose_linked_to_an_out_of_stock_inventory_item_returns_422(): void
+    public function test_applying_a_dose_linked_to_an_out_of_stock_product_returns_422(): void
     {
-        $inventory = Inventory::create([
+        $product = Product::create([
             'professional_id' => $this->vet->id,
-            'item_name' => 'V10 frasco',
-            'category' => 'vaccine',
-            'quantity' => 0,
+            'name' => 'V10 frasco',
+            'sku' => 'V10-FRASCO',
+            'purpose' => 'consumable',
+            'controls_stock' => true,
+            'stock_quantity' => 0,
+            'price' => 90,
         ]);
 
         $protocol = $this->createThreeDoseProtocol();
@@ -151,7 +181,7 @@ class ImmunizationProtocolGraphSchedulingTest extends TestCase
 
         $response = $this->postJson(
             "/api/pets/{$this->pet->id}/immunization-plans/{$plan['id']}/doses/{$firstDoseId}/apply",
-            ['inventory_id' => $inventory->id]
+            ['product_id' => $product->id]
         );
 
         $response->assertStatus(422);

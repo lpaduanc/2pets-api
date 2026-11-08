@@ -40,7 +40,7 @@ class DocumentTemplateRendererTest extends TestCase
 
     public function test_replaces_known_placeholders_with_real_data(): void
     {
-        $organization = Organization::factory()->create(['name' => 'Clínica Quatro Patas']);
+        $organization = Organization::factory()->create(['business_name' => 'Clínica Quatro Patas']);
 
         $rendered = $this->renderer->render(
             '<p>Atesto que {{pet.nome}}, de {{tutor.nome}}, foi atendido por {{profissional.nome}} em {{clinica.nome}} no dia {{data}}.</p>',
@@ -75,7 +75,6 @@ class DocumentTemplateRendererTest extends TestCase
         $this->assertStringContainsString('{{nao_existe}}', $rendered);
         $this->assertStringContainsString('<?php echo "hacked"; ?>', $rendered);
         $this->assertStringNotContainsString('49', $rendered);
-        $this->assertStringNotContainsString('hacked', $rendered);
     }
 
     /**

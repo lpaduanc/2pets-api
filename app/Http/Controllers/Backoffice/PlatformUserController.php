@@ -105,7 +105,7 @@ class PlatformUserController extends Controller
                     ])->values(),
                     'organizations' => $user->activeOrganizationMemberships->map(fn ($m) => [
                         'id' => $m->organization?->id,
-                        'name' => $m->organization?->name,
+                        'name' => $m->organization?->business_name,
                         'role' => $m->role instanceof \BackedEnum ? $m->role->value : $m->role,
                     ])->values(),
                     'tokens_count' => $user->tokens()->count(),

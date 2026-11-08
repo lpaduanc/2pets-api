@@ -8,6 +8,7 @@ use App\Models\DietaryRestriction;
 use App\Models\FoodAllergy;
 use App\Models\FoodBrand;
 use App\Models\ImmunizationProduct;
+use App\Models\Organization;
 use App\Models\Pathology;
 use App\Models\Specialty;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -125,7 +126,7 @@ class MasterDataTest extends TestCase
     {
         $this->createGlobalVaccine('Antirrabica', PetSpecies::DOG);
         $organizationScoped = ImmunizationProduct::create([
-            'organization_id' => 99,
+            'organization_id' => Organization::factory()->create()->id,
             'name' => 'Vacina exclusiva da clinica',
             'group' => ImmunizationGroup::VACCINE,
             'legally_required' => false,

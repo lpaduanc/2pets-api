@@ -65,7 +65,7 @@ class AppointmentEstimatedPriceTest extends TestCase
 
         $response = $this->postJson('/api/professional/appointments', $this->payload($service->id));
 
-        $response->assertStatus(201)->assertJsonPath('data.price', 180.0);
+        $response->assertStatus(201)->assertJsonPath('data.price', 180);
     }
 
     public function test_explicit_price_is_never_overridden_by_the_service_catalog(): void
@@ -84,7 +84,7 @@ class AppointmentEstimatedPriceTest extends TestCase
             'price' => 95,
         ]);
 
-        $response->assertStatus(201)->assertJsonPath('data.price', 95.0);
+        $response->assertStatus(201)->assertJsonPath('data.price', 95);
     }
 
     public function test_cannot_use_a_service_from_another_professionals_catalog(): void
@@ -133,7 +133,7 @@ class AppointmentEstimatedPriceTest extends TestCase
         ]);
 
         $response->assertStatus(201)
-            ->assertJsonPath('data.price', 270.0)
+            ->assertJsonPath('data.price', 270)
             ->assertJsonCount(2, 'data.services');
     }
 
@@ -153,14 +153,14 @@ class AppointmentEstimatedPriceTest extends TestCase
             ...$this->payload($service->id),
             'services' => [['service_id' => $service->id]],
         ]);
-        $response->assertStatus(201)->assertJsonPath('data.price', 150.0);
+        $response->assertStatus(201)->assertJsonPath('data.price', 150);
 
         $service->update(['price' => 999]);
 
         $appointmentId = $response->json('data.id');
         $this->getJson("/api/professional/appointments/{$appointmentId}")
             ->assertOk()
-            ->assertJsonPath('data.services.0.unit_price', 150.0);
+            ->assertJsonPath('data.services.0.unit_price', 150);
     }
 
     /**

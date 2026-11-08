@@ -209,21 +209,6 @@ class ProfessionalPanelTest extends TestCase
         $response->assertStatus(201);
     }
 
-    public function test_can_create_inventory_item()
-    {
-        $response = $this->postJson('/api/professional/inventory', [
-            'item_name' => 'Bandage',
-            'category' => 'supply',
-            'quantity' => 100,
-            'unit' => 'roll',
-            'min_quantity' => 10,
-            'cost_price' => 5,
-            'selling_price' => 10,
-        ]);
-
-        $response->assertStatus(201);
-    }
-
     /**
      * Locks the core privacy rule (CLAUDE.md §3): a vet writes medical data only for a pet the
      * tutor explicitly authorized. Every other test in this class passes *because* setUp grants

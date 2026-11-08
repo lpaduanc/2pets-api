@@ -24,6 +24,9 @@ final class SearchTextNormalizer
 
     private const MIN_TOKEN_LENGTH = 2;
 
+    /** "-oes" só vira "-ao" a partir de 5 letras: "poes"/"voes" (verbos) ficam de fora. */
+    private const MIN_PLURAL_OES_LENGTH = 4;
+
     /**
      * Mapa explícito em vez de `iconv('ASCII//TRANSLIT')`: o iconv depende do locale do
      * container e, quando ele não bate, devolve `?` ou `'a` no lugar da letra — falha
@@ -86,15 +89,21 @@ final class SearchTextNormalizer
     }
 
     /**
-     * Plural simples do português: "clinicas" → "clinica", "exames" → "exame". Não tenta
-     * cobrir "cães"/"animais" — o trigrama já tolera essa diferença, e uma regra mais
-     * esperta erraria mais do que acertaria. Aliases passam pela MESMA função, então os
-     * dois lados sempre concordam, inclusive quando a regra está "errada".
+     * Plural simples do português: "clinicas" → "clinica", "exames" → "exame", e o "-ões" de
+     * "vacinações"/"castrações" → "-ão" (sem acento: "vacinacoes" → "vacinacao"), que é
+     * regular e domina os nomes de serviço — cortar só o "s" daria "vacinacoe", que não casa
+     * com nada. Não tenta cobrir "cães"/"animais" — o trigrama já tolera essa diferença, e
+     * uma regra mais esperta erraria mais do que acertaria. Aliases passam pela MESMA função,
+     * então os dois lados sempre concordam, inclusive quando a regra está "errada".
      */
     private function singularize(string $token): string
     {
         if (mb_strlen($token) <= 3 || ! str_ends_with($token, 's') || str_ends_with($token, 'ss')) {
             return $token;
+        }
+
+        if (mb_strlen($token) > self::MIN_PLURAL_OES_LENGTH && str_ends_with($token, 'oes')) {
+            return mb_substr($token, 0, -3).'ao';
         }
 
         return mb_substr($token, 0, -1);

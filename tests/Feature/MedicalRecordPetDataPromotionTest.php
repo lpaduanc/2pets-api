@@ -114,7 +114,7 @@ class MedicalRecordPetDataPromotionTest extends TestCase
         $response->assertOk();
         $entries = collect($response->json('data'))->keyBy('field');
         $this->assertTrue($entries['weight_kg']['differs']);
-        $this->assertSame(10.0, $entries['weight_kg']['current_value']);
+        $this->assertSame(10, $entries['weight_kg']['current_value']);
         $this->assertSame(15.5, $entries['weight_kg']['reported_value']);
     }
 

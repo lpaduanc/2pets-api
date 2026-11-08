@@ -50,7 +50,7 @@ class DrillDownConsistencyTest extends TestCase
             ->assertJsonCount(2, 'data');
 
         $sumOfRows = collect($drillDown->json('data'))->sum('net');
-        $this->assertSame($vetPoint['net_sales'], round($sumOfRows, 2));
+        $this->assertSame((float) $vetPoint['net_sales'], round($sumOfRows, 2));
     }
 
     public function test_drill_down_of_a_weekday_bucket_only_lists_sales_from_that_weekday(): void

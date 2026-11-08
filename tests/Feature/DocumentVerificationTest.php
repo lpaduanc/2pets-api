@@ -81,7 +81,7 @@ class DocumentVerificationTest extends TestCase
         ]);
 
         Sanctum::actingAs($vet);
-        $response = $this->postJson('/api/professional/generated-documents', [
+        $response = $this->postJson('/api/generated-documents', [
             'document_template_id' => $template->id,
             'pet_id' => $pet->id,
         ]);

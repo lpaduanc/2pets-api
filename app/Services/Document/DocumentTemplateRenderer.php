@@ -40,7 +40,7 @@ final class DocumentTemplateRenderer
             '{{tutor.nome}}' => $this->escape($pet->user?->name ?? '—'),
             '{{profissional.nome}}' => $this->escape($professional->name),
             '{{profissional.crmv}}' => $this->escape($this->crmvOf($professional)),
-            '{{clinica.nome}}' => $this->escape($organization?->name ?? '—'),
+            '{{clinica.nome}}' => $this->escape($organization?->business_name ?? '—'),
             '{{data}}' => $date->format('d/m/Y'),
         ];
     }

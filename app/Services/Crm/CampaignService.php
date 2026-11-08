@@ -23,6 +23,7 @@ final class CampaignService
     public function __construct(
         private readonly ClientSegmentQueryBuilder $segmentQueryBuilder,
         private readonly CrmMessageDispatcher $dispatcher,
+        private readonly ClientRelationshipProfileRecalculator $profileRecalculator,
     ) {}
 
     /**
@@ -106,9 +107,17 @@ final class CampaignService
         return User::query()->whereIn('id', $campaign->ad_hoc_client_ids ?? [])->get();
     }
 
-    /** @return Collection<int, User> */
+    /**
+     * O segmento lê o cache `client_relationship_profiles`; como todo outro consumidor desse
+     * cache (busca de clientes, relatórios, automação), garante que ele exista e esteja fresco
+     * antes — senão conta zero destinatários numa conta que ainda não abriu a busca.
+     *
+     * @return Collection<int, User>
+     */
     private function recipientsForSegment(User $professional, ClientSegment $segment): Collection
     {
+        $this->profileRecalculator->ensureFreshFor($professional);
+
         return $this->segmentQueryBuilder
             ->build($professional, $segment->definition)
             ->with('client')

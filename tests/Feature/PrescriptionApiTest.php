@@ -183,6 +183,21 @@ class PrescriptionApiTest extends TestCase
         $this->assertDatabaseHas('prescription_items', ['commercial_name' => 'Meloxicam']);
     }
 
+    /** Desvincular do atendimento numa edição exige o motivo, se a prescrição ainda não tem um. */
+    public function test_update_that_unlinks_the_medical_record_requires_a_standalone_reason(): void
+    {
+        $prescription = $this->createPrescription();
+
+        $this->putJson("/api/professional/prescriptions/{$prescription->id}", [
+            'medical_record_id' => null,
+        ])->assertStatus(422)->assertJsonValidationErrors('standalone_reason');
+
+        $this->putJson("/api/professional/prescriptions/{$prescription->id}", [
+            'medical_record_id' => null,
+            'standalone_reason' => 'remote_orientation',
+        ])->assertOk();
+    }
+
     public function test_update_is_rejected_once_the_prescription_has_been_issued(): void
     {
         $prescription = $this->createPrescription(['standalone_reason' => 'remote_orientation']);

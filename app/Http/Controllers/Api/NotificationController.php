@@ -86,13 +86,13 @@ class NotificationController extends Controller
             return [
                 $type->value => [
                     'label' => $type->label(),
-                    'channels' => collect(NotificationChannel::cases())->mapWithKeys(function ($channel) use ($typePrefs) {
+                    'channels' => collect(NotificationChannel::cases())->mapWithKeys(function ($channel) use ($typePrefs, $defaults) {
                         $pref = $typePrefs->firstWhere('channel', $channel->value);
 
                         return [
                             $channel->value => [
                                 'label' => $channel->label(),
-                                'enabled' => $pref ? $pref->enabled : true,
+                                'enabled' => $pref ? $pref->enabled : $this->isEnabledByDefault($channel, $defaults),
                             ],
                         ];
                     }),

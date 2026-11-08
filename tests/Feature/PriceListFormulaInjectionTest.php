@@ -49,7 +49,7 @@ class PriceListFormulaInjectionTest extends TestCase
     public function test_export_neutralizes_a_product_name_that_looks_like_a_formula(): void
     {
         $csv = $this->actingAs($this->owner, 'sanctum')
-            ->get('/api/price-list/export')
+            ->get('/api/professional/price-list/export')
             ->assertOk()
             ->streamedContent();
 
@@ -64,7 +64,7 @@ class PriceListFormulaInjectionTest extends TestCase
     public function test_export_keeps_the_numeric_price_column_untouched(): void
     {
         $csv = $this->actingAs($this->owner, 'sanctum')
-            ->get('/api/price-list/export')
+            ->get('/api/professional/price-list/export')
             ->assertOk()
             ->streamedContent();
 

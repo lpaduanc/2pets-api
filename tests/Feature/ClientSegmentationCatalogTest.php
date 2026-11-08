@@ -7,6 +7,7 @@ use App\Models\ClientRelationshipProfile;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\User;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -18,6 +19,15 @@ use Tests\TestCase;
 class ClientSegmentationCatalogTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // As rotas de segmento e `clients/search` são protegidas por `permission:...`: sem o
+        // seeder o papel `vet_freelancer` existe, mas vazio, e tudo vira 403.
+        $this->seed(RolesAndPermissionsSeeder::class);
+    }
 
     public function test_client_origins_index_lists_global_catalog_for_freelance_professional(): void
     {

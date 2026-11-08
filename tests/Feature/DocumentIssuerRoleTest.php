@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\OrganizationRole;
 use App\Enums\VetAccessLevel;
 use App\Models\DocumentTemplate;
 use App\Models\Organization;
@@ -9,9 +10,9 @@ use App\Models\OrganizationMember;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
 use App\Models\User;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
@@ -34,6 +35,7 @@ class DocumentIssuerRoleTest extends TestCase
     {
         parent::setUp();
 
+        $this->seed(RolesAndPermissionsSeeder::class);
         $this->organization = Organization::factory()->create();
 
         $tutor = User::factory()->tutor()->create();
@@ -42,11 +44,11 @@ class DocumentIssuerRoleTest extends TestCase
 
     public function test_veterinarian_can_issue_a_clinical_template(): void
     {
-        $vet = $this->staffWithWriteAccess('vet_freelancer');
+        $vet = $this->staffWithWriteAccess(OrganizationRole::VETERINARIAN);
         $template = $this->clinicalTemplate();
 
         Sanctum::actingAs($vet);
-        $response = $this->postJson('/api/professional/generated-documents', [
+        $response = $this->postJson('/api/generated-documents', [
             'document_template_id' => $template->id,
             'pet_id' => $this->pet->id,
         ]);
@@ -56,11 +58,11 @@ class DocumentIssuerRoleTest extends TestCase
 
     public function test_non_clinical_role_cannot_issue_a_clinical_template(): void
     {
-        $owner = $this->staffWithWriteAccess('clinic_owner');
+        $owner = $this->staffWithWriteAccess(OrganizationRole::OWNER);
         $template = $this->clinicalTemplate();
 
         Sanctum::actingAs($owner);
-        $response = $this->postJson('/api/professional/generated-documents', [
+        $response = $this->postJson('/api/generated-documents', [
             'document_template_id' => $template->id,
             'pet_id' => $this->pet->id,
         ]);
@@ -70,7 +72,7 @@ class DocumentIssuerRoleTest extends TestCase
 
     public function test_non_clinical_role_can_issue_an_administrative_template(): void
     {
-        $owner = $this->staffWithWriteAccess('clinic_owner');
+        $owner = $this->staffWithWriteAccess(OrganizationRole::OWNER);
         $template = DocumentTemplate::create([
             'organization_id' => $this->organization->id,
             'name' => 'Termo de consentimento',
@@ -79,7 +81,7 @@ class DocumentIssuerRoleTest extends TestCase
         ]);
 
         Sanctum::actingAs($owner);
-        $response = $this->postJson('/api/professional/generated-documents', [
+        $response = $this->postJson('/api/generated-documents', [
             'document_template_id' => $template->id,
             'pet_id' => $this->pet->id,
         ]);
@@ -101,12 +103,17 @@ class DocumentIssuerRoleTest extends TestCase
      * Cria um membro da organização com acesso de ESCRITA ao pet — isola a checagem de
      * papel clínico feita por `DocumentIssuanceService` da checagem de acesso ao pet
      * (`AuthorizesPetAccess`), que é uma regra diferente e já teria seu próprio teste.
+     *
+     * O papel Spatie vem do CARGO no vínculo: criar o `OrganizationMember` dispara o
+     * `UserRoleReconciler`, que revoga qualquer papel profissional atribuído à mão e aplica o
+     * do cargo (`veterinarian` → `clinic_vet`, `owner` de clínica → `clinic_owner`).
      */
-    private function staffWithWriteAccess(string $spatieRole): User
+    private function staffWithWriteAccess(OrganizationRole $organizationRole): User
     {
         $user = User::factory()->tutor()->create();
-        $user->assignRole(Role::findOrCreate($spatieRole, 'web'));
-        OrganizationMember::factory()->for($this->organization)->for($user, 'user')->create();
+        OrganizationMember::factory()->for($this->organization)->for($user, 'user')->create([
+            'role' => $organizationRole->value,
+        ]);
 
         PetVetAccess::create([
             'pet_id' => $this->pet->id,

@@ -60,10 +60,16 @@ class RoutePermissionCoverageTest extends TestCase
             ->contains(fn (string $middleware): bool => str_starts_with($middleware, 'auth:sanctum'));
     }
 
+    /**
+     * `backoffice:<permissão>` é o equivalente do `permission:...` no 2pets Admin: RBAC próprio
+     * da equipe da plataforma (`routes/backoffice.php`), com permissão granular declarada na
+     * rota do mesmo jeito. O `backoffice` sem permissão (só "é da equipe") não conta.
+     */
     private function declaresPermission(Route $route): bool
     {
         return collect($route->gatherMiddleware())
-            ->contains(fn (string $middleware): bool => str_starts_with($middleware, 'permission:'));
+            ->contains(fn (string $middleware): bool => str_starts_with($middleware, 'permission:')
+                || str_starts_with($middleware, 'backoffice:'));
     }
 
     /**

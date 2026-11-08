@@ -31,7 +31,7 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
     public function test_clinic_vet_can_list_products_but_not_create_one(): void
     {
         $vet = User::factory()->professional()->create();
-        $vet->assignRole('clinic_vet');
+        $vet->syncRoles(['clinic_vet']);
         Sanctum::actingAs($vet);
 
         $this->getJson('/api/professional/products')->assertOk();
@@ -44,7 +44,7 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
     public function test_clinic_vet_never_sees_cost_or_margin_fields(): void
     {
         $vet = User::factory()->professional()->create();
-        $vet->assignRole('clinic_vet');
+        $vet->syncRoles(['clinic_vet']);
         Product::create([
             'professional_id' => $vet->id,
             'name' => 'Amoxicilina',
@@ -60,7 +60,7 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
 
         $response->assertJsonMissingPath('data.0.average_cost');
         $response->assertJsonMissingPath('data.0.markup_percent');
-        $response->assertJsonPath('data.0.price', 30.0);
+        $response->assertJsonPath('data.0.price', 30);
     }
 
     public function test_clinic_owner_sees_cost_and_can_manage_products(): void
@@ -86,7 +86,7 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
     public function test_receptionist_role_gets_forbidden_on_products_crud(): void
     {
         $staff = User::factory()->professional()->create();
-        $staff->assignRole('petshop_staff');
+        $staff->syncRoles(['petshop_staff']);
         Sanctum::actingAs($staff);
 
         // petshop_staff mantém `products.view`/`products.update` (equivalente ao antigo
@@ -116,6 +116,7 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
             'controls_stock' => true,
             'track_batches' => true,
             'stock_quantity' => 5,
+            'price' => 80,
         ]);
         Product::create([
             'professional_id' => $owner->id,
@@ -124,6 +125,7 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
             'purpose' => 'resale',
             'controls_stock' => true,
             'stock_quantity' => 5,
+            'price' => 120,
         ]);
 
         Sanctum::actingAs($owner);
@@ -142,11 +144,11 @@ class ProductPermissionAndClinicalFilterTest extends TestCase
 
         Product::create([
             'professional_id' => $owner->id, 'name' => 'Com saldo', 'sku' => 'SKU-STOCK-1',
-            'purpose' => 'consumable', 'controls_stock' => true, 'stock_quantity' => 3,
+            'purpose' => 'consumable', 'controls_stock' => true, 'stock_quantity' => 3, 'price' => 10,
         ]);
         Product::create([
             'professional_id' => $owner->id, 'name' => 'Sem saldo', 'sku' => 'SKU-STOCK-2',
-            'purpose' => 'consumable', 'controls_stock' => true, 'stock_quantity' => 0,
+            'purpose' => 'consumable', 'controls_stock' => true, 'stock_quantity' => 0, 'price' => 10,
         ]);
 
         Sanctum::actingAs($owner);

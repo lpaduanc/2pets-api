@@ -10,27 +10,13 @@ use Tests\TestCase;
 
 /**
  * Não-regressão: `LgpdController::deleteAccount` (direito ao esquecimento, LGPD Art. 18) é
- * um caminho legal separado da desativação voluntária (`AccountDeactivationService`) e NÃO foi
- * alterado por esta tarefa — ver `app/Http/Controllers/Api/LgpdController.php`. Este teste
- * trava o comportamento esperado: anonimiza, soft-deleta e barra o login pelo mesmo mecanismo
+ * um caminho legal separado da desativação voluntária (`AccountDeactivationService`) — ver
+ * `app/Http/Controllers/Api/LgpdController.php`. Este teste trava o comportamento esperado: anonimiza, soft-deleta e barra o login pelo mesmo mecanismo
  * de sempre (a conta some das queries por `SoftDeletes`).
- *
- * ⚠️ Achado desta sessão, fora do escopo da tarefa de desativação: o endpoint já estava
- * quebrado ANTES de qualquer mudança daqui — `$user->update(['deleted_at' => now(), ...])`
- * mistura assignment em massa com uma coluna que nunca esteve em `User::$fillable`, e todo
- * `update()` lança `MassAssignmentException`, sempre 500. Reportado ao dono do produto;
- * `LgpdController.php` não foi editado (instrução explícita desta tarefa: parar e reportar em
- * vez de mexer nele). `markTestIncomplete()` documenta o bug em vez de mascará-lo como
- * sucesso — quando alguém corrigir `$fillable`, os dois testes passam a validar o fluxo real.
  */
 class LgpdDeleteAccountTest extends TestCase
 {
     use RefreshDatabase;
-
-    private const PRE_EXISTING_BUG_NOTE = 'Bug pré-existente, fora do escopo desta tarefa: '.
-        "LgpdController::deleteAccount faz \$user->update(['deleted_at' => now(), ...]) mas ".
-        "'deleted_at' não está em User::\$fillable — MassAssignmentException, sempre 500. ".
-        'Ver o comentário no topo desta classe.';
 
     public function test_delete_account_anonymizes_and_soft_deletes_the_user(): void
     {
@@ -47,10 +33,6 @@ class LgpdDeleteAccountTest extends TestCase
             'password' => 'password',
             'confirmation' => 'DELETAR',
         ]);
-
-        if ($response->status() === 500) {
-            $this->markTestIncomplete(self::PRE_EXISTING_BUG_NOTE);
-        }
 
         $response->assertOk();
 
@@ -71,10 +53,6 @@ class LgpdDeleteAccountTest extends TestCase
             'password' => 'password',
             'confirmation' => 'DELETAR',
         ]);
-
-        if ($deleteResponse->status() === 500) {
-            $this->markTestIncomplete(self::PRE_EXISTING_BUG_NOTE);
-        }
 
         $deleteResponse->assertOk();
 

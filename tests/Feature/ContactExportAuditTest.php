@@ -26,7 +26,8 @@ class ContactExportAuditTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
 
         $professional = User::factory()->professional()->create();
-        $professional->revokePermissionTo('clients.contact.view-bulk');
+        // A permissão vem do papel `vet_freelancer`, não é direta: revogar direto não tira nada.
+        $professional->syncRoles(['clinic_vet']);
 
         Sanctum::actingAs($professional);
 

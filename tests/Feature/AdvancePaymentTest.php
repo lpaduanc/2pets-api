@@ -61,7 +61,7 @@ class AdvancePaymentTest extends TestCase
             'amount' => 300,
         ]);
 
-        $response->assertOk()->assertJsonPath('data.amount_paid', 300.0);
+        $response->assertOk()->assertJsonPath('data.amount_paid', 300);
         $payment = Payment::where('invoice_id', $invoice->id)->where('purpose', 'advance')->firstOrFail();
         $this->assertSame('paid', $payment->status);
         $this->assertEqualsWithDelta(300.0, (float) $payment->amount, 0.001);
@@ -112,9 +112,9 @@ class AdvancePaymentTest extends TestCase
         $response = $this->getJson("/api/professional/invoices/{$invoice->id}");
 
         $response->assertOk()
-            ->assertJsonPath('data.amount_paid', 350.0)
-            ->assertJsonPath('data.balance_due', 150.0)
-            ->assertJsonPath('data.credit_balance', 0.0);
+            ->assertJsonPath('data.amount_paid', 350)
+            ->assertJsonPath('data.balance_due', 150)
+            ->assertJsonPath('data.credit_balance', 0);
     }
 
     /** §3-bis.3: o acerto final cobra o que FALTA, não o total inteiro de novo. */

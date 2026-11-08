@@ -71,7 +71,7 @@ class PrescriptionDoseCalculationTest extends TestCase
         ]);
 
         $response->assertCreated()
-            ->assertJsonPath('data.items.0.dose_value', 2.0)
+            ->assertJsonPath('data.items.0.dose_value', 2)
             ->assertJsonPath('data.items.0.dose_calculated', true);
     }
 
@@ -146,7 +146,7 @@ class PrescriptionDoseCalculationTest extends TestCase
         ]);
 
         $response->assertCreated()
-            ->assertJsonPath('data.items.0.dose_value', 99.0)
+            ->assertJsonPath('data.items.0.dose_value', 99)
             ->assertJsonPath('data.items.0.dose_calculated', false);
     }
 }

@@ -5,13 +5,13 @@ namespace Tests\Feature;
 use App\Models\Appointment;
 use App\Models\Document;
 use App\Models\Hospitalization;
-use App\Models\Inventory;
 use App\Models\Invoice;
 use App\Models\MedicalRecord;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\Pet;
 use App\Models\PetVetAccess;
+use App\Models\Product;
 use App\Models\Professional;
 use App\Models\Service;
 use App\Models\User;
@@ -132,9 +132,21 @@ class ProfessionalDashboardScopeTest extends TestCase
             'record_date' => now()->toDateString(),
         ]);
 
+        // Internação sempre pendura num agendamento `type = hospitalization` (NOT NULL,
+        // docs/atendimento-veterinario/11-internacao-no-fluxo-de-faturamento.md §1).
+        $hospitalizationAppointment = Appointment::create([
+            'professional_id' => $vet->id,
+            'client_id' => $pet->user_id,
+            'pet_id' => $pet->id,
+            'appointment_date' => now(),
+            'type' => 'hospitalization',
+            'status' => 'scheduled',
+        ]);
+
         Hospitalization::create([
             'pet_id' => $pet->id,
             'professional_id' => $vet->id,
+            'appointment_id' => $hospitalizationAppointment->id,
             'admission_date' => now()->toDateString(),
             'reason' => 'Observação',
             'status' => 'active',
@@ -156,21 +168,29 @@ class ProfessionalDashboardScopeTest extends TestCase
     {
         $vet = $this->createProfessionalUser('vet_freelancer', 'vet');
 
-        Inventory::create([
+        // `inventories` foi substituída por `products` com `controls_stock` (consolidação de
+        // estoque); o dashboard conta sobre `products`.
+        Product::create([
             'professional_id' => $vet->id,
-            'item_name' => 'Vacina V10',
-            'category' => 'vaccine',
-            'quantity' => 2,
-            'min_quantity' => 5,
+            'name' => 'Vacina V10',
+            'sku' => 'DASH-V10',
+            'purpose' => 'consumable',
+            'controls_stock' => true,
+            'stock_quantity' => 2,
+            'min_stock' => 5,
+            'price' => 90,
         ]);
 
-        Inventory::create([
+        Product::create([
             'professional_id' => $vet->id,
-            'item_name' => 'Seringa',
-            'category' => 'supply',
-            'quantity' => 100,
-            'min_quantity' => 5,
+            'name' => 'Seringa',
+            'sku' => 'DASH-SERINGA',
+            'purpose' => 'consumable',
+            'controls_stock' => true,
+            'stock_quantity' => 100,
+            'min_stock' => 5,
             'expiry_date' => now()->addDays(10)->toDateString(),
+            'price' => 2,
         ]);
 
         Service::create([

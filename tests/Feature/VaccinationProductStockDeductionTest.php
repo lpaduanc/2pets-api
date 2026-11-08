@@ -65,7 +65,7 @@ class VaccinationProductStockDeductionTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $this->assertSame(5, $product->fresh()->stock_quantity);
+        $this->assertSame('5.0000', $product->fresh()->stock_quantity);
         $this->assertDatabaseCount('stock_movements', 0);
     }
 
@@ -80,7 +80,7 @@ class VaccinationProductStockDeductionTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $this->assertSame(0, $product->fresh()->stock_quantity);
+        $this->assertSame('0.0000', $product->fresh()->stock_quantity);
 
         $vaccination = Vaccination::where('pet_id', $this->pet->id)->firstOrFail();
         $this->assertSame($product->id, $vaccination->product_id);
@@ -89,7 +89,7 @@ class VaccinationProductStockDeductionTest extends TestCase
         $movement = StockMovement::firstOrFail();
         $this->assertSame('internal_use', $movement->type->value);
         $this->assertSame('out', $movement->direction->value);
-        $this->assertSame(1, $movement->quantity);
+        $this->assertSame('1.0000', $movement->quantity);
         $this->assertSame(Vaccination::class, $movement->reference_type);
         $this->assertSame($vaccination->id, $movement->reference_id);
     }
@@ -108,7 +108,7 @@ class VaccinationProductStockDeductionTest extends TestCase
 
         $this->assertDatabaseCount('vaccinations', 0);
         $this->assertDatabaseCount('stock_movements', 0);
-        $this->assertSame(0, $product->fresh()->stock_quantity);
+        $this->assertSame('0.0000', $product->fresh()->stock_quantity);
     }
 
     public function test_expired_batch_requires_explicit_confirmation(): void
@@ -130,7 +130,7 @@ class VaccinationProductStockDeductionTest extends TestCase
 
         $blocked->assertStatus(422)->assertJsonPath('code', 'expired_batch');
         $this->assertDatabaseCount('vaccinations', 0);
-        $this->assertSame(3, $batch->fresh()->quantity);
+        $this->assertSame('3.0000', $batch->fresh()->quantity);
 
         $confirmed = $this->postJson("/api/pets/{$this->pet->id}/health/vaccinations", [
             'vaccine_name' => 'V10',
@@ -141,7 +141,7 @@ class VaccinationProductStockDeductionTest extends TestCase
         ]);
 
         $confirmed->assertCreated();
-        $this->assertSame(2, $batch->fresh()->quantity);
+        $this->assertSame('2.0000', $batch->fresh()->quantity);
     }
 
     public function test_deworming_follows_the_same_stock_rule_as_vaccination(): void
@@ -155,7 +155,7 @@ class VaccinationProductStockDeductionTest extends TestCase
         ]);
 
         $response->assertCreated();
-        $this->assertSame(0, $product->fresh()->stock_quantity);
+        $this->assertSame('0.0000', $product->fresh()->stock_quantity);
 
         $movement = StockMovement::firstOrFail();
         $this->assertSame('internal_use', $movement->type->value);
@@ -171,6 +171,7 @@ class VaccinationProductStockDeductionTest extends TestCase
             'purpose' => 'consumable',
             'controls_stock' => true,
             'stock_quantity' => 10,
+            'price' => 90,
         ]);
 
         $response = $this->postJson("/api/pets/{$this->pet->id}/health/vaccinations", [
@@ -181,7 +182,7 @@ class VaccinationProductStockDeductionTest extends TestCase
 
         $response->assertStatus(403);
         $this->assertDatabaseCount('vaccinations', 0);
-        $this->assertSame(10, $otherOrgProduct->fresh()->stock_quantity);
+        $this->assertSame('10.0000', $otherOrgProduct->fresh()->stock_quantity);
     }
 
     private function createStockedProduct(int $quantity, bool $trackBatches = false): Product
@@ -194,6 +195,7 @@ class VaccinationProductStockDeductionTest extends TestCase
             'controls_stock' => true,
             'track_batches' => $trackBatches,
             'stock_quantity' => $quantity,
+            'price' => 90,
         ]);
     }
 }

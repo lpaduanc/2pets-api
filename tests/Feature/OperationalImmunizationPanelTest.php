@@ -80,9 +80,14 @@ class OperationalImmunizationPanelTest extends TestCase
         $response->assertJsonPath('data.summary.applied', 1);
     }
 
-    public function test_tutor_contact_hidden_without_bulk_contact_permission(): void
+    /**
+     * O painel inteiro fica atrás de `clients.contact.view-bulk` (rota em `routes/api.php`,
+     * correção do item 22). O papel `vet_freelancer` concede a permissão, então o usuário passa
+     * a ser só `clinic_vet`, que não a tem.
+     */
+    public function test_panel_is_forbidden_without_bulk_contact_permission(): void
     {
-        $this->professional->revokePermissionTo('clients.contact.view-bulk');
+        $this->professional->syncRoles(['clinic_vet']);
 
         Vaccination::create([
             'pet_id' => $this->pet->id,
@@ -92,9 +97,6 @@ class OperationalImmunizationPanelTest extends TestCase
             'next_dose_date' => now()->addMonth(),
         ]);
 
-        $response = $this->getJson('/api/professional/reports/immunization')->assertOk();
-
-        $tutor = $response->json('data.items.0.tutor');
-        $this->assertArrayNotHasKey('phone', $tutor);
+        $this->getJson('/api/professional/reports/immunization')->assertForbidden();
     }
 }

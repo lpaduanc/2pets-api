@@ -81,11 +81,16 @@ enum SearchField: string
      * Termo curto já é filtrado por `STRICT_WORD` (fronteira de palavra obrigatória), que
      * é bem mais rigoroso: manter 0,60 ali rejeitaria "gato" contra "Gatos e Cães" (0,571
      * no modo estrito) sem motivo. O rigor muda de instrumento, não some.
+     *
+     * `specialties` usa o corte de descrição (0,75): a coluna guarda a grafia CANÔNICA do
+     * catálogo (`CanonicalizesSpecialties`), então menção de verdade pontua 1,0. Com 0,60,
+     * "neurologia" casava "Nefrologia/Urologia" pelo trecho "urologia" (0,636 medido) — duas
+     * especialidades diferentes do mesmo catálogo.
      */
     public function threshold(WordSimilarityMode $mode): float
     {
         return match ($this) {
-            self::PROFESSIONAL_DESCRIPTION, self::SERVICE_DESCRIPTION => $mode === WordSimilarityMode::STRICT_WORD ? 0.60 : 0.75,
+            self::PROFESSIONAL_DESCRIPTION, self::SERVICE_DESCRIPTION, self::SPECIALTIES => $mode === WordSimilarityMode::STRICT_WORD ? 0.60 : 0.75,
             default => $mode === WordSimilarityMode::STRICT_WORD ? 0.50 : 0.60,
         };
     }

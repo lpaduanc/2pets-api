@@ -291,14 +291,45 @@ class User extends Authenticatable implements HasMedia
             return true;
         }
 
-        if (Professional::query()->where('user_id', $this->id)->whereIn('professional_type', self::NEW_PATIENT_BUSINESS_TYPES)->exists()) {
-            return true;
+        return $this->hasNewPatientBusinessProfile() || $this->hasNewPatientBusinessMembership();
+    }
+
+    /**
+     * Usa `professional` já carregado quando existe: `UserResource` é serializado por linha
+     * em listas (cliente de cada agendamento da agenda do dia), e um `exists()` aqui virava
+     * uma query por agendamento.
+     */
+    private function hasNewPatientBusinessProfile(): bool
+    {
+        if ($this->relationLoaded('professional')) {
+            return in_array($this->professional?->professional_type?->value, self::NEW_PATIENT_BUSINESS_TYPES, true);
+        }
+
+        return Professional::query()->where('user_id', $this->id)->whereIn('professional_type', self::NEW_PATIENT_BUSINESS_TYPES)->exists();
+    }
+
+    /** Mesmo cuidado de `hasNewPatientBusinessProfile()` para `activeOrganizationMemberships.organization`. */
+    private function hasNewPatientBusinessMembership(): bool
+    {
+        if ($this->relationLoaded('activeOrganizationMemberships')) {
+            return $this->activeOrganizationMemberships->contains(
+                fn (OrganizationMember $membership): bool => $this->isNewPatientBusinessMembership($membership)
+            );
         }
 
         return $this->activeOrganizationMemberships()
             ->where(fn ($q) => $q->where('role', \App\Enums\OrganizationRole::GROOMER->value)
                 ->orWhereHas('organization', fn ($org) => $org->whereIn('organization_type', self::NEW_PATIENT_BUSINESS_TYPES)))
             ->exists();
+    }
+
+    private function isNewPatientBusinessMembership(OrganizationMember $membership): bool
+    {
+        if ($membership->role === \App\Enums\OrganizationRole::GROOMER) {
+            return true;
+        }
+
+        return in_array($membership->organization?->organization_type?->value, self::NEW_PATIENT_BUSINESS_TYPES, true);
     }
 
     // ------------------------------------------------------------------

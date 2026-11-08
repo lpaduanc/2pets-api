@@ -473,11 +473,14 @@ class InvoiceLifecycleTest extends TestCase
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $items
+     * `null` = um item padrão; `[]` = fatura sem item nenhum (com `?:` os dois viravam a
+     * mesma coisa e o teste de "emitir sem itens" emitia uma fatura com item).
+     *
+     * @param  array<int, array<string, mixed>>|null  $items
      */
-    private function makeInvoice(string $status, array $items = [], ?int $organizationId = null): Invoice
+    private function makeInvoice(string $status, ?array $items = null, ?int $organizationId = null): Invoice
     {
-        $items = $items ?: [['description' => 'Consulta', 'quantity' => 1, 'unit_price' => 150, 'total' => 150]];
+        $items ??= [['description' => 'Consulta', 'quantity' => 1, 'unit_price' => 150, 'total' => 150]];
 
         return Invoice::create([
             'professional_id' => $this->vet->id,

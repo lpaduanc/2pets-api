@@ -25,7 +25,8 @@ class CertificateSecrecyTest extends TestCase
 
     public function test_the_fiscal_settings_response_never_exposes_the_certificate_reference(): void
     {
-        $this->clinic->update(['certificate_ref' => 'vault://acme-certificates/clinic-42.pfx']);
+        // `certificate_ref` fica fora do `$fillable` de propósito (só o fluxo do cofre grava).
+        $this->clinic->forceFill(['certificate_ref' => 'vault://acme-certificates/clinic-42.pfx'])->save();
 
         $response = $this->actingAs($this->owner, 'sanctum')
             ->getJson('/api/professional/fiscal-settings')

@@ -8,7 +8,6 @@ use App\Models\Service;
 use App\Models\User;
 use App\Services\Search\ProfessionalSearchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -306,7 +305,7 @@ class ProfessionalSemanticSearchTest extends TestCase
         $this->assertArrayNotHasKey('professional', $card);
         $this->assertArrayNotHasKey('email', $card);
         $this->assertArrayNotHasKey('phone', $card);
-        $this->assertSame(100.0, $card['starting_price']);
+        $this->assertSame(100, $card['starting_price']);
     }
 
     // ---------------------------------------------------------------
@@ -550,9 +549,6 @@ class ProfessionalSemanticSearchTest extends TestCase
 
     private function buildFilteredQuerySql(SearchFiltersDTO $filters): string
     {
-        $service = app(ProfessionalSearchService::class);
-        $buildFilteredQuery = new ReflectionMethod($service, 'buildFilteredQuery');
-
-        return $buildFilteredQuery->invoke($service, $filters, 'users.id')->toSql();
+        return app(ProfessionalSearchService::class)->filteredQuery($filters, 'users.id')->toSql();
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Prescription;
 
 use App\Models\Prescription;
+use Illuminate\Validation\Rule;
 
 class UpdatePrescriptionRequest extends PrescriptionRequest
 {
@@ -21,7 +22,29 @@ class UpdatePrescriptionRequest extends PrescriptionRequest
             'prescription_date' => 'sometimes|required|date',
             'valid_until' => 'nullable|date|after_or_equal:prescription_date',
             'items' => 'sometimes|required|array|min:1|max:'.self::MAX_ITEMS,
-        ], $this->itemRules(), $this->contentRules());
+        ], $this->itemRules(), $this->contentRules(), [
+            'standalone_reason' => [
+                Rule::requiredIf(fn (): bool => $this->leavesPrescriptionWithoutReason()),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+        ]);
+    }
+
+    /**
+     * Edição é PARCIAL: o `required_without:medical_record_id` da criação reprovaria qualquer
+     * PUT que não reenviasse o vínculo (ex.: só trocar os itens). Aqui o motivo só é exigido
+     * quando a própria edição desvincula do atendimento (`medical_record_id: null`) e a
+     * prescrição ainda não tem motivo gravado.
+     */
+    private function leavesPrescriptionWithoutReason(): bool
+    {
+        if (! $this->exists('medical_record_id') || $this->filled('medical_record_id')) {
+            return false;
+        }
+
+        return blank($this->persistedPrescription()?->standalone_reason);
     }
 
     /**
@@ -48,10 +71,13 @@ class UpdatePrescriptionRequest extends PrescriptionRequest
 
     private function persistedPrescriptionDate(): ?string
     {
-        $prescription = Prescription::query()
+        return $this->persistedPrescription()?->prescription_date?->format('Y-m-d');
+    }
+
+    private function persistedPrescription(): ?Prescription
+    {
+        return Prescription::query()
             ->where('professional_id', $this->user()?->id)
             ->find($this->route('prescription'));
-
-        return $prescription?->prescription_date?->format('Y-m-d');
     }
 }

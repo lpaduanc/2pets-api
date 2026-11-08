@@ -135,7 +135,13 @@ final class DayAgendaService
             // `appointmentType` alimenta a cor da grade (item 14, achado do frontend) — sem
             // eager load aqui, `AppointmentResource` devolveria `appointment_type: null`
             // mesmo quando o agendamento tem um vínculo, o que é pior que omitir o campo.
-            ->with(['pet', 'client', 'service', 'appointmentType'])
+            // `client.*`: `UserResource` do cliente lê papéis, perfil profissional e vínculos
+            // (`is_veterinarian`, `can_register_new_patient`, `organizations`) — sem o eager
+            // load cada agendamento disparava as suas próprias queries (N+1).
+            ->with([
+                'pet', 'service', 'appointmentType',
+                'client.roles', 'client.professional', 'client.activeOrganizationMemberships.organization',
+            ])
             ->orderBy('appointment_time')
             ->get()
             ->groupBy('professional_id');

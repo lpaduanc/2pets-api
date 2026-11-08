@@ -4,7 +4,7 @@ namespace Tests\Unit;
 
 use App\Support\Pagination\ReachableLengthAwarePaginator;
 use Illuminate\Support\Collection;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * O paginador que separa "quantos casaram" de "quantos dá para entregar".
@@ -17,6 +17,9 @@ use PHPUnit\Framework\TestCase;
  *
  * O teste usa os números REAIS medidos na base de desenvolvimento, e não múltiplos redondos,
  * porque foram eles que expuseram o problema.
+ *
+ * Estende o `TestCase` do Laravel (não o do PHPUnit) porque `toArray()` monta os links de
+ * navegação com `__('pagination.*')`, que precisa do translator do container.
  */
 class ReachableLengthAwarePaginatorTest extends TestCase
 {

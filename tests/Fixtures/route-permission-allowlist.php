@@ -497,4 +497,35 @@ return [
     'PUT api/professional/vaccinations/{vaccination}',
     'PUT api/profile',
     'PUT api/reminders/preferences',
+
+    // ── Rotas posteriores a 2026-09-21, autorizadas fora do `permission:...` ──────────────
+    // Dados do PRÓPRIO usuário logado (tutor): o controller só lê/escreve registros do
+    // `$request->user()`; não há "permissão" a conceder além de estar autenticado.
+    'GET api/me/search-location',
+    'PUT api/me/search-location',
+    'GET api/wallet',
+    'GET api/wallet/catalog',
+    'POST api/wallet/expenses',
+    'PUT api/wallet/expenses/{id}',
+    'PATCH api/wallet/expenses/{id}',
+    'DELETE api/wallet/expenses/{id}',
+    'POST api/wallet/expenses/{id}/repeat',
+    'GET api/wallet/recurring',
+    'PATCH api/wallet/recurring/{id}',
+    'DELETE api/wallet/recurring/{id}',
+    // Grupo `admin` protegido por `AdminMiddleware`, mesma régua de `api/admin/users*` acima.
+    'GET api/admin/catalog-products',
+    'GET api/admin/catalog-brands',
+    'POST api/admin/catalog-products/fetch-images',
+    'PUT api/admin/catalog-products/{id}',
+    'POST api/admin/catalog-products/{id}/image',
+    // 2pets Admin: middleware `backoffice` (só equipe da plataforma); sessão própria, sem
+    // permissão granular a declarar.
+    'GET api/backoffice/auth/me',
+    'POST api/backoffice/auth/logout',
+    // Sessão impersonada: `ImpersonationSessionController::impersonationToken()` recusa
+    // qualquer token que não seja o da impersonação aberta pelo 2pets Admin.
+    'GET api/auth/impersonation/users',
+    'POST api/auth/impersonation/switch/{id}',
+    'POST api/auth/impersonation/stop',
 ];

@@ -74,7 +74,7 @@ final class ImmunizationProtocolSchedulerService
                 'vaccination_id' => $vaccinationId,
             ])->save();
 
-            $this->rescheduleDependents($dose);
+            $this->rescheduleDependents($dose, $appliedAt);
             $this->completeIfFinished($dose->plan);
 
             return $dose->fresh();
@@ -92,8 +92,12 @@ final class ImmunizationProtocolSchedulerService
      * Doses filhas (mesma `plan_id`) do protocolo-dose recém aplicado. Só a que ancora em
      * `last_application` é empurrada para a data real de aplicação — a recursão garante que
      * netos também sejam recalculados quando a cadeia inteira ancora em `last_application`.
+     *
+     * `$anchorDate` vem por parâmetro porque, a partir do neto, a dose-mãe ainda NÃO foi
+     * aplicada (`applied_at` nulo): o neto conta da data recém-calculada da filha, a mesma
+     * régua de `initialScheduleFor()` para a grade original.
      */
-    private function rescheduleDependents(PetImmunizationDose $appliedDose): void
+    private function rescheduleDependents(PetImmunizationDose $appliedDose, CarbonInterface $anchorDate): void
     {
         $childDoses = PetImmunizationDose::query()
             ->where('plan_id', $appliedDose->plan_id)
@@ -106,10 +110,10 @@ final class ImmunizationProtocolSchedulerService
                 continue;
             }
 
-            $newScheduledFor = $appliedDose->applied_at->copy()->addDays($childDose->protocolDose->interval_days ?? 0);
+            $newScheduledFor = $anchorDate->copy()->addDays($childDose->protocolDose->interval_days ?? 0);
             $childDose->forceFill(['scheduled_for' => $newScheduledFor->toDateString()])->save();
 
-            $this->rescheduleDependents($childDose);
+            $this->rescheduleDependents($childDose, $newScheduledFor);
         }
     }
 

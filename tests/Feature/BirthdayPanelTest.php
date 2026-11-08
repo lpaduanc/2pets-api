@@ -81,20 +81,21 @@ class BirthdayPanelTest extends TestCase
         $this->assertContains('Bissexto', $names);
     }
 
-    public function test_contact_fields_are_hidden_without_bulk_contact_permission(): void
+    /**
+     * O painel inteiro fica atrás de `clients.contact.view-bulk` (rota em `routes/api.php`,
+     * correção do item 22): quem não tem a permissão não vê nem a lista sem contato. O papel
+     * `vet_freelancer` concede a permissão, então o usuário passa a ser só `clinic_vet`.
+     */
+    public function test_panel_is_forbidden_without_bulk_contact_permission(): void
     {
-        $this->professional->revokePermissionTo('clients.contact.view-bulk');
+        $this->professional->syncRoles(['clinic_vet']);
 
         Pet::factory()->create([
             'user_id' => $this->client->id,
             'birth_date' => now()->addDay()->subYears(1)->toDateString(),
         ]);
 
-        $response = $this->getJson('/api/professional/reports/birthdays?scope=pets')->assertOk();
-
-        $tutor = collect($response->json('data.pets'))->first()['tutor'];
-        $this->assertArrayNotHasKey('phone', $tutor);
-        $this->assertArrayNotHasKey('email', $tutor);
+        $this->getJson('/api/professional/reports/birthdays?scope=pets')->assertForbidden();
     }
 
     public function test_contact_fields_appear_with_bulk_contact_permission(): void

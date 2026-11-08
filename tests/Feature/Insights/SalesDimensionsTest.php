@@ -59,7 +59,7 @@ class SalesDimensionsTest extends TestCase
             ->json('series');
 
         $this->assertSame($group->id, $series[0]['bucket']);
-        $this->assertSame(140.0, $series[0]['net_sales']);
+        $this->assertSame(140, $series[0]['net_sales']);
 
         $drillDown = $this->actingAs($this->owner, 'sanctum')
             ->getJson($this->salesUrl(['dimension' => 'group'], drillDown: true, bucket: (string) $group->id))

@@ -92,41 +92,60 @@ class DayAgendaTest extends TestCase
         $this->assertFalse($ids->contains($groomer->id));
     }
 
+    /**
+     * N+1 se mede pelo CRESCIMENTO, não por um teto absoluto: o teto quebrava a cada query fixa
+     * nova (carga do cache de permissões do `permission:...`, eager load do cliente) sem que
+     * nada passasse a rodar por recurso. Aqui a equipe e a agenda crescem 4× entre as duas
+     * medições e o número de queries tem que ser o MESMO. A primeira chamada só aquece o que é
+     * carregado uma vez por processo (cache de permissões do Spatie).
+     */
     public function test_endpoint_runs_a_fixed_number_of_queries_regardless_of_team_and_appointment_size(): void
     {
         $organization = Organization::factory()->create();
         $owner = User::factory()->professional()->create();
         OrganizationMember::factory()->owner()->for($organization, 'organization')->create(['user_id' => $owner->id]);
+        $this->addVetsWithAppointments($organization, $owner, vets: 2, appointmentsEach: 2);
 
-        for ($i = 0; $i < 8; $i++) {
+        Sanctum::actingAs($owner);
+        $this->countDayAgendaQueries();
+
+        $smallTeamQueries = $this->countDayAgendaQueries();
+        $this->addVetsWithAppointments($organization, $owner, vets: 6, appointmentsEach: 7);
+        $largeTeamQueries = $this->countDayAgendaQueries();
+
+        $this->assertSame(
+            $smallTeamQueries,
+            $largeTeamQueries,
+            "Agenda com 2 profissionais/4 agendamentos: {$smallTeamQueries} queries; com 8/46: {$largeTeamQueries} — indício de N+1."
+        );
+    }
+
+    private function addVetsWithAppointments(Organization $organization, User $owner, int $vets, int $appointmentsEach): void
+    {
+        for ($i = 0; $i < $vets; $i++) {
             $vet = User::factory()->professional()->create();
             OrganizationMember::factory()->for($organization, 'organization')->create([
                 'user_id' => $vet->id,
                 'role' => OrganizationRole::VETERINARIAN->value,
             ]);
-            $pet = Pet::factory()->create(['user_id' => $owner->id]);
+            $client = User::factory()->tutor()->create();
+            $pet = Pet::factory()->create(['user_id' => $client->id]);
 
-            for ($j = 0; $j < 7; $j++) {
-                $this->createAppointment($vet, $organization, $owner, $pet);
+            for ($j = 0; $j < $appointmentsEach; $j++) {
+                $this->createAppointment($vet, $organization, $client, $pet);
             }
         }
+    }
 
-        Sanctum::actingAs($owner);
-
+    private function countDayAgendaQueries(): int
+    {
         DB::flushQueryLog();
         DB::enableQueryLog();
         $this->getJson('/api/professional/agenda/day?date='.now()->toDateString())->assertOk();
         $queryCount = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        // Query por profissional (N+1) daria, no mínimo, mais 8 consultas — o teto aqui só
-        // sobra espaço para as queries fixas do endpoint (membros, agendamentos + eager
-        // loads, autenticação Sanctum), nunca uma por recurso.
-        $this->assertLessThanOrEqual(
-            12,
-            $queryCount,
-            "Endpoint executou {$queryCount} queries para 8 profissionais/56 agendamentos — indício de N+1."
-        );
+        return $queryCount;
     }
 
     private function createAppointment(User $professional, Organization $organization, User $client, Pet $pet): Appointment

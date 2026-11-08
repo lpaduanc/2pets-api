@@ -101,7 +101,11 @@ class LgpdController extends Controller
 
             $user->tokens()->delete();
 
-            $user->update([
+            // `forceFill` + `delete()`: anonimização é escrita do servidor, não do payload, e
+            // `deleted_at`/`is_suspended` nunca estiveram no `$fillable` — com `update()` todo
+            // pedido de exclusão estourava `MassAssignmentException` (500). `delete()` é o
+            // soft delete do `SoftDeletes`, que preenche `deleted_at`.
+            $user->forceFill([
                 'name' => 'Usuario Removido',
                 'email' => "deleted_{$user->id}@removed.2pets.com.br",
                 'phone' => null,
@@ -112,8 +116,8 @@ class LgpdController extends Controller
                 'state' => null,
                 'zip_code' => null,
                 'is_suspended' => true,
-                'deleted_at' => now(),
-            ]);
+            ])->save();
+            $user->delete();
 
             $this->logConsent($user->id, 'account', false, $request, 'deletion');
 
