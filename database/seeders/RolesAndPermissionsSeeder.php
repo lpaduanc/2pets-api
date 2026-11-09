@@ -167,6 +167,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'professional.clients.view',
             'professional.clients.manage',
 
+            // --- Organização ---
+            // Dados cadastrais da empresa (razão social, CNPJ, endereço do emitente fiscal) —
+            // `professional/organization`. Só os papéis de dono; a rota ainda exige o cargo
+            // OWNER naquela organização (`OrganizationPolicy::manageCompanyProfile`).
+            'organization.manage',
+
             // --- Pet Card ---
             'pet-card.view',
             'pet-card.generate-qr',
@@ -491,6 +497,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'acquirer-settlements.view', 'acquirer-settlements.manage',
             'client-account.view.any', 'client-account.manage',
             'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage', 'fiscal-numbers.invalidate',
+            'organization.manage',
             'commissions.view.any', 'commissions.rule.manage',
             'service-packages.view', 'service-packages.manage',
             'price-lists.view', 'price-lists.manage',
@@ -609,6 +616,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'acquirer-settlements.view', 'acquirer-settlements.manage',
             'client-account.view.any', 'client-account.manage',
             'fiscal-documents.view', 'fiscal-documents.issue', 'fiscal-documents.cancel', 'fiscal-settings.manage', 'fiscal-numbers.invalidate',
+            'organization.manage',
             'commissions.view.any', 'commissions.rule.manage',
             'service-packages.view', 'service-packages.manage',
             'price-lists.view', 'price-lists.manage',

@@ -33,4 +33,14 @@ class OrganizationPolicy
     {
         return $this->manageMembers($user, $organization);
     }
+
+    /**
+     * `GET/PUT professional/organization` — razão social, CNPJ e endereço do emitente da NF-e.
+     * Só o dono: é o dado legal da empresa, e a exceção pontual de permissão
+     * (`organization_members.permissions`) que deixa passar o middleware não basta aqui.
+     */
+    public function manageCompanyProfile(User $user, Organization $organization): bool
+    {
+        return $this->manageMembers($user, $organization);
+    }
 }

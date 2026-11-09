@@ -1198,6 +1198,14 @@ Route::middleware(['auth:sanctum', 'throttle:60,1'])->group(function () {
                 ->whereIn('environment', \App\Enums\FiscalEnvironment::values());
         });
 
+        // Dados cadastrais da empresa (razão social, CNPJ, endereço) — o emitente que a
+        // transmissão própria cobra em `transmission.missing`. Permissão dos papéis de dono e,
+        // no controller/Form Request, o cargo OWNER naquela organização.
+        Route::middleware('permission:organization.manage')->group(function (): void {
+            Route::get('organization', [\App\Http\Controllers\Api\OrganizationCompanyProfileController::class, 'show']);
+            Route::put('organization', [\App\Http\Controllers\Api\OrganizationCompanyProfileController::class, 'update']);
+        });
+
         // My patients — pets this vet has active PetVetAccess grants for (enriched list).
         Route::get('my-patients', [PetVetAccessController::class, 'myPatients']);
 
