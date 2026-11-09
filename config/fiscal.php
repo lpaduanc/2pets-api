@@ -46,6 +46,44 @@ return [
         ],
     ],
 
+    /*
+     * NFS-e pelo Sistema Nacional (Sefin Nacional / Emissor Público Nacional) — spec
+     * docs/gap-petflow/specs/fase4-transmissao-propria-nfse-nacional.md. Desligada por padrão e
+     * independente da SEFAZ: ligar NF-e não liga NFS-e.
+     */
+    'nfse' => [
+        'enabled' => (bool) env('FISCAL_NFSE_ENABLED', false),
+        // Hosts confirmados pelo certificado TLS; o caminho `/SefinNacional` NÃO consta do manual
+        // oficial (o Swagger exige mTLS) — confirmar na produção restrita (spec §1.1).
+        'base_urls' => [
+            'production' => env('FISCAL_NFSE_URL_PRODUCTION', 'https://sefin.nfse.gov.br/SefinNacional'),
+            'homologation' => env('FISCAL_NFSE_URL_HOMOLOGATION', 'https://sefin.producaorestrita.nfse.gov.br/SefinNacional'),
+        ],
+        // Leiaute da DPS por ambiente (`App\Enums\NfseLayout`): a produção restrita já roda o
+        // leiaute das NTs 005/009 (finNFSe obrigatório, cServ reordenado), a produção o de
+        // 2026-02-09. Cada um é validado no seu XSD oficial (resources/fiscal/nfse/schemas).
+        'layouts' => [
+            'production' => env('FISCAL_NFSE_LAYOUT_PRODUCTION', 'v1.01-20260209'),
+            'homologation' => env('FISCAL_NFSE_LAYOUT_HOMOLOGATION', 'v1.01-rtc-20261020'),
+        ],
+        // sha1 | sha256. O Anexo I não fixa o algoritmo; o único documento oficial que fala dele (guia
+        // NFS-e Via API v1.02) pede RSA-SHA256, então o padrão segue o oficial. Implementações de
+        // terceiros usam SHA-1 — se a produção restrita recusar, troca por env (spec §1.1).
+        'signature_algorithm' => env('FISCAL_NFSE_SIGNATURE_ALGORITHM', 'sha256'),
+        // Bundle de CAs para VERIFICAR o servidor. Vazio = trust store do sistema (os hosts usam
+        // cadeia pública: GlobalSign Root R46 e ISRG Root X1). Configurado e ausente = nada é
+        // enviado (falha fechada) e a prontidão mostra `nfse_ca_bundle`.
+        'ca_bundle' => env('FISCAL_NFSE_CA_BUNDLE'),
+        'timeout_seconds' => (int) env('FISCAL_NFSE_TIMEOUT', 30),
+        'connect_timeout_seconds' => 10,
+        // dhEmi recua esse tanto: a Sefin recusa DPS com emissão depois do processamento (E0008)
+        // e nosso relógio pode estar adiantado.
+        'clock_skew_seconds' => 60,
+        'app_version' => '2pets 1.0',
+        // Pasta PRIVADA dos PEM temporários do mTLS (chave cifrada com senha de uso único).
+        'temporary_path' => storage_path('app/private/fiscal-tmp'),
+    ],
+
     'certificate' => [
         'max_kilobytes' => 64,
         // A partir de quantos dias para vencer a tela avisa para renovar o A1.

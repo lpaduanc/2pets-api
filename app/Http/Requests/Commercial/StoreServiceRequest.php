@@ -43,6 +43,8 @@ class StoreServiceRequest extends FormRequest
             'cost_center_id' => ['nullable', 'integer', new \App\Rules\ScopedCostCenterExists($this->user())],
             'municipal_service_code' => ['nullable', 'string', 'max:20'],
             'lc116_code' => ['nullable', 'string', 'max:10'],
+            'national_tax_code' => ['nullable', 'digits:6'],
+            'nbs_code' => ['nullable', 'digits:9'],
             'show_in_price_list' => ['nullable', 'boolean'],
             'allow_price_override' => ['nullable', 'boolean'],
 

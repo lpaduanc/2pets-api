@@ -51,8 +51,11 @@ class UpdateFiscalSettingsRequest extends FormRequest
             // Fase 4 fiscal: ambiente (numeração separada por ambiente), série e próximo número por
             // modelo — quem vem de outro sistema continua a numeração de lá.
             'fiscal_environment' => ['sometimes', Rule::enum(FiscalEnvironment::class)],
-            'fiscal_series' => ['sometimes', 'array:nfe,nfce'],
+            'fiscal_series' => ['sometimes', 'array:nfe,nfce,nfse'],
             'fiscal_series.*.series' => ['sometimes', 'string', 'regex:/^\d{1,3}$/'],
+            // Série da DPS (NFS-e nacional): faixa oficial do aplicativo próprio começa em 00001 —
+            // zero é recusado pela Sefin (E0010).
+            'fiscal_series.nfse.series' => ['sometimes', 'string', 'regex:/^0{0,2}[1-9]\d{0,2}$/'],
             'fiscal_series.*.next_number' => ['sometimes', 'integer', 'min:1', 'max:999999999'],
             // cMun do emitente (7 dígitos do IBGE) — só quando o nome da cidade não bate com a tabela.
             'city_ibge_code' => ['sometimes', 'nullable', 'digits:7'],

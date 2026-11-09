@@ -8,6 +8,7 @@ use App\DataTransferObjects\Fiscal\FiscalOwner;
 use App\Enums\FiscalDocumentKind;
 use App\Models\FiscalDocument;
 use App\Services\Fiscal\LogFiscalProviderGateway;
+use App\Services\Fiscal\Nfse\NfseNacionalGateway;
 use App\Services\Fiscal\Sefaz\SefazFiscalGateway;
 use Illuminate\Contracts\Container\Container;
 
@@ -25,17 +26,33 @@ final class OwnerFiscalGatewayResolver implements FiscalGatewayResolver
 
     public function forOwner(FiscalOwner $owner, FiscalDocumentKind $kind): FiscalProviderGateway
     {
-        return $this->readiness->check($owner)->usesSefaz($kind) ? $this->sefaz() : $this->simulated();
+        $status = $this->readiness->check($owner);
+
+        // NFS-e não passa pela SEFAZ: vai ao Sistema Nacional (spec fase4-transmissao-propria-nfse-nacional §3).
+        if ($kind === FiscalDocumentKind::NFSE) {
+            return $status->usesNationalNfse() ? $this->national() : $this->simulated();
+        }
+
+        return $status->usesSefaz($kind) ? $this->sefaz() : $this->simulated();
     }
 
     public function forDocument(FiscalDocument $document): FiscalProviderGateway
     {
-        return $document->provider === SefazFiscalGateway::NAME ? $this->sefaz() : $this->simulated();
+        return match ($document->provider) {
+            SefazFiscalGateway::NAME => $this->sefaz(),
+            NfseNacionalGateway::NAME => $this->national(),
+            default => $this->simulated(),
+        };
     }
 
     private function sefaz(): FiscalProviderGateway
     {
         return $this->container->make(SefazFiscalGateway::class);
+    }
+
+    private function national(): FiscalProviderGateway
+    {
+        return $this->container->make(NfseNacionalGateway::class);
     }
 
     private function simulated(): FiscalProviderGateway

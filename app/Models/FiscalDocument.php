@@ -61,6 +61,10 @@ class FiscalDocument extends Model
         'next_retry_at',
         'last_error',
         'cancellation_xml_path',
+        // Série/número da DPS (nossos) — o `number` da NFS-e nacional é o nNFSe da Sefin (spec
+        // fase4-transmissao-propria-nfse-nacional §4).
+        'dps_series',
+        'dps_number',
     ];
 
     /**
@@ -76,6 +80,7 @@ class FiscalDocument extends Model
             'environment' => FiscalEnvironment::class,
             'emission_mode' => FiscalEmissionMode::class,
             'number' => 'integer',
+            'dps_number' => 'integer',
             'attempts' => 'integer',
             'issued_at' => 'datetime',
             'cancelled_at' => 'datetime',

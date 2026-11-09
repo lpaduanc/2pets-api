@@ -120,6 +120,8 @@ final class FiscalInvoicePayloadBuilder
             'icms_base', 'icms_rate', 'icms_amount', 'icms_base_reduction_percent', 'icms_sn_credit_rate',
             'icms_sn_credit_amount', 'fcp_rate', 'fcp_amount', 'pis_cst', 'pis_base', 'pis_rate', 'pis_amount',
             'cofins_cst', 'cofins_base', 'cofins_rate', 'cofins_amount', 'ipi_amount', 'icms_st_amount', 'benefit_code',
+            // NFS-e nacional: códigos do serviço da DPS (spec fase4-transmissao-propria-nfse-nacional §5.3).
+            'national_tax_code', 'municipal_tax_code', 'nbs_code',
         ]);
     }
 

@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class FiscalNumberingSettings
 {
-    private const SERIES_COLUMNS = [FiscalDocumentKind::NFE->value => 'nfe_series', FiscalDocumentKind::NFCE->value => 'nfce_series'];
+    private const SERIES_COLUMNS = [FiscalDocumentKind::NFE->value => 'nfe_series', FiscalDocumentKind::NFCE->value => 'nfce_series', FiscalDocumentKind::NFSE->value => 'nfse_series'];
 
     public function __construct(
         private readonly FiscalNumberSequencer $sequencer,

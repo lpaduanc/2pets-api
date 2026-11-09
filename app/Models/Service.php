@@ -41,6 +41,10 @@ class Service extends Model implements Sellable
         'max_discount_percent',
         'municipal_service_code',
         'lc116_code',
+        // NFS-e nacional: código de tributação nacional (cTribNac, 6 dígitos da Lista Nacional de
+        // Serviços) e NBS (9 dígitos) — spec fase4-transmissao-propria-nfse-nacional §5.3.
+        'national_tax_code',
+        'nbs_code',
         'show_in_price_list',
         'allow_price_override',
         'active',

@@ -3,6 +3,7 @@
 namespace App\Services\Fiscal;
 
 use App\Contracts\FiscalGatewayResolver;
+use App\DataTransferObjects\Fiscal\NfseServiceCode;
 use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalDocumentOperation;
 use App\Enums\FiscalDocumentStatus;
@@ -12,6 +13,7 @@ use App\Models\FiscalDocument;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Service;
 use App\Models\User;
 use App\Services\Commercial\Card\CardSurchargePolicy;
 use App\Support\Money\Money;
@@ -25,6 +27,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Roteamento: venda só de serviço emite NFS-e; só de produto emite NFC-e/NF-e
  * (`FiscalOperation::productDocument()`); venda mista emite as duas — nunca um documento só.
+ * Serviços com códigos de tributação diferentes viram NFS-e separadas: a DPS do Sistema Nacional
+ * tem UM `cServ` (spec docs/gap-petflow/specs/fase4-transmissao-propria-nfse-nacional.md §5.3).
  * Revenda (`fiscal_operation.isResale()`) sempre NF-e, nunca NFC-e, mesmo presencial.
  *
  * Cada documento leva os itens congelados (`FiscalSaleLineBuilder`), o número reservado e o
@@ -32,6 +36,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class FiscalDocumentService
 {
+    private const PRODUCT_PART = 'product';
+
+    private const SERVICE_PART = 'service';
+
     public function __construct(
         private readonly FiscalGatewayResolver $gateways,
         private readonly FiscalSaleLineBuilder $lines,
@@ -69,16 +77,16 @@ final class FiscalDocumentService
 
     /**
      * Itens e acréscimo de cada documento, só dos tipos presentes na venda. O acréscimo é rateado
-     * pelo maior resto entre produto e serviço sobre a base (líquido) de cada um: Σ totais dos
-     * documentos = total da venda, centavo a centavo.
+     * pelo maior resto entre os documentos (produto e cada código de serviço) sobre a base
+     * (líquido) de cada um: Σ totais dos documentos = total da venda, centavo a centavo.
      *
-     * @return array<'product'|'service', array{items: Collection<int, SaleItem>, surcharge: Money}>
+     * @return array<string, array{items: Collection<int, SaleItem>, surcharge: Money}> chave `product` ou `service:{código}`
      */
     private function documentParts(Sale $sale): array
     {
         $net = $sale->netItemTotals();
         $items = $sale->items->reject(fn (SaleItem $item): bool => $item->isCourtesy())
-            ->groupBy(fn (SaleItem $item): string => $item->sellable_type === Product::class ? 'product' : 'service');
+            ->groupBy(fn (SaleItem $item): string => self::documentKey($item));
         $bases = $items->map(fn (Collection $group): Money => Money::sum($group->map(fn (SaleItem $item): Money => $net[$item->id])))->all();
         $surcharges = $this->surchargeShares($sale, $bases);
 
@@ -89,8 +97,8 @@ final class FiscalDocumentService
      * Configuração lida AGORA, na emissão (`CardSurchargePolicy`). Desligada, o acréscimo fica
      * fora de todo documento (zero) — comportamento anterior ao repasse.
      *
-     * @param  array<'product'|'service', Money>  $bases
-     * @return array<'product'|'service', Money>
+     * @param  array<string, Money>  $bases
+     * @return array<string, Money>
      */
     private function surchargeShares(Sale $sale, array $bases): array
     {
@@ -101,6 +109,24 @@ final class FiscalDocumentService
         }
 
         return $surcharge->allocate($bases);
+    }
+
+    /** Quem autoriza o documento — a NFS-e não passa pela SEFAZ. */
+    private static function authority(FiscalDocument $document): string
+    {
+        return $document->kind === FiscalDocumentKind::NFSE ? 'Sistema Nacional NFS-e' : 'SEFAZ';
+    }
+
+    /** Documento a que a linha pertence: o de produto ou o NFS-e do código de serviço dela. */
+    private static function documentKey(SaleItem $item): string
+    {
+        if ($item->sellable_type === Product::class) {
+            return self::PRODUCT_PART;
+        }
+
+        $service = $item->sellable instanceof Service ? $item->sellable : null;
+
+        return self::SERVICE_PART.':'.NfseServiceCode::fromService($service)->key();
     }
 
     /** Venda em que toda linha é brinde/cortesia/retorno: nenhum documento a emitir. Exige `items`. */
@@ -123,12 +149,12 @@ final class FiscalDocumentService
         try {
             $result = $this->gateways->forDocument($document)->cancel($document, $reason);
         } catch (FiscalProviderUnavailable $unavailable) {
-            abort(503, 'SEFAZ indisponível para o cancelamento agora: '.$unavailable->getMessage());
+            abort(503, self::authority($document).' indisponível para o cancelamento agora: '.$unavailable->getMessage());
         } catch (NfeXmlInvalid $invalid) {
             abort(422, $invalid->getMessage());
         }
 
-        abort_unless($result->status === FiscalDocumentStatus::CANCELLED, 422, 'A SEFAZ recusou o cancelamento: '.$result->rejectionReason);
+        abort_unless($result->status === FiscalDocumentStatus::CANCELLED, 422, sprintf('%s recusou o cancelamento: %s', $document->kind === FiscalDocumentKind::NFSE ? 'O Sistema Nacional NFS-e' : 'A SEFAZ', $result->rejectionReason));
 
         $document->update([
             'status' => $result->status->value,
@@ -162,7 +188,7 @@ final class FiscalDocumentService
     /** NFC-e para consumidor final presencial/domiciliar; NF-e para o resto — nunca NFC-e em revenda. */
     private function kindFor(Sale $sale, string $type): FiscalDocumentKind
     {
-        return $type === 'service' ? FiscalDocumentKind::NFSE : FiscalDocumentKind::from($sale->fiscal_operation->productDocument());
+        return $type === self::PRODUCT_PART ? FiscalDocumentKind::from($sale->fiscal_operation->productDocument()) : FiscalDocumentKind::NFSE;
     }
 
     /** Só documento DA VENDA ocupa a emissão (devolução tem documento próprio). */

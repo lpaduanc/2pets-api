@@ -5,12 +5,14 @@ namespace App\Services\Fiscal;
 use App\DataTransferObjects\Fiscal\FiscalOwner;
 use App\DataTransferObjects\Fiscal\FiscalRuleContext;
 use App\DataTransferObjects\Fiscal\FiscalTaxRule;
+use App\DataTransferObjects\Fiscal\NfseServiceCode;
 use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalDocumentOperation;
 use App\Enums\TaxRegime;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Service;
 use App\Services\Fiscal\Calculation\FiscalCfopSelector;
 use App\Services\Fiscal\Calculation\FiscalTaxCalculator;
 use App\Support\Money\Decimal;
@@ -98,7 +100,17 @@ final class FiscalSaleLineBuilder
             'discount_share' => $amounts['discount']->toString(),
             'surcharge_share' => $amounts['surcharge']->toString(),
             'total' => $amounts['total']->toString(),
-        ] + $this->calculator->taxes($amounts['total'], $rule) + ($rule?->toSnapshot() ?? []);
+        ] + $this->calculator->taxes($amounts['total'], $rule) + ($rule?->toSnapshot() ?? []) + self::serviceCodes($item);
+    }
+
+    /**
+     * Serviço: códigos da DPS congelados no item (spec fase4-transmissao-propria-nfse-nacional §5.3).
+     *
+     * @return array<string, string|null>
+     */
+    private static function serviceCodes(SaleItem $item): array
+    {
+        return $item->sellable instanceof Service ? NfseServiceCode::fromService($item->sellable)->toSnapshot() : [];
     }
 
     /** Quantidade × preço, virando centavo uma vez (o desconto da linha sai depois). */

@@ -41,6 +41,9 @@ class FiscalDocumentResource extends JsonResource
             'is_contingency_overdue' => $this->isContingencyOverdue(),
             'series' => $this->series,
             'number' => $this->number,
+            // NFS-e nacional: série/número da DPS (nossos); `number` é o nNFSe da Sefin.
+            'dps_series' => $this->dps_series,
+            'dps_number' => $this->dps_number,
             'access_key' => $this->access_key,
             'status' => $this->status->value,
             'status_label' => $this->status->label(),

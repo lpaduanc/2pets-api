@@ -61,6 +61,10 @@ class FiscalDocumentItem extends Model
         'benefit_code',
         'tax_profile_id',
         'profile_source',
+        // NFS-e (spec fase4-transmissao-propria-nfse-nacional §5.3): códigos do serviço congelados.
+        'national_tax_code',
+        'municipal_tax_code',
+        'nbs_code',
     ];
 
     /**

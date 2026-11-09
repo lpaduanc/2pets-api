@@ -23,6 +23,15 @@ final class FiscalDocumentFiles
 
     public const PDF = 'danfe.pdf';
 
+    // NFS-e nacional (spec fase4-transmissao-propria-nfse-nacional §10).
+    public const SIGNED_DPS = 'dps-assinada.xml';
+
+    public const AUTHORIZED_NFSE = 'nfse.xml';
+
+    public const NFSE_CANCELLATION_XML = 'evento-cancelamento-nfse.xml';
+
+    public const DANFSE = 'danfse.pdf';
+
     public function put(FiscalDocument $document, string $accessKey, string $suffix, string $contents): string
     {
         $path = sprintf('%s/%s-%s', $this->folder($document), $accessKey, $suffix);

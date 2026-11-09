@@ -125,6 +125,9 @@ class AppServiceProvider extends ServiceProvider
         // Transporte SOAP do sped-common atrás de contrato: os testes trocam por um dublê e nunca
         // falam com a SEFAZ de verdade.
         $this->app->bind(\App\Services\Fiscal\Sefaz\SefazTransportFactory::class, \App\Services\Fiscal\Sefaz\CurlSefazTransportFactory::class);
+        // NFS-e pelo Sistema Nacional (spec fase4-transmissao-propria-nfse-nacional §10): HTTPS com
+        // mTLS e servidor verificado; os testes trocam pelo dublê.
+        $this->app->bind(\App\Services\Fiscal\Nfse\Transport\NfseNacionalTransport::class, \App\Services\Fiscal\Nfse\Transport\GuzzleNfseNacionalTransport::class);
 
         // O parâmetro `?DueDateService $dueDates = null` do planner existe para o teste puro
         // (`new FinancialInstallmentPlanner`). O container do Laravel 12 NÃO resolve classe

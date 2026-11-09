@@ -49,12 +49,13 @@ final class FiscalTransmissionReadiness
         private readonly FiscalCertificateVault $vault,
         private readonly FiscalNfceCscService $cscs,
         private readonly IbgeMunicipalities $municipalities,
+        private readonly NfseTransmissionReadiness $nfse,
     ) {}
 
     public function check(FiscalOwner $owner): FiscalTransmissionStatus
     {
         if ($owner->organizationId === null) {
-            return new FiscalTransmissionStatus(self::documents(false, false), [self::MISSING_ORGANIZATION], null);
+            return new FiscalTransmissionStatus(self::documents(false, false), [self::MISSING_ORGANIZATION], null, NfseTransmissionReadiness::withoutOrganization());
         }
 
         $organization = Organization::findOrFail($owner->organizationId);
@@ -63,13 +64,14 @@ final class FiscalTransmissionReadiness
         $certificateProblem = $this->certificateProblem($organization->id);
         $hasCsc = $this->cscs->has($organization->id, $environment);
         $usesSefaz = $enabled && $certificateProblem === null;
+        $emitterProblems = $this->emitterProblems($organization);
 
         return new FiscalTransmissionStatus(self::documents($usesSefaz, $usesSefaz && $hasCsc), array_values(array_unique(array_filter([
             $enabled ? null : self::MISSING_SEFAZ_DISABLED,
             $certificateProblem,
             $hasCsc ? null : self::MISSING_NFCE_CSC,
-            ...$this->emitterProblems($organization),
-        ]))), $environment->value);
+            ...$emitterProblems,
+        ]))), $environment->value, $this->nfse->check($organization, $certificateProblem, array_values(array_unique($emitterProblems))));
     }
 
     private function certificateProblem(int $organizationId): ?string

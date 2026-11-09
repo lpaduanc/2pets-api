@@ -9,18 +9,31 @@ use App\Enums\FiscalEnvironment;
 use App\Models\FiscalDocument;
 use App\Models\FiscalNumberSequence;
 use App\Models\Organization;
+use App\Services\Fiscal\Nfse\NfseNacionalGateway;
 
 /**
  * Numeração própria de NF-e/NFC-e — spec docs/gap-petflow/specs/fase4-fiscal-sem-envio.md §3.7.
  * A reserva trava a linha da sequência (`lockForUpdate`) na mesma transação da emissão: dois
  * caixas emitindo ao mesmo tempo nunca pegam o mesmo número (e o índice único parcial de
- * `fiscal_documents` é a rede de segurança). NFS-e não passa aqui — numera o Emissor Nacional.
+ * `fiscal_documents` é a rede de segurança).
+ *
+ * NFS-e nacional (spec fase4-transmissao-propria-nfse-nacional §4): a DPS também é numerada por nós
+ * (`dps_series`/`dps_number`, série `organizations.nfse_series`), só no documento do driver
+ * nacional — o número da NFS-e em si (`number`) é da Sefin. A NFS-e simulada não reserva.
  */
 final class FiscalNumberSequencer
 {
     private const DEFAULT_SERIES = '1';
 
     private const NUMBERED_KINDS = [FiscalDocumentKind::NFE, FiscalDocumentKind::NFCE];
+
+    /** Série de cada modelo na organização. */
+    private const SERIES_COLUMNS = [FiscalDocumentKind::NFE->value => 'nfe_series', FiscalDocumentKind::NFCE->value => 'nfce_series', FiscalDocumentKind::NFSE->value => 'nfse_series'];
+
+    /** Onde o documento guarda série e número reservados (a NFS-e guarda os da DPS). */
+    private const DOCUMENT_COLUMNS = [FiscalDocumentKind::NFSE->value => ['dps_series', 'dps_number']];
+
+    private const DEFAULT_DOCUMENT_COLUMNS = ['series', 'number'];
 
     public static function isNumbered(FiscalDocumentKind $kind): bool
     {
@@ -30,14 +43,29 @@ final class FiscalNumberSequencer
     /** Grava série e número no documento ainda sem número. */
     public function reserve(FiscalDocument $document): void
     {
-        if (! self::isNumbered($document->kind) || $document->number !== null) {
+        [$seriesColumn, $numberColumn] = self::documentColumns($document->kind);
+
+        if (! self::reservesFor($document) || $document->{$numberColumn} !== null) {
             return;
         }
 
         $owner = FiscalOwner::of($document);
         $sequence = $this->lockedSequence($owner, $document->kind, $this->seriesFor($owner, $document->kind), $document->environment);
-        $document->update(['series' => $sequence->series, 'number' => $sequence->next_number]);
+        $document->update([$seriesColumn => $sequence->series, $numberColumn => $sequence->next_number]);
         $sequence->increment('next_number');
+    }
+
+    /** NF-e/NFC-e sempre; NFS-e só quando vai ao Sistema Nacional (a DPS é nossa). */
+    private static function reservesFor(FiscalDocument $document): bool
+    {
+        return self::isNumbered($document->kind)
+            || ($document->kind === FiscalDocumentKind::NFSE && $document->provider === NfseNacionalGateway::NAME);
+    }
+
+    /** @return array{0: string, 1: string} coluna da série e do número no documento */
+    private static function documentColumns(FiscalDocumentKind $kind): array
+    {
+        return self::DOCUMENT_COLUMNS[$kind->value] ?? self::DEFAULT_DOCUMENT_COLUMNS;
     }
 
     public function environmentFor(FiscalOwner $owner): FiscalEnvironment
@@ -50,9 +78,8 @@ final class FiscalNumberSequencer
     public function seriesFor(FiscalOwner $owner, FiscalDocumentKind $kind): string
     {
         $organization = $this->organization($owner);
-        $column = $kind === FiscalDocumentKind::NFCE ? 'nfce_series' : 'nfe_series';
 
-        return (string) ($organization?->{$column} ?? self::DEFAULT_SERIES);
+        return (string) ($organization?->{self::SERIES_COLUMNS[$kind->value]} ?? self::DEFAULT_SERIES);
     }
 
     /** Sequência atual (sem travar) para a tela de configuração; inexistente = começa no 1. */
@@ -88,13 +115,15 @@ final class FiscalNumberSequencer
      */
     public function usedNumbers(FiscalOwner $owner, FiscalDocumentKind $kind, string $series, ?FiscalEnvironment $environment): array
     {
+        [$seriesColumn, $numberColumn] = self::documentColumns($kind);
+
         return $owner->scope(FiscalDocument::query())
             ->where('kind', $kind->value)
-            ->where('series', $series)
+            ->where($seriesColumn, $series)
             ->where('environment', $environment?->value)
-            ->whereNotNull('number')
+            ->whereNotNull($numberColumn)
             ->whereIn('status', FiscalDocumentStatus::valuesWhere(fn (FiscalDocumentStatus $status): bool => $status->consumesNumber()))
-            ->pluck('number')
+            ->pluck($numberColumn)
             ->map(fn ($number): int => (int) $number)
             ->all();
     }

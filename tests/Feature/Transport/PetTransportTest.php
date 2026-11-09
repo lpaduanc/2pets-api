@@ -211,6 +211,12 @@ class PetTransportTest extends TestCase
         $inactive = User::factory()->professional()->create(['name' => 'Zé Inativo']);
         OrganizationMember::factory()->for($this->clinic, 'organization')->create(['user_id' => $inactive->id, 'role' => 'receptionist', 'is_active' => false]);
 
+        // Nomes fixos: o faker gera acento/caixa e o PHP ordena diferente da collation do banco,
+        // o que deixava o teste instável sem bug nenhum no código.
+        $this->owner->update(['name' => 'Ana Dona']);
+        $this->receptionist->update(['name' => 'Bruno Recepção']);
+        $this->groomer->update(['name' => 'Carla Tosa']);
+
         // Recepção tem `agenda.manage`: vê os membros ATIVOS da clínica, por nome.
         $drivers = $this->actingAs($this->receptionist, 'sanctum')->getJson('/api/professional/transports/drivers')->assertOk()->json('data');
         $expected = collect([$this->owner, $this->receptionist, $this->groomer])->sortBy([['name', 'asc'], ['id', 'asc']])->map(fn (User $u): array => ['user_id' => $u->id, 'name' => $u->name])->values()->all();
