@@ -2,9 +2,12 @@
 
 namespace App\DataTransferObjects\Fiscal;
 
+use App\Support\TaxpayerDocument;
+
 /**
  * Emitente ou destinatário do documento — grupos `emit`/`dest` da NF-e, neutros de provedor
- * (spec docs/gap-petflow/specs/fase4-fiscal-sem-envio.md §0). Documento só com dígitos.
+ * (spec docs/gap-petflow/specs/fase4-fiscal-sem-envio.md §0). Documento sem máscara: CPF só
+ * dígitos, CNPJ em maiúsculas (pode ter letra — CNPJ alfanumérico).
  *
  * @phpstan-type Address array{street: string|null, number: string|null, complement: string|null, district: string|null, city: string|null, state: string|null, zip: string|null}
  */
@@ -29,11 +32,7 @@ final readonly class FiscalParty
 
     public function documentType(): ?string
     {
-        return match (strlen((string) $this->document)) {
-            11 => 'cpf',
-            14 => 'cnpj',
-            default => null,
-        };
+        return TaxpayerDocument::type($this->document);
     }
 
     /**

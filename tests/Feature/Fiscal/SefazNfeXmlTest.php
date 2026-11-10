@@ -12,6 +12,7 @@ use App\Enums\FiscalEnvironment;
 use App\Exceptions\Fiscal\NfeXmlInvalid;
 use App\Services\Fiscal\Sefaz\NfeXmlBuilder;
 use App\Services\Fiscal\Sefaz\SefazCodes;
+use App\Support\Fiscal\FiscalAccessKey;
 use Carbon\CarbonImmutable;
 use NFePHP\Common\Certificate;
 use NFePHP\Common\Signer;
@@ -30,6 +31,9 @@ use Tests\TestCase;
 class SefazNfeXmlTest extends TestCase
 {
     private const CNPJ = '11222333000181';
+
+    /** Exemplo oficial da Receita (12.ABC.345/01DE-35). */
+    private const ALPHANUMERIC_CNPJ = '12ABC34501DE35';
 
     private const CSC = 'A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6';
 
@@ -91,17 +95,51 @@ class SefazNfeXmlTest extends TestCase
         $this->build($payload);
     }
 
+    /**
+     * CNPJ alfanumérico com o pacote padrão PL_009_V4 (`TCnpj = [0-9]{14}`): nada de XML que a
+     * SEFAZ recusaria no schema — rejeição local com o motivo (NT 2026.004).
+     */
+    public function test_an_alphanumeric_cnpj_is_refused_locally_under_the_pl_009_schema(): void
+    {
+        config(['fiscal.sefaz.schema' => 'PL_009_V4']);
+
+        $this->expectException(NfeXmlInvalid::class);
+        $this->expectExceptionMessage('CNPJ alfanumérico (emitente)');
+        $this->build($this->nfePayload(['emitter' => $this->emitter('lucro_presumido', self::ALPHANUMERIC_CNPJ)]));
+    }
+
+    /**
+     * Com `FISCAL_SEFAZ_SCHEMA=PL_010_V1.30` (pacote do sped-nfe que já aceita letra) a NF-e com
+     * emitente e destinatário alfanuméricos monta, assina e valida no XSD; a chave leva as letras
+     * nas posições do CNPJ e o DV (ASCII − 48) é o mesmo do sped-common.
+     */
+    public function test_with_the_pl_010_schema_an_alphanumeric_nfe_is_signed_and_valid(): void
+    {
+        config(['fiscal.sefaz.schema' => 'PL_010_V1.30']);
+        $recipient = new FiscalParty('Pet Shop Alfa Ltda', 'AB12CD34000184', ['street' => 'Rua do Catete', 'number' => '200', 'complement' => null, 'district' => 'Catete', 'city' => 'Rio de Janeiro', 'state' => 'RJ', 'zip' => '22220000'], stateRegistration: '12345678', stateRegistrationType: 'taxpayer');
+
+        $built = $this->build($this->nfePayload(['emitter' => $this->emitter('lucro_presumido', self::ALPHANUMERIC_CNPJ), 'recipient' => $recipient]));
+        $signed = $this->sign($built, 55, 'PL_010_V1.30', self::ALPHANUMERIC_CNPJ);
+
+        $this->assertTrue(Validator::isValid($signed, base_path('vendor/nfephp-org/sped-nfe/schemes/PL_010_V1.30/nfe_v4.00.xsd')));
+        $this->assertSame(self::ALPHANUMERIC_CNPJ, substr($built->accessKey, 6, 14));
+        $this->assertMatchesRegularExpression(FiscalAccessKey::PATTERN, $built->accessKey);
+        $this->assertSame(FiscalAccessKey::checkDigit(substr($built->accessKey, 0, 43)), substr($built->accessKey, -1));
+        $this->assertStringContainsString('<emit><CNPJ>'.self::ALPHANUMERIC_CNPJ.'</CNPJ>', $signed);
+        $this->assertStringContainsString('<dest><CNPJ>AB12CD34000184</CNPJ>', $signed);
+    }
+
     private function build(FiscalInvoicePayload $payload): \App\DataTransferObjects\Fiscal\BuiltNfe
     {
         return app(NfeXmlBuilder::class)->build($payload, CarbonImmutable::parse('2026-11-08 13:00:00', 'UTC'), self::CITY_CODE, 12345670);
     }
 
-    private function sign(\App\DataTransferObjects\Fiscal\BuiltNfe $built, int $model): string
+    private function sign(\App\DataTransferObjects\Fiscal\BuiltNfe $built, int $model, string $schema = 'PL_009_V4', string $cnpj = self::CNPJ): string
     {
         $tools = new Tools(json_encode([
-            'tpAmb' => 2, 'razaosocial' => 'Clinica Veterinaria Teste Ltda', 'cnpj' => self::CNPJ, 'siglaUF' => 'SP',
-            'schemes' => 'PL_009_V4', 'versao' => '4.00', 'CSC' => self::CSC, 'CSCid' => '000001',
-        ]), Certificate::readPfx(TestCertificate::pfx(self::CNPJ), TestCertificate::PASSWORD));
+            'tpAmb' => 2, 'razaosocial' => 'Clinica Veterinaria Teste Ltda', 'cnpj' => $cnpj, 'siglaUF' => 'SP',
+            'schemes' => $schema, 'versao' => '4.00', 'CSC' => self::CSC, 'CSCid' => '000001',
+        ]), Certificate::readPfx(TestCertificate::pfx($cnpj), TestCertificate::PASSWORD));
         $tools->model($model);
 
         return $tools->signNFe($built->xml);
@@ -160,7 +198,8 @@ class SefazNfeXmlTest extends TestCase
     }
 
     /** Golden fiscal-item-01 (spec fase4-fiscal-sem-envio §7): CST 00 18%, PIS 0,65%, COFINS 3%, acréscimo 2,60. */
-    private function nfePayload(): FiscalInvoicePayload
+    /** @param  array{emitter?: FiscalParty, recipient?: FiscalParty}  $overrides */
+    private function nfePayload(array $overrides = []): FiscalInvoicePayload
     {
         $base = ['cest' => null, 'unit' => 'UN', 'cfop' => '6102', 'origin' => '0', 'csosn' => null, 'cst' => '00', 'icms_rate' => '18.0000', 'icms_base_reduction_percent' => '0.0000', 'icms_sn_credit_rate' => '0.0000', 'icms_sn_credit_amount' => '0.00', 'fcp_rate' => '0.0000', 'fcp_amount' => '0.00', 'pis_cst' => '01', 'pis_rate' => '0.6500', 'cofins_cst' => '01', 'cofins_rate' => '3.0000', 'ipi_amount' => '0.00', 'icms_st_amount' => '0.00', 'benefit_code' => null];
         $items = [
@@ -172,17 +211,17 @@ class SefazNfeXmlTest extends TestCase
         return new FiscalInvoicePayload(
             documentId: 2, kind: FiscalDocumentKind::NFE, operation: FiscalDocumentOperation::SALE, direction: FiscalDocumentDirection::OUT,
             environment: FiscalEnvironment::HOMOLOGATION, emissionMode: FiscalEmissionMode::NORMAL, contingencyReason: null, series: '1', number: 7,
-            emitter: $this->emitter('lucro_presumido'), recipient: $recipient, items: $items,
+            emitter: $overrides['emitter'] ?? $this->emitter('lucro_presumido'), recipient: $overrides['recipient'] ?? $recipient, items: $items,
             totals: ['products' => '130.00', 'discount' => '13.00', 'other' => '2.60', 'total' => '119.60'], references: [],
             payments: [['method' => 'credit_card', 'amount' => '119.60']], presence: '1', finalConsumer: false,
         );
     }
 
-    private function emitter(string $regime): FiscalParty
+    private function emitter(string $regime, string $cnpj = self::CNPJ): FiscalParty
     {
         return new FiscalParty(
             name: 'Clinica Veterinaria Teste Ltda',
-            document: self::CNPJ,
+            document: $cnpj,
             address: ['street' => 'Rua Augusta', 'number' => '100', 'complement' => null, 'district' => 'Consolacao', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01305000'],
             stateRegistration: '110042490114',
             stateRegistrationType: 'taxpayer',

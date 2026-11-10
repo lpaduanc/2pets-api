@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal\Nfse;
 
+use App\DataTransferObjects\Cnpj;
 use App\DataTransferObjects\Fiscal\FiscalProviderResult;
 use App\Enums\FiscalDocumentStatus;
 use App\Enums\FiscalEnvironment;
@@ -68,7 +69,7 @@ final class NfseCancellation
         $writer->add($info, 'tpAmb', self::ENVIRONMENT_CODES[$environment->value]);
         $writer->add($info, 'verAplic', NfseXmlWriter::text((string) config('fiscal.nfse.app_version'), 20));
         $writer->add($info, 'dhEvento', CarbonImmutable::now(TimeZoneByUF::get((string) $organization->state))->subSeconds((int) config('fiscal.nfse.clock_skew_seconds'))->format('Y-m-d\TH:i:sP'));
-        $writer->add($info, 'CNPJAutor', preg_replace('/\D/', '', (string) $organization->cnpj));
+        $writer->add($info, 'CNPJAutor', Cnpj::stripMask((string) $organization->cnpj));
         $writer->add($info, 'chNFSe', (string) $document->access_key);
         $event = $writer->group($info, 'e'.self::EVENT_CODE);
         $writer->add($event, 'xDesc', self::EVENT_DESCRIPTION);

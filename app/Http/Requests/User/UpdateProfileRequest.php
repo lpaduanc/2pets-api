@@ -9,6 +9,7 @@ use App\Http\Requests\Concerns\CanonicalizesSpecialties;
 use App\Http\Requests\Registration\Concerns\HasProfessionalCapabilityRules;
 use App\Models\Professional;
 use App\Models\User;
+use App\Rules\CnpjFormat;
 use App\Rules\ValidCpf;
 use App\Rules\ValidSpecialty;
 use Closure;
@@ -159,7 +160,7 @@ class UpdateProfileRequest extends FormRequest
 
     /**
      * Mesmo raciocinio do CPF: `professionals.cnpj` tem indice unico e o mutator grava
-     * limpo, entao a checagem precisa comparar digitos contra digitos. Sem isto, um CNPJ
+     * limpo, entao a checagem precisa comparar valor normalizado contra normalizado. Sem isto, um CNPJ
      * ja usado passa na validacao e a gravacao morre com 23505 (HTTP 500).
      */
     private function uniqueProfessionalCnpjRule(): Closure
@@ -202,7 +203,7 @@ class UpdateProfileRequest extends FormRequest
             'professional' => ['sometimes', 'array'],
             'professional.professional_type' => ['sometimes', 'nullable', Rule::in(ProfessionalType::values())],
             'professional.business_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'professional.cnpj' => ['sometimes', 'nullable', 'digits:'.Cnpj::DIGIT_COUNT, $this->uniqueProfessionalCnpjRule()],
+            'professional.cnpj' => ['sometimes', 'nullable', new CnpjFormat, $this->uniqueProfessionalCnpjRule()],
             'professional.crmv' => ['sometimes', 'nullable', 'string', 'max:255'],
             'professional.crmv_state' => ['sometimes', 'nullable', 'string', 'max:2'],
             'professional.specialties' => ['sometimes', 'nullable', 'array'],
@@ -338,7 +339,7 @@ class UpdateProfileRequest extends FormRequest
         return [
             'company' => ['sometimes', 'array'],
             'company.company_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'company.cnpj' => ['sometimes', 'nullable', 'digits:'.Cnpj::DIGIT_COUNT],
+            'company.cnpj' => ['sometimes', 'nullable', new CnpjFormat],
             'company.contact_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'company.contact_position' => ['sometimes', 'nullable', 'string', 'max:255'],
             'company.phone' => ['sometimes', 'nullable', 'string', 'max:20'],

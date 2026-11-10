@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Backoffice;
 
+use App\DataTransferObjects\Cnpj;
 use App\Enums\BackofficeRole;
 use App\Enums\ProfessionalType;
 use App\Http\Controllers\Controller;
@@ -63,15 +64,20 @@ class PlatformUserController extends Controller
             ->when($filters['search'] ?? null, function (Builder $q, string $term) {
                 $like = '%'.mb_strtolower($term).'%';
                 $digits = preg_replace('/\D/', '', $term);
+                // CNPJ pode ter letra (alfanumérico): compara sem máscara e em maiúsculas.
+                $cnpj = Cnpj::stripMask($term);
 
-                $q->where(function (Builder $w) use ($like, $digits) {
+                $q->where(function (Builder $w) use ($like, $digits, $cnpj) {
                     $w->whereRaw('LOWER(name) LIKE ?', [$like])
                         ->orWhereRaw('LOWER(email) LIKE ?', [$like]);
 
                     if (strlen($digits) >= 4) {
                         $w->orWhere('phone', 'like', "%{$digits}%")
-                            ->orWhere('cpf', 'like', "%{$digits}%")
-                            ->orWhere('cnpj', 'like', "%{$digits}%");
+                            ->orWhere('cpf', 'like', "%{$digits}%");
+                    }
+
+                    if (strlen($cnpj) >= 4 && preg_match('/\d/', $cnpj) === 1) {
+                        $w->orWhere('cnpj', 'like', "%{$cnpj}%");
                     }
 
                     if (ctype_digit($digits) && $digits !== '') {

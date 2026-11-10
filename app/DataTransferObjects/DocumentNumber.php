@@ -7,8 +7,9 @@ use Stringable;
 /**
  * Base dos documentos brasileiros gravados no 2pets (CPF, CNPJ).
  *
- * Regra de projeto: documento é SEMPRE persistido como string limpa, só dígitos, sem ponto,
- * traço ou barra — e toda busca normaliza a entrada antes de consultar. O motivo é
+ * Regra de projeto: documento é SEMPRE persistido como string limpa, sem ponto, traço ou barra
+ * (CPF só dígitos; CNPJ com letras maiúsculas e dígitos desde o CNPJ alfanumérico — ver `Cnpj`)
+ * — e toda busca normaliza a entrada antes de consultar. O motivo é
  * indexabilidade: guardar máscara obrigaria a query a aplicar `regexp_replace()` sobre a
  * coluna (ou `LIKE`), o que descarta o índice e vira varredura sequencial na tabela inteira
  * de usuários. Guardar limpo mantém o lookup em igualdade pura sobre índice B-tree.
@@ -16,7 +17,7 @@ use Stringable;
  * A normalização é aplicada em duas camadas independentes, de propósito:
  *   1. Mutator do model (`User`, `Professional`, `Company`) — garante o INVARIANTE de escrita,
  *      mesmo que algum caminho esqueça de tratar a entrada.
- *   2. `prepareForValidation()` dos Form Requests — garante que `digits:N` e as checagens de
+ *   2. `prepareForValidation()` dos Form Requests — garante que o tamanho e as checagens de
  *      unicidade comparem o mesmo formato que está no banco. Sem isso, um CPF mascarado passa
  *      pelo `unique` (não acha o valor formatado) e só estoura no índice, virando 500.
  *
@@ -25,31 +26,38 @@ use Stringable;
  */
 abstract readonly class DocumentNumber implements Stringable
 {
-    /** Quantidade de dígitos do documento já normalizado. */
+    /** Quantidade de caracteres do documento já normalizado (no CNPJ alfanumérico nem todos são dígitos). */
     public const DIGIT_COUNT = 0;
 
+    /** @param  string  $digits  valor normalizado (o nome ficou da época em que todo documento era só dígitos) */
     final protected function __construct(public string $digits) {}
 
     /**
      * Remove a máscara sem validar o comprimento — a validação de tamanho fica no Form
      * Request, para que "CPF com 10 dígitos" produza erro de tamanho e não de campo ausente.
      */
-    final public static function stripMask(?string $raw): string
+    public static function stripMask(?string $raw): string
     {
         return (string) preg_replace('/\D/', '', (string) $raw);
     }
 
-    /** Devolve null quando a entrada não tem exatamente `DIGIT_COUNT` dígitos. */
+    /** Devolve null quando a entrada normalizada não tem o formato do documento. */
     final public static function tryParse(?string $raw): ?static
     {
-        $digits = static::stripMask($raw);
+        $normalized = static::stripMask($raw);
 
-        return strlen($digits) === static::DIGIT_COUNT ? new static($digits) : null;
+        return static::isWellFormed($normalized) ? new static($normalized) : null;
+    }
+
+    /** Formato do valor já normalizado; padrão: exatamente `DIGIT_COUNT` dígitos. */
+    protected static function isWellFormed(string $normalized): bool
+    {
+        return strlen($normalized) === static::DIGIT_COUNT && ctype_digit($normalized);
     }
 
     /**
      * Normaliza para gravação: string limpa, ou null quando a entrada é vazia/nula.
-     * Entrada com quantidade errada de dígitos é devolvida limpa mesmo assim — descartar
+     * Entrada com tamanho errado é devolvida limpa mesmo assim — descartar
      * silenciosamente perderia dado; quem valida tamanho é o Form Request.
      */
     final public static function normalizeForStorage(?string $raw): ?string
@@ -58,9 +66,9 @@ abstract readonly class DocumentNumber implements Stringable
             return null;
         }
 
-        $digits = static::stripMask($raw);
+        $normalized = static::stripMask($raw);
 
-        return $digits === '' ? null : $digits;
+        return $normalized === '' ? null : $normalized;
     }
 
     final public function __toString(): string

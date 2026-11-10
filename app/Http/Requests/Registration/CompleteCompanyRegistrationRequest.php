@@ -10,6 +10,7 @@ use App\Enums\IndustrySector;
 use App\Enums\PreferredCommunicationChannel;
 use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
 use App\Http\Requests\Registration\Concerns\HasAddressRules;
+use App\Rules\CnpjFormat;
 use App\Rules\ValidCpf;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -30,8 +31,8 @@ class CompleteCompanyRegistrationRequest extends FormRequest
     }
 
     /**
-     * Regra de projeto: documento trafega e é gravado limpo (só dígitos). Normalizar antes
-     * do `digits:14`/`digits:11` é o que evita reprovar um documento que o app manda
+     * Regra de projeto: documento trafega e é gravado limpo (sem máscara; CNPJ em maiúsculas, pode
+     * ter letra). Normalizar antes do `CnpjFormat`/`digits:11` é o que evita reprovar um documento que o app manda
      * mascarado — vale tanto para o CNPJ da empresa quanto para o CPF do representante legal.
      */
     protected function prepareForValidation(): void
@@ -51,7 +52,7 @@ class CompleteCompanyRegistrationRequest extends FormRequest
             ...$this->addressRules(),
             'company_name' => ['required', 'string'],
             'cnpj' => [
-                'required', 'digits:'.Cnpj::DIGIT_COUNT,
+                'required', new CnpjFormat,
                 Rule::unique('companies', 'cnpj')->ignore($this->user()?->id, 'user_id'),
             ],
             'contact_name' => ['required', 'string'],
@@ -93,7 +94,6 @@ class CompleteCompanyRegistrationRequest extends FormRequest
             ...$this->addressMessages(),
             'company_name.required' => 'O nome da empresa é obrigatório.',
             'cnpj.required' => 'O CNPJ é obrigatório.',
-            'cnpj.digits' => 'O CNPJ deve conter 14 dígitos.',
             'cnpj.unique' => 'Este CNPJ já está cadastrado.',
             'contact_name.required' => 'O nome do contato é obrigatório.',
             'phone.required' => 'O telefone é obrigatório.',

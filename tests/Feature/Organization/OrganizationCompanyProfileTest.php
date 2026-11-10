@@ -162,12 +162,25 @@ class OrganizationCompanyProfileTest extends TestCase
         $this->update($this->payload(['cnpj' => '11222333000180']))->assertUnprocessable()->assertJsonValidationErrors('cnpj');
         $this->update($this->payload(['cnpj' => '00000000000000']))->assertUnprocessable()->assertJsonValidationErrors('cnpj');
         $this->update($this->payload(['cnpj' => '1122233300018']))->assertUnprocessable()
-            ->assertJsonValidationErrors(['cnpj' => 'O CNPJ deve ter 14 dígitos.']);
+            ->assertJsonValidationErrors(['cnpj' => 'O CNPJ deve ter 14 caracteres.']);
         $this->update($this->payload(['state' => 'XX']))->assertUnprocessable()->assertJsonValidationErrors('state');
         $this->update($this->payload(['zip_code' => '1305-000']))->assertUnprocessable()->assertJsonValidationErrors('zip_code');
         $this->update($this->payload(['business_name' => '']))->assertUnprocessable()->assertJsonValidationErrors('business_name');
 
         $this->assertSame(self::CLINIC_CNPJ, $this->clinic->fresh()->cnpj);
+    }
+
+    /** Contrato com o app: aceita `12.abc.345/01de-35` e devolve o valor limpo em maiúsculas. */
+    public function test_an_alphanumeric_cnpj_is_accepted_masked_and_returned_normalized(): void
+    {
+        $this->update($this->payload(['cnpj' => '12.abc.345/01de-35']))->assertOk()
+            ->assertJsonPath('data.cnpj', '12ABC34501DE35');
+        $this->assertSame('12ABC34501DE35', $this->clinic->fresh()->cnpj);
+
+        $this->update($this->payload(['cnpj' => '12ABC34501DE36']))->assertUnprocessable()
+            ->assertJsonValidationErrors(['cnpj' => 'CNPJ inválido: confira os caracteres digitados.']);
+        $this->update($this->payload(['cnpj' => '12ABC34501DE3A']))->assertUnprocessable()
+            ->assertJsonValidationErrors(['cnpj' => 'CNPJ inválido: as 12 primeiras posições aceitam letras e números; as 2 últimas, só números.']);
     }
 
     public function test_a_cnpj_already_used_by_another_organization_is_refused(): void

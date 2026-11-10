@@ -2,11 +2,13 @@
 
 namespace App\Services\Fiscal;
 
+use App\DataTransferObjects\Cnpj;
 use App\DataTransferObjects\Fiscal\FiscalOwner;
 use App\DataTransferObjects\Fiscal\FiscalParty;
 use App\Models\Organization;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Support\TaxpayerDocument;
 
 /**
  * Monta emitente e destinatário neutros (`FiscalParty`) a partir do cadastro — spec
@@ -33,7 +35,7 @@ final class FiscalPartyResolver
     {
         return new FiscalParty(
             name: (string) ($supplier->legal_name ?: $supplier->trade_name),
-            document: self::digits($supplier->document),
+            document: TaxpayerDocument::normalize($supplier->document),
             address: [
                 'street' => $supplier->address_street,
                 'number' => $supplier->address_number,
@@ -52,7 +54,7 @@ final class FiscalPartyResolver
     {
         return new FiscalParty(
             name: (string) $organization->business_name,
-            document: self::digits($organization->cnpj),
+            document: Cnpj::normalizeForStorage($organization->cnpj),
             address: self::address($organization->only(['address', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip_code'])),
             stateRegistration: $organization->state_registration,
             stateRegistrationType: $organization->state_registration_type?->value,
@@ -65,7 +67,7 @@ final class FiscalPartyResolver
     {
         return new FiscalParty(
             name: (string) $user->name,
-            document: self::digits($user->cnpj ?: $user->cpf),
+            document: TaxpayerDocument::normalize($user->cnpj ?: $user->cpf),
             address: self::address($user->only(['address', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip_code'])),
             stateRegistration: $user->state_registration,
             stateRegistrationType: $user->state_registration_type?->value,

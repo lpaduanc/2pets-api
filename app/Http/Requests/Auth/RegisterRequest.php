@@ -5,6 +5,7 @@ namespace App\Http\Requests\Auth;
 use App\DataTransferObjects\Cnpj;
 use App\Enums\ProfessionalType;
 use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
+use App\Rules\CnpjFormat;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -66,7 +67,7 @@ class RegisterRequest extends FormRequest
             ])],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'additional_data' => ['array', 'nullable'],
-            'additional_data.cnpj' => ['nullable', 'digits:'.Cnpj::DIGIT_COUNT],
+            'additional_data.cnpj' => ['nullable', new CnpjFormat],
             'additional_data.employee_count' => ['nullable', 'string', 'max:50'],
             'additional_data.message' => ['nullable', 'string', 'max:1000'],
         ];

@@ -8,6 +8,7 @@ use App\DataTransferObjects\Fiscal\NfseDpsContext;
 use App\Enums\FiscalEnvironment;
 use App\Enums\NfseLayout;
 use App\Exceptions\Fiscal\NfeXmlInvalid;
+use App\Support\Fiscal\AlphanumericCnpjSupport;
 use DOMElement;
 
 /**
@@ -45,6 +46,8 @@ final class NfseDpsBuilder
     public function build(FiscalInvoicePayload $payload, NfseDpsContext $context): string
     {
         $cnpj = self::providerCnpj($payload->emitter);
+        // CNPJ alfanumérico só no leiaute que o aceita (XSD de produção ainda é só numérico).
+        AlphanumericCnpjSupport::assertAccepted(['prestador' => $cnpj, 'tomador' => $payload->recipient?->document], AlphanumericCnpjSupport::nfseLayoutAccepts($context->layout), 'NFS-e '.$context->layout->value);
         $writer = new NfseXmlWriter;
         $dps = $writer->root('DPS', ['versao' => NfseLayout::VERSION]);
         $info = $writer->group($dps, 'infDPS', ['Id' => $context->dpsId($cnpj)]);

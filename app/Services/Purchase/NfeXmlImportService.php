@@ -9,6 +9,7 @@ use App\Models\Supplier;
 use App\Models\SupplierProduct;
 use App\Models\User;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Support\TaxpayerDocument;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -184,7 +185,7 @@ final class NfeXmlImportService
         }
 
         return $this->scope->scopeQuery(Supplier::query(), $user)
-            ->where('document', preg_replace('/\D/', '', $document))
+            ->where('document', TaxpayerDocument::normalize($document))
             ->first();
     }
 

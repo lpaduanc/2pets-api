@@ -27,6 +27,7 @@ use App\Services\Stock\StockService;
 use App\Services\Stock\StockValuation;
 use App\Support\Money\Decimal;
 use App\Support\Money\Quantity;
+use App\Support\TaxpayerDocument;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -522,7 +523,7 @@ final class PurchaseService
         $payload = $data['supplier'] ?? null;
         abort_if(! is_array($payload) || empty($payload['legal_name']), 422, 'Informe o fornecedor.');
 
-        $document = isset($payload['document']) ? preg_replace('/\D/', '', (string) $payload['document']) : null;
+        $document = TaxpayerDocument::normalize(isset($payload['document']) ? (string) $payload['document'] : null);
 
         // Mesmo CNPJ já cadastrado: reaproveita em vez de duplicar (critério de aceite).
         if ($document) {

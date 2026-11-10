@@ -10,6 +10,7 @@ use App\Enums\IndustrySector;
 use App\Enums\PreferredCommunicationChannel;
 use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
 use App\Http\Requests\Registration\Draft\Concerns\HasOptionalAddressRules;
+use App\Rules\CnpjFormat;
 use App\Rules\ValidCpf;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -60,7 +61,7 @@ class SaveCompanyDraftRequest extends FormRequest
         return [
             'company_name' => ['sometimes', 'nullable', 'string'],
             'cnpj' => [
-                'sometimes', 'nullable', 'digits:'.Cnpj::DIGIT_COUNT,
+                'sometimes', 'nullable', new CnpjFormat,
                 Rule::unique('companies', 'cnpj')->ignore($this->user()?->id, 'user_id'),
             ],
             'contact_name' => ['sometimes', 'nullable', 'string'],
@@ -108,7 +109,6 @@ class SaveCompanyDraftRequest extends FormRequest
     {
         return [
             ...$this->optionalAddressMessages(),
-            'cnpj.digits' => 'O CNPJ deve conter 14 dígitos.',
             'cnpj.unique' => 'Este CNPJ já está cadastrado.',
             'legal_representative_cpf.digits' => 'O CPF do representante legal deve conter 11 dígitos.',
             'industry_sector.enum' => 'Selecione um setor válido para a empresa.',

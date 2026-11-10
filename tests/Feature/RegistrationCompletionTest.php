@@ -741,6 +741,37 @@ class RegistrationCompletionTest extends TestCase
         ];
     }
 
+    /**
+     * CNPJ alfanumérico (IN RFB 2.229/2024): o app manda com máscara e em qualquer caixa; grava
+     * limpo e em maiúsculas no profissional e na organização criada.
+     */
+    public function test_generic_professional_registration_accepts_an_alphanumeric_cnpj(): void
+    {
+        $user = User::factory()->create(['user_type' => 'petshop']);
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/register/complete-professional', [
+            ...$this->validGenericProfessionalPayload(),
+            'cnpj' => '12.abc.345/01de-35',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('professionals', ['user_id' => $user->id, 'cnpj' => '12ABC34501DE35']);
+        $this->assertDatabaseHas('organizations', ['business_name' => 'Pet Center', 'cnpj' => '12ABC34501DE35']);
+    }
+
+    public function test_company_registration_accepts_an_alphanumeric_cnpj_and_refuses_a_wrong_check_digit(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/register/complete-company', [...$this->validCompanyPayload(), 'cnpj' => '12.ABC.345/01DE-35'])->assertOk();
+        $this->assertDatabaseHas('companies', ['user_id' => $user->id, 'cnpj' => '12ABC34501DE35']);
+
+        $this->postJson('/api/register/complete-company', [...$this->validCompanyPayload(), 'cnpj' => '12ABC34501DE3A'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['cnpj']);
+    }
+
     public function test_company_registration_rejects_invalid_cnpj(): void
     {
         // Ver nota em test_company_completes_registration_successfully sobre `user_type`.

@@ -8,6 +8,7 @@ use App\Enums\FiscalDocumentKind;
 use App\Enums\FiscalEmissionMode;
 use App\Enums\FiscalEnvironment;
 use App\Exceptions\Fiscal\NfeXmlInvalid;
+use App\Support\Fiscal\AlphanumericCnpjSupport;
 use App\Support\Money\Money;
 use Carbon\CarbonInterface;
 use NFePHP\Common\TimeZoneByUF;
@@ -40,6 +41,7 @@ final class NfeXmlBuilder
     /** @throws NfeXmlInvalid */
     public function build(FiscalInvoicePayload $payload, CarbonInterface $issuedAt, string $emitterCityCode, int $randomCode): BuiltNfe
     {
+        $this->assertLayoutAcceptsDocuments($payload);
         $nfe = new Make((string) config('fiscal.sefaz.schema'));
         $nfe->setCheckGtin(false);
         $nfe->taginfNFe((object) ['versao' => self::LAYOUT_VERSION]);
@@ -56,6 +58,21 @@ final class NfeXmlBuilder
         $this->closing->add($nfe, $payload, $regime);
 
         return $this->render($nfe, $payload);
+    }
+
+    /**
+     * CNPJ alfanumérico (emitente, destinatário ou na chave referenciada) só sai com pacote que o
+     * aceite — senão a rejeição é local e clara, não um erro de XSD (spec §5.5, NT 2026.004).
+     *
+     * @throws NfeXmlInvalid
+     */
+    private function assertLayoutAcceptsDocuments(FiscalInvoicePayload $payload): void
+    {
+        AlphanumericCnpjSupport::assertAccepted([
+            'emitente' => $payload->emitter->document,
+            'destinatário' => $payload->recipient?->document,
+            'chave referenciada' => implode('', $payload->references),
+        ], AlphanumericCnpjSupport::nfeSchemaAccepts(), 'NF-e '.config('fiscal.sefaz.schema'));
     }
 
     /** @return array<string, mixed> */

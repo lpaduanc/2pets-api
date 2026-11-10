@@ -89,7 +89,7 @@ class PurchaseReturnFiscalDocumentTest extends TestCase
         $returnId = $this->returnFrom($this->receivedPurchase(invoiceKey: null));
         $this->actingAs($this->owner, 'sanctum')->postJson("/api/professional/purchase-returns/{$returnId}/fiscal-documents")
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Informe a chave de acesso (44 dígitos) da nota de compra para emitir a NF-e de devolução.');
+            ->assertJsonPath('message', 'Informe a chave de acesso (44 caracteres) da nota de compra para emitir a NF-e de devolução.');
 
         $this->supplier->update(['address_state' => null]);
         $other = $this->returnFrom($this->receivedPurchase());

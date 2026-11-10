@@ -36,7 +36,7 @@ final readonly class NfseReply
     {
         $key = $this->field('chaveAcesso');
 
-        return is_string($key) && preg_match('/^\d{50}$/', $key) === 1 ? $key : null;
+        return is_string($key) && preg_match(NfseDocumentReader::ACCESS_KEY_PATTERN, $key) === 1 ? $key : null;
     }
 
     /** @return list<array{code: string, description: string, complement: string}> */

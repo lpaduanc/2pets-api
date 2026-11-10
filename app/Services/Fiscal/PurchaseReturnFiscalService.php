@@ -95,9 +95,9 @@ final class PurchaseReturnFiscalService
 
     private function invoiceKey(PurchaseReturn $return): string
     {
-        $key = preg_replace('/\D/', '', (string) $return->purchase->invoice_key);
+        $key = FiscalAccessKey::normalize((string) $return->purchase->invoice_key);
 
-        abort_unless(strlen($key) === FiscalAccessKey::LENGTH, 422, 'Informe a chave de acesso (44 dígitos) da nota de compra para emitir a NF-e de devolução.');
+        abort_unless(FiscalAccessKey::isWellFormed($key), 422, 'Informe a chave de acesso (44 caracteres) da nota de compra para emitir a NF-e de devolução.');
 
         return $key;
     }

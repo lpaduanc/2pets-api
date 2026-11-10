@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Stock;
 
 use App\Enums\ProductPurpose;
+use App\Support\Fiscal\FiscalAccessKey;
+use App\Support\TaxpayerDocument;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,8 +24,15 @@ class StorePurchaseRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // A chave tem letra quando o emitente tem CNPJ alfanumérico (NT Conjunta DFe 2025.001).
         if ($this->filled('invoice_key')) {
-            $this->merge(['invoice_key' => preg_replace('/\D/', '', (string) $this->input('invoice_key'))]);
+            $this->merge(['invoice_key' => FiscalAccessKey::normalize((string) $this->input('invoice_key'))]);
+        }
+
+        $supplier = $this->input('supplier');
+
+        if (is_array($supplier) && filled($supplier['document'] ?? null)) {
+            $this->merge(['supplier' => ['document' => TaxpayerDocument::normalize((string) $supplier['document'])] + $supplier]);
         }
     }
 
@@ -40,7 +49,7 @@ class StorePurchaseRequest extends FormRequest
             'purchase_order_id' => ['nullable', 'integer'],
             'invoice_number' => ['nullable', 'string', 'max:20'],
             'invoice_series' => ['nullable', 'string', 'max:5'],
-            'invoice_key' => ['nullable', 'string', 'size:44'],
+            'invoice_key' => ['nullable', 'string', 'size:'.FiscalAccessKey::LENGTH, 'regex:'.FiscalAccessKey::PATTERN],
             'invoice_issued_at' => ['nullable', 'date'],
             'entered_at' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:5000'],
@@ -131,7 +140,8 @@ class StorePurchaseRequest extends FormRequest
     {
         return [
             'items.*.product_id.required_without' => 'Cada item precisa estar vinculado a um produto existente ou a um produto novo.',
-            'invoice_key.size' => 'A chave da NF-e tem 44 dígitos.',
+            'invoice_key.size' => 'A chave da NF-e tem 44 caracteres.',
+            'invoice_key.regex' => 'Chave da NF-e inválida: só números, com letras apenas nas posições do CNPJ do emitente.',
         ];
     }
 }

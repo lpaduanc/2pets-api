@@ -12,6 +12,13 @@ use DOMXPath;
  */
 final class NfseDocumentReader
 {
+    /**
+     * Chave de 50 posições: cMun(7) + ambiente(1) + tipo de inscrição(1) + inscrição federal(14) +
+     * nNFSe(13) + AAMM(4) + código(9) + DV(1). A inscrição pode ter letra (CNPJ alfanumérico) —
+     * mesmo recorte do `TSIdNFSe` do leiaute RTC (`NFS[0-9]{9}[0-9A-Z]{14}[0-9]{27}`).
+     */
+    public const ACCESS_KEY_PATTERN = '/^[0-9]{9}[0-9A-Z]{14}[0-9]{27}$/';
+
     private DOMXPath $xpath;
 
     public function __construct(string $xml)
@@ -26,7 +33,7 @@ final class NfseDocumentReader
     {
         $key = substr($this->value('//n:infNFSe/@Id'), 3);
 
-        return preg_match('/^\d{50}$/', $key) === 1 ? $key : null;
+        return preg_match(self::ACCESS_KEY_PATTERN, $key) === 1 ? $key : null;
     }
 
     public function number(): ?int

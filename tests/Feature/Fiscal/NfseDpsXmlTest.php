@@ -117,6 +117,31 @@ class NfseDpsXmlTest extends TestCase
         $this->assertSame('DPS'.'3550308'.'2'.self::CNPJ.'00001'.'000000000000042', $this->context(TaxRegime::SIMPLES_NACIONAL)->dpsId(self::CNPJ));
     }
 
+    /**
+     * CNPJ alfanumérico: o XSD da reforma (`TSCNPJ = [0-9A-Z]{14}`, `TSIdDPS` com `2[0-9A-Z]{14}`)
+     * aceita; o de produção (só dígitos) não — lá a DPS é recusada localmente com motivo claro.
+     */
+    public function test_an_alphanumeric_cnpj_dps_is_valid_in_the_reform_layout_and_refused_in_production(): void
+    {
+        $address = ['street' => 'Rua Augusta', 'number' => '100', 'complement' => null, 'district' => 'Consolacao', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01305000'];
+        $payload = $this->payload([
+            'emitter' => new FiscalParty('Clinica Alfa Ltda', '12ABC34501DE35', $address, municipalRegistration: '98765', taxRegime: 'simples_nacional'),
+            'recipient' => new FiscalParty('Empresa Tomadora Ltda', 'AB12CD34000184', $address),
+        ]);
+
+        $signed = $this->signed($payload, $this->context(TaxRegime::SIMPLES_NACIONAL, NfseLayout::REFORM_20261020));
+
+        app(NfseSchemaValidator::class)->validate($signed, NfseLayout::REFORM_20261020, NfseSchemaValidator::DPS);
+        // DPS + cLocEmi 3550308 + tpInsc 2 + CNPJ 12ABC34501DE35 + série 00001 + nDPS 42 (15 posições).
+        $this->assertStringContainsString('Id="DPS3550308212ABC34501DE3500001000000000000042"', $signed);
+        $this->assertStringContainsString('<prest><CNPJ>12ABC34501DE35</CNPJ>', $signed);
+        $this->assertStringContainsString('<toma><CNPJ>AB12CD34000184</CNPJ>', $signed);
+
+        $this->expectException(NfeXmlInvalid::class);
+        $this->expectExceptionMessage('CNPJ alfanumérico (prestador, tomador)');
+        $this->build($payload, $this->context(TaxRegime::SIMPLES_NACIONAL, NfseLayout::PRODUCTION_20260209));
+    }
+
     private function build(FiscalInvoicePayload $payload, NfseDpsContext $context): string
     {
         return app(NfseDpsBuilder::class)->build($payload, $context);
@@ -176,7 +201,7 @@ class NfseDpsXmlTest extends TestCase
             contingencyReason: null,
             series: null,
             number: null,
-            emitter: new FiscalParty('Clinica Veterinaria Teste Ltda', self::CNPJ, ['street' => 'Rua Augusta', 'number' => '100', 'complement' => null, 'district' => 'Consolacao', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01305000'], municipalRegistration: '98765', taxRegime: 'simples_nacional'),
+            emitter: $overrides['emitter'] ?? new FiscalParty('Clinica Veterinaria Teste Ltda', self::CNPJ, ['street' => 'Rua Augusta', 'number' => '100', 'complement' => null, 'district' => 'Consolacao', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01305000'], municipalRegistration: '98765', taxRegime: 'simples_nacional'),
             recipient: array_key_exists('recipient', $overrides) ? $overrides['recipient'] : new FiscalParty('Tutora Teste', '52998224725', ['street' => 'Rua das Flores', 'number' => '10', 'complement' => 'Apto 2', 'district' => 'Centro', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01001000'], email: 'tutora@example.com'),
             items: $overrides['items'] ?? $this->items(),
             totals: ['products' => '300.00', 'discount' => '21.00', 'other' => '1.00', 'total' => $overrides['total'] ?? '280.00'],

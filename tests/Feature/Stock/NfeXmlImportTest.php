@@ -107,6 +107,30 @@ class NfeXmlImportTest extends TestCase
         $this->postJson('/api/professional/purchases', ['xml_token' => $second->json('xml_token')] + $payload)->assertStatus(422);
     }
 
+    /**
+     * Fornecedor com CNPJ alfanumérico (NT Conjunta DFe 2025.001): a chave tem letra nas posições
+     * do CNPJ e o casamento com o fornecedor cadastrado (com máscara, minúsculo) continua valendo.
+     */
+    public function test_an_invoice_from_an_alphanumeric_cnpj_keeps_the_letters_in_key_and_supplier(): void
+    {
+        $supplier = Supplier::create([
+            'organization_id' => $this->clinic->id,
+            'professional_id' => $this->owner->id,
+            'legal_name' => 'Distribuidora Alfa Ltda',
+            'document' => '12.abc.345/01de-35',
+        ]);
+        $xml = str_replace('12345678000190', '12ABC34501DE35', (string) file_get_contents(base_path('tests/Fixtures/nfe/nfe-distribuidora.xml')));
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->post('/api/professional/purchases/xml-preview', ['xml' => UploadedFile::fake()->createWithContent('nfe.xml', $xml)], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('supplier.id', $supplier->id)
+            ->assertJsonPath('supplier.match', 'document')
+            ->assertJsonPath('supplier.data.document', '12ABC34501DE35')
+            ->assertJsonPath('invoice.key', '35260912ABC34501DE35550010000012341000012345');
+        $this->assertSame('12ABC34501DE35', $supplier->fresh()->document);
+    }
+
     public function test_xml_token_of_another_user_is_rejected_and_non_nfe_xml_is_refused(): void
     {
         $product = $this->product();

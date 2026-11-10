@@ -5,6 +5,7 @@ namespace App\Http\Requests\Organization;
 use App\DataTransferObjects\Cnpj;
 use App\Enums\Location\BrazilianState;
 use App\Models\Organization;
+use App\Rules\CnpjFormat;
 use App\Rules\ValidCnpj;
 use App\Services\Commercial\CommercialScopeResolver;
 use Illuminate\Foundation\Http\FormRequest;
@@ -67,7 +68,7 @@ class UpdateOrganizationCompanyProfileRequest extends FormRequest
             // Unicidade igual à constraint da coluna (`organizations.cnpj` UNIQUE, inclusive linhas
             // com soft delete) — sem `withoutTrashed`, senão o banco estouraria um 500.
             'cnpj' => [
-                'bail', 'required', 'digits:'.Cnpj::DIGIT_COUNT, new ValidCnpj,
+                'bail', 'required', new CnpjFormat, new ValidCnpj,
                 Rule::unique('organizations', 'cnpj')->ignore($this->organization()->id),
             ],
             'address' => ['nullable', 'string', 'max:255'],
@@ -86,7 +87,6 @@ class UpdateOrganizationCompanyProfileRequest extends FormRequest
         return [
             'business_name.required' => 'Informe a razão social da empresa.',
             'cnpj.required' => 'Informe o CNPJ da empresa.',
-            'cnpj.digits' => 'O CNPJ deve ter 14 dígitos.',
             'cnpj.unique' => 'Este CNPJ já está cadastrado em outra empresa do 2pets.',
             'state.enum' => 'Informe a sigla de uma UF válida (ex.: SP).',
             'zip_code.digits' => 'O CEP deve ter 8 dígitos.',

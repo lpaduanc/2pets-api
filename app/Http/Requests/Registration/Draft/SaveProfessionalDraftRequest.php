@@ -7,6 +7,7 @@ use App\DataTransferObjects\Cpf;
 use App\Http\Requests\Concerns\CanonicalizesSpecialties;
 use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
 use App\Http\Requests\Registration\Draft\Concerns\HasOptionalAddressRules;
+use App\Rules\CnpjFormat;
 use App\Rules\ValidCpf;
 use App\Rules\ValidCrmv;
 use App\Services\CrmvValidationService;
@@ -38,7 +39,7 @@ class SaveProfessionalDraftRequest extends FormRequest
     }
 
     /**
-     * Documento sempre trafega e é gravado limpo (só dígitos), mesma regra de projeto de
+     * Documento sempre trafega e é gravado limpo (sem máscara), mesma regra de projeto de
      * `DocumentNumber`. CRMV, além disso, é normalizado para o formato canônico
      * (`CRMV/UF 12345`) ANTES da validação — o mesmo formato que
      * `RegistrationCompletionService::vetProfessionalData()` grava na conclusão. Sem isto, o
@@ -96,7 +97,7 @@ class SaveProfessionalDraftRequest extends FormRequest
             ],
             'professional_phone' => ['sometimes', 'nullable', 'string'],
             'cnpj' => [
-                'sometimes', 'nullable', 'digits:14',
+                'sometimes', 'nullable', new CnpjFormat,
                 Rule::unique('professionals', 'cnpj')->ignore($this->user()?->id, 'user_id')->withoutTrashed(),
             ],
             'crmv' => [
@@ -150,7 +151,6 @@ class SaveProfessionalDraftRequest extends FormRequest
             ...$this->optionalAddressMessages(),
             'cpf.digits' => 'O CPF deve conter 11 dígitos.',
             'cpf.unique' => 'Este CPF já está cadastrado.',
-            'cnpj.digits' => 'O CNPJ deve conter 14 dígitos.',
             'cnpj.unique' => 'Este CNPJ já está cadastrado.',
             'crmv.unique' => 'Este CRMV já está cadastrado.',
             'crmv_state.size' => 'A UF do CRMV deve ter 2 letras.',

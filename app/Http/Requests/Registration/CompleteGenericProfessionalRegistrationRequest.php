@@ -8,6 +8,7 @@ use App\Enums\ProfessionalType;
 use App\Http\Requests\Concerns\FormatsDuplicateFieldErrors;
 use App\Http\Requests\Registration\Concerns\HasAddressRules;
 use App\Http\Requests\Registration\Concerns\HasProfessionalCapabilityRules;
+use App\Rules\CnpjFormat;
 use App\Rules\ValidCpf;
 use App\Rules\ValidCrmv;
 use App\Support\Registration\ProfessionalCapabilityRegistry;
@@ -40,8 +41,8 @@ class CompleteGenericProfessionalRegistrationRequest extends FormRequest
     }
 
     /**
-     * Regra de projeto: documento trafega e é gravado limpo (só dígitos). Normalizar antes
-     * do `digits:14`/`digits:11` é o que evita reprovar um documento que o app manda mascarado.
+     * Regra de projeto: documento trafega e é gravado limpo (sem máscara; CNPJ em maiúsculas, pode
+     * ter letra). Normalizar antes do `CnpjFormat`/`digits:11` é o que evita reprovar um documento mascarado.
      */
     protected function prepareForValidation(): void
     {
@@ -68,7 +69,7 @@ class CompleteGenericProfessionalRegistrationRequest extends FormRequest
             ],
             'business_name' => ['required', 'string'],
             'cnpj' => [
-                'required', 'digits:'.Cnpj::DIGIT_COUNT,
+                'required', new CnpjFormat,
                 Rule::unique('professionals', 'cnpj')
                     ->ignore($this->user()?->id, 'user_id')
                     ->withoutTrashed(),
@@ -175,7 +176,6 @@ class CompleteGenericProfessionalRegistrationRequest extends FormRequest
             'cpf.unique' => 'Este CPF já está cadastrado.',
             'business_name.required' => 'O nome do negócio é obrigatório.',
             'cnpj.required' => 'O CNPJ é obrigatório.',
-            'cnpj.digits' => 'O CNPJ deve conter 14 dígitos.',
             'cnpj.unique' => 'Este CNPJ já está cadastrado.',
             'opening_hours.required' => 'O horário de abertura é obrigatório.',
             'closing_hours.required' => 'O horário de fechamento é obrigatório.',

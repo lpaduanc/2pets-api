@@ -105,7 +105,8 @@ final class SefazFiscalGateway implements FiscalProviderGateway
 
     private function accessKeyOf(string $signedXml): string
     {
-        preg_match('/Id="NFe(\d{44})"/', $signedXml, $match);
+        // A chave pode ter letra nas posições do CNPJ (CNPJ alfanumérico do emitente).
+        preg_match('/Id="NFe([0-9A-Z]{44})"/', $signedXml, $match);
 
         return $match[1] ?? throw NfeXmlInvalid::because(['XML assinado sem chave de acesso.']);
     }

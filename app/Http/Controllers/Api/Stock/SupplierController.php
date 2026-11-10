@@ -8,6 +8,7 @@ use App\Http\Requests\Stock\StoreSupplierRequest;
 use App\Http\Resources\Stock\SupplierResource;
 use App\Models\Supplier;
 use App\Services\Commercial\CommercialScopeResolver;
+use App\Support\TaxpayerDocument;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,14 +27,15 @@ class SupplierController extends Controller
             ->withCount('purchases')
             ->when($request->filled('search'), function (Builder $q) use ($request): void {
                 $term = $request->string('search')->toString();
-                $digits = preg_replace('/\D/', '', $term);
-                $q->where(function (Builder $inner) use ($term, $digits): void {
+                // Documento sem máscara e maiúsculo: o CNPJ alfanumérico tem letra.
+                $document = (string) TaxpayerDocument::normalize($term);
+                $q->where(function (Builder $inner) use ($term, $document): void {
                     $inner->where('legal_name', 'ilike', "%{$term}%")
                         ->orWhere('trade_name', 'ilike', "%{$term}%")
                         ->orWhere('sales_rep_name', 'ilike', "%{$term}%");
 
-                    if ($digits !== '') {
-                        $inner->orWhere('document', 'like', "%{$digits}%");
+                    if (preg_match('/\d/', $document) === 1) {
+                        $inner->orWhere('document', 'like', "%{$document}%");
                     }
                 });
             })

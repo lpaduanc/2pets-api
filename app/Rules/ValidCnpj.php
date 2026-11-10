@@ -7,18 +7,19 @@ use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 
 /**
- * Valida o dígito verificador do CNPJ.
+ * Valida o dígito verificador do CNPJ, numérico ou alfanumérico (módulo 11 com ASCII − 48, ver
+ * `Cnpj`).
  *
- * Espera o valor já normalizado (só dígitos) — mesmo contrato do `ValidCpf`: o Form Request roda
- * `Cnpj::stripMask()` em `prepareForValidation()`. O tamanho é checado antes por `digits:14`
- * (com `bail`), para o usuário ver "14 dígitos" e não "inválido" quando faltou um número.
+ * Espera o valor já normalizado (sem máscara, maiúsculo) — mesmo contrato do `ValidCpf`: o Form
+ * Request roda `Cnpj::stripMask()` em `prepareForValidation()`. O formato é checado antes por
+ * `CnpjFormat` (com `bail`), para o usuário ver "14 caracteres" e não "inválido" quando faltou um.
  */
 final class ValidCnpj implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         if (Cnpj::tryParse((string) $value)?->hasValidCheckDigits() !== true) {
-            $fail('CNPJ inválido: confira os números digitados.');
+            $fail('CNPJ inválido: confira os caracteres digitados.');
         }
     }
 }

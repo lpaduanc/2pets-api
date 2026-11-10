@@ -41,7 +41,8 @@ final class NfeXmlParser
         $address = $emit->enderEmit;
         $totals = $nfe->total->ICMSTot;
 
-        $key = $this->protocolKey($root) ?? preg_replace('/\D/', '', (string) $infNFe->attributes()['Id']);
+        // Tira só o prefixo "NFe": a chave pode ter letra (CNPJ alfanumérico do emitente).
+        $key = $this->protocolKey($root) ?? (string) preg_replace('/^NFe/', '', (string) $infNFe->attributes()['Id']);
 
         return [
             'supplier' => [

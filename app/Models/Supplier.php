@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\TaxpayerDocument;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -52,11 +53,10 @@ class Supplier extends Model
         ];
     }
 
-    /** CNPJ/CPF gravado só com dígitos — é a chave de casamento do XML. */
+    /** CNPJ/CPF gravado sem máscara e em maiúsculas (CNPJ alfanumérico) — é a chave de casamento do XML. */
     public function setDocumentAttribute(?string $value): void
     {
-        $digits = $value === null ? null : preg_replace('/\D/', '', $value);
-        $this->attributes['document'] = $digits === '' ? null : $digits;
+        $this->attributes['document'] = TaxpayerDocument::normalize($value);
     }
 
     public function organization(): BelongsTo

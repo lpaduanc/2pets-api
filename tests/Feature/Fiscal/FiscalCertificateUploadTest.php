@@ -75,6 +75,26 @@ class FiscalCertificateUploadTest extends TestCase
         $this->upload(TestCertificate::pfx(self::CLINIC_CNPJ))->assertCreated()->assertJsonPath('data.cnpj_match', 'root');
     }
 
+    /**
+     * e-CNPJ de empresa com CNPJ alfanumérico (OID 2.16.76.1.3.3 com letras): a comparação de raiz
+     * usa os 8 primeiros caracteres, letras incluídas — "só dígitos" apagaria as letras.
+     */
+    public function test_alphanumeric_cnpjs_are_compared_exactly_and_by_root(): void
+    {
+        $this->clinic->forceFill(['cnpj' => '12ABC34501DE35'])->save();
+        $this->upload(TestCertificate::pfx('12ABC34501DE35'))->assertCreated()
+            ->assertJsonPath('data.subject_document', '12ABC34501DE35')
+            ->assertJsonPath('data.cnpj_match', 'exact');
+
+        // Filial 12ABC345/0001-88 com o A1 da matriz 12ABC345/01DE-35: mesma raiz.
+        $this->clinic->forceFill(['cnpj' => '12ABC345000188'])->save();
+        $this->upload(TestCertificate::pfx('12ABC34501DE35'))->assertCreated()->assertJsonPath('data.cnpj_match', 'root');
+
+        // Outra raiz alfanumérica (AB12CD34…) é recusada.
+        $this->clinic->forceFill(['cnpj' => 'AB12CD34000184'])->save();
+        $this->upload(TestCertificate::pfx('12ABC34501DE35'))->assertUnprocessable()->assertJsonValidationErrors('certificate');
+    }
+
     public function test_a_wrong_password_is_refused_without_echoing_it(): void
     {
         $response = $this->upload(TestCertificate::pfx(self::CLINIC_CNPJ), 'senha-errada-999')

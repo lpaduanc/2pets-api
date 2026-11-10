@@ -3,9 +3,12 @@
 namespace App\Services\Fiscal\Transmission;
 
 use App\DataTransferObjects\Fiscal\FiscalTransmissionStatus;
+use App\Enums\FiscalEnvironment;
+use App\Enums\NfseLayout;
 use App\Models\Organization;
 use App\Services\Fiscal\Nfse\NfseTaxationRules;
 use App\Services\Fiscal\Nfse\Transport\NfseServerTrust;
+use App\Support\Fiscal\AlphanumericCnpjSupport;
 
 /**
  * Bloco `transmission.nfse` — spec docs/gap-petflow/specs/fase4-transmissao-propria-nfse-nacional.md
@@ -38,9 +41,16 @@ final class NfseTransmissionReadiness
             ...array_diff($emitterProblems, self::NOT_APPLICABLE),
             ...$this->rules->missing($organization),
             $this->trust->problem(),
+            AlphanumericCnpjSupport::problem($organization->cnpj, AlphanumericCnpjSupport::nfseLayoutAccepts(self::layout($organization))),
         ])));
 
         return self::block($enabled && $certificateProblem === null, $missing);
+    }
+
+    /** Leiaute da DPS no ambiente da organização (o CNPJ alfanumérico só existe no da reforma). */
+    private static function layout(Organization $organization): NfseLayout
+    {
+        return NfseLayout::forEnvironment($organization->fiscal_environment ?? FiscalEnvironment::HOMOLOGATION);
     }
 
     /** @return array{mode: string, ready: bool, missing: list<string>} */

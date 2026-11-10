@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Stock;
 
+use App\Support\TaxpayerDocument;
 use Illuminate\Foundation\Http\FormRequest;
 
 /** Fornecedor — docs/gap-simplesvet/06. Mesmo corpo no store e no update. */
@@ -14,10 +15,13 @@ class StoreSupplierRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        foreach (['document', 'address_zip'] as $field) {
-            if ($this->filled($field)) {
-                $this->merge([$field => preg_replace('/\D/', '', (string) $this->input($field))]);
-            }
+        // CPF/CNPJ sem máscara e em maiúsculas: o CNPJ alfanumérico tem letra, que "só dígitos" apagaria.
+        if ($this->filled('document')) {
+            $this->merge(['document' => TaxpayerDocument::normalize((string) $this->input('document'))]);
+        }
+
+        if ($this->filled('address_zip')) {
+            $this->merge(['address_zip' => preg_replace('/\D/', '', (string) $this->input('address_zip'))]);
         }
     }
 
@@ -39,7 +43,7 @@ class StoreSupplierRequest extends FormRequest
         return [
             $prefix.'legal_name' => [$prefix === '' ? 'required' : 'required_with:supplier', 'string', 'max:255'],
             $prefix.'trade_name' => ['nullable', 'string', 'max:255'],
-            $prefix.'document' => ['nullable', 'string', 'regex:/^(\d{11}|\d{14})$/'],
+            $prefix.'document' => ['nullable', 'string', 'regex:'.TaxpayerDocument::PATTERN],
             $prefix.'state_registration' => ['nullable', 'string', 'max:20'],
             $prefix.'phone' => ['nullable', 'string', 'max:20'],
             $prefix.'email' => ['nullable', 'email', 'max:255'],
@@ -65,6 +69,6 @@ class StoreSupplierRequest extends FormRequest
      */
     public function messages(): array
     {
-        return ['document.regex' => 'CNPJ deve ter 14 dígitos (ou CPF, 11).'];
+        return ['document.regex' => 'Informe um CNPJ (14 caracteres, pode ter letras) ou um CPF (11 dígitos).'];
     }
 }

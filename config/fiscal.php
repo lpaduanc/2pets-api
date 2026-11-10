@@ -28,6 +28,8 @@ return [
         'enabled' => (bool) env('FISCAL_SEFAZ_ENABLED', false),
         // Pacote de schemas do sped-nfe. PL_009_V4 = layout 4.00 sem os grupos IBS/CBS da reforma
         // (NT 2025.002); trocar para PL_010_V1.30 quando a reforma passar a exigir os grupos.
+        // PL_009_V4 também NÃO aceita CNPJ alfanumérico (NT 2026.004): emitente com letra fica com
+        // `cnpj_alphanumeric_schema` na prontidão e a emissão é recusada localmente até a troca.
         'schema' => env('FISCAL_SEFAZ_SCHEMA', 'PL_009_V4'),
         'timeout_seconds' => (int) env('FISCAL_SEFAZ_TIMEOUT', 20),
         // `verProc`/`verAplic`: identificação do emissor no XML.
@@ -35,6 +37,14 @@ return [
         // Pasta PRIVADA onde o cURL do sped-common grava a chave privada temporária (cifrada com
         // senha aleatória) durante o envio — nunca o /tmp compartilhado.
         'temporary_path' => storage_path('app/private/fiscal-tmp'),
+        // Verificação do servidor TLS (spec §3.5): o bundle usado é a SOMA do trust store do sistema
+        // (UFs com CA pública: AN/SVAN, MG, PA…) com as ACs ICP-Brasil versionadas (SVRS, SP, PR,
+        // BA…). Qualquer um ausente/ilegível = nada é enviado e a prontidão mostra `sefaz_ca_bundle`.
+        // `system_ca_bundle` vazio de propósito = só ICP-Brasil (as UFs com CA pública falham).
+        'ca_bundle' => env('FISCAL_SEFAZ_CA_BUNDLE', resource_path('fiscal/ca/icp-brasil.pem')),
+        'system_ca_bundle' => env('FISCAL_SEFAZ_SYSTEM_CA_BUNDLE', openssl_get_cert_locations()['default_cert_file'] ?? '/etc/ssl/certs/ca-certificates.crt'),
+        // Pasta privada do bundle combinado (nome = sha256 do conteúdo; refeito quando muda).
+        'trust_path' => storage_path('app/private/fiscal-ca'),
         // Disco dos XMLs autorizados e DANFEs: privado, guardados por 5 anos (CTN art. 173/174).
         'disk' => env('FISCAL_DOCUMENTS_DISK', 'local'),
         // Responsável técnico (infRespTec) — obrigatório em várias UFs; vazio = grupo omitido.

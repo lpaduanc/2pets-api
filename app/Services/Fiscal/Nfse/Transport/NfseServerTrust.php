@@ -6,8 +6,8 @@ use App\Exceptions\Fiscal\FiscalProviderUnavailable;
 
 /**
  * Verificação do certificado do SERVIDOR do Sistema Nacional — spec docs/gap-petflow/specs/
- * fase4-transmissao-propria-nfse-nacional.md §10. Nunca desligada (diferente do SoapCurl do
- * sped-common usado na fase A). Os hosts usam cadeia pública (GlobalSign Root R46 / ISRG Root X1,
+ * fase4-transmissao-propria-nfse-nacional.md §10. Nunca desligada (como a SEFAZ na fase A, que
+ * usa `Sefaz\SefazServerTrust`). Os hosts usam cadeia pública (GlobalSign Root R46 / ISRG Root X1,
  * medido em 2026-11-08), então o trust store do sistema basta; `fiscal.nfse.ca_bundle` fixa um
  * bundle próprio. Bundle configurado e ilegível = falha FECHADA: nada sai.
  */

@@ -86,6 +86,39 @@ class FiscalTransmissionSelectionTest extends TestCase
         $this->settings()->assertJsonPath('data.transmission.missing', ['state_registration'])->assertJsonPath('data.city_ibge_code', '3550308');
     }
 
+    public function test_a_missing_ca_bundle_is_flagged_and_never_falls_back_to_unverified_tls(): void
+    {
+        $this->buildSefazClinic();
+        config(['fiscal.sefaz.ca_bundle' => '/nao/existe/icp-brasil.pem']);
+
+        // Fica no driver SEFAZ (nada é simulado em silêncio); o envio falha fechado — spec §3.5.
+        $this->assertDriver(SefazFiscalGateway::class, FiscalDocumentKind::NFE);
+        $this->settings()
+            ->assertJsonPath('data.transmission.ready', false)
+            ->assertJsonPath('data.transmission.missing', ['sefaz_ca_bundle']);
+    }
+
+    /**
+     * Emitente com CNPJ alfanumérico: o pacote padrão PL_009_V4 não aceita letra (NT 2026.004), a
+     * prontidão avisa em vez de deixar sair XML inválido; com PL_010_V1.30 o aviso some. Na NFS-e
+     * vale o leiaute do ambiente: o da produção restrita (reforma) aceita, o de produção não.
+     */
+    public function test_an_alphanumeric_emitter_cnpj_is_flagged_while_the_layout_does_not_accept_it(): void
+    {
+        $this->buildSefazClinic();
+        config(['fiscal.nfse.enabled' => true]);
+        $this->clinic->forceFill(['cnpj' => '12ABC34501DE35'])->save();
+
+        $settings = $this->settings()->assertJsonPath('data.transmission.missing', ['cnpj_alphanumeric_schema']);
+        $this->assertNotContains('cnpj_alphanumeric_schema', $settings->json('data.transmission.nfse.missing'));
+
+        config(['fiscal.sefaz.schema' => 'PL_010_V1.30']);
+        $this->settings()->assertJsonPath('data.transmission.missing', []);
+
+        $this->clinic->forceFill(['fiscal_environment' => 'production'])->save();
+        $this->assertContains('cnpj_alphanumeric_schema', $this->settings()->json('data.transmission.nfse.missing'));
+    }
+
     public function test_a_professional_without_organization_stays_simulated(): void
     {
         $this->buildSefazClinic();

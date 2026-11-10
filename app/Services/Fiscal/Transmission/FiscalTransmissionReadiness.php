@@ -8,6 +8,8 @@ use App\Enums\FiscalEnvironment;
 use App\Models\Organization;
 use App\Services\Fiscal\Certificate\FiscalCertificateVault;
 use App\Services\Fiscal\Certificate\FiscalNfceCscService;
+use App\Services\Fiscal\Sefaz\SefazServerTrust;
+use App\Support\Fiscal\AlphanumericCnpjSupport;
 use App\Support\Fiscal\IbgeMunicipalities;
 
 /**
@@ -50,6 +52,7 @@ final class FiscalTransmissionReadiness
         private readonly FiscalNfceCscService $cscs,
         private readonly IbgeMunicipalities $municipalities,
         private readonly NfseTransmissionReadiness $nfse,
+        private readonly SefazServerTrust $trust,
     ) {}
 
     public function check(FiscalOwner $owner): FiscalTransmissionStatus
@@ -70,8 +73,24 @@ final class FiscalTransmissionReadiness
             $enabled ? null : self::MISSING_SEFAZ_DISABLED,
             $certificateProblem,
             $hasCsc ? null : self::MISSING_NFCE_CSC,
+            ...$this->transmissionProblems($organization),
             ...$emitterProblems,
         ]))), $environment->value, $this->nfse->check($organization, $certificateProblem, array_values(array_unique($emitterProblems))));
+    }
+
+    /**
+     * Só da NF-e/NFC-e (a NFS-e tem os seus): sem bundle de CAs não há como verificar a SEFAZ
+     * (falha fechada, spec §3.5); emitente com CNPJ alfanumérico e pacote de schemas que não
+     * aceita letra (spec §5.5).
+     *
+     * @return list<string|null>
+     */
+    private function transmissionProblems(Organization $organization): array
+    {
+        return [
+            $this->trust->problem(),
+            AlphanumericCnpjSupport::problem($organization->cnpj, AlphanumericCnpjSupport::nfeSchemaAccepts()),
+        ];
     }
 
     private function certificateProblem(int $organizationId): ?string

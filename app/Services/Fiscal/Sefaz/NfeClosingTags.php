@@ -2,6 +2,7 @@
 
 namespace App\Services\Fiscal\Sefaz;
 
+use App\DataTransferObjects\Cnpj;
 use App\DataTransferObjects\Fiscal\FiscalInvoicePayload;
 use App\Enums\FiscalDocumentOperation;
 use App\Support\Money\Money;
@@ -86,7 +87,7 @@ final class NfeClosingTags
         }
 
         $nfe->taginfRespTec((object) [
-            'CNPJ' => preg_replace('/\D/', '', (string) $responsible['cnpj']),
+            'CNPJ' => Cnpj::stripMask((string) $responsible['cnpj']),
             'xContato' => (string) $responsible['contact'],
             'email' => (string) $responsible['email'],
             'fone' => preg_replace('/\D/', '', (string) $responsible['phone']),
